@@ -1,0 +1,1698 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: poker
+    description: Poker session dashboard operations
+  - name: admin
+    description: Protected administration operations
+paths:
+  /admin/visits:
+    get:
+      operationId: getAdminVisits
+      tags: [admin]
+      summary: Get member sign-in and usage summaries
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: Sign-ins and aggregated dashboard usage by member and section
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVisitsResponse"
+        "401":
+          description: Admin authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/usage:
+    post:
+      operationId: recordMemberUsage
+      tags: [poker]
+      summary: Record a member dashboard view or visible time
+      security:
+        - MemberSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUsageInput"
+      responses:
+        "202":
+          description: Usage was recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberUsageAccepted"
+        "400":
+          description: Usage input was invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /admin/live-ledger/backup:
+    get:
+      operationId: getAdminLiveLedgerResetBackup
+      tags: [admin]
+      summary: Download a backup of the current live ledger
+      description: Returns a complete backup of this environment's live sessions, events, and comment history. Production backups also include the shared Live Activity sheet rows.
+      responses:
+        "200":
+          description: Downloadable ledger backup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLiveLedgerResetBackup"
+        "401":
+          description: Admin authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Backup source unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /admin/live-ledger/reset:
+    post:
+      operationId: resetAdminLiveLedger
+      tags: [admin]
+      summary: Reset this environment's live ledger
+      description: Requires a fresh backup identifier and an explicit confirmation. Resets only the database serving this request; production also clears the shared Live Activity sheet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLiveLedgerResetInput"
+      responses:
+        "200":
+          description: Ledger reset and a fresh session opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLiveLedgerReset"
+        "400":
+          description: Confirmation was invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Admin authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Ledger changed since the backup was downloaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Ledger reset failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /admin/live-ledger/sessions:
+    get:
+      operationId: getAdminLiveLedgerSessions
+      tags: [admin]
+      summary: List closed live ledger sessions for administrators
+      description: Returns closed live ledgers so administrators can review and remove old sessions.
+      responses:
+        "200":
+          description: Closed live ledger records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivityHistoryResponse"
+        "401":
+          description: Admin authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Ledger history unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /admin/live-ledger/sessions/{sessionKey}:
+    parameters:
+      - name: sessionKey
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+    delete:
+      operationId: deleteAdminLiveLedgerSession
+      tags: [admin]
+      summary: Delete a closed live ledger session
+      description: Permanently removes a closed session and its entries from this environment. Production also clears only its matching rows from the shared Live Activity sheet. Requires a fresh backup and exact session confirmation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLiveLedgerSessionDeleteInput"
+      responses:
+        "200":
+          description: Closed session removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLiveLedgerSessionDeletion"
+        "400":
+          description: Confirmation was invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Admin authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Closed session was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Ledger changed after the backup or session is not closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Session deletion failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /poker/dashboard:
+    get:
+      operationId: getPokerDashboard
+      tags: [poker]
+      summary: Get the live poker dashboard
+      description: Reads Player Totals, Cumulative Profit, Legends, the latest-game-date helper, and the monthly Session Log tabs. It returns dated sessions, quarterly and monthly summaries, player results, and standings for the Monash Poker analytics hub.
+      responses:
+        "200":
+          description: Poker dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PokerDashboard"
+        "502":
+          description: Upstream spreadsheet unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/public-summary:
+    get:
+      operationId: getPublicPokerSummary
+      tags: [poker]
+      summary: Get the public poker activity snapshot
+      description: Returns only non-monetary aggregate activity for the public club snapshot. It does not include player identities, rankings, money totals, spreadsheet links, or session records.
+      responses:
+        "200":
+          description: Public poker activity summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicPokerSummary"
+        "502":
+          description: Upstream spreadsheet unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/live-activity:
+    get:
+      operationId: getPokerLiveActivity
+      tags: [poker]
+      summary: Get the current live poker activity
+      description: Returns the authenticated member's current live ledger from durable application storage, including entries and running totals.
+      responses:
+        "200":
+          description: Current live poker activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivitySnapshot"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: createPokerLiveActivity
+      tags: [poker]
+      summary: Add a live poker activity entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveActivityInput"
+      responses:
+        "201":
+          description: Activity entry added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivitySnapshot"
+        "400":
+          description: Invalid activity entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/live-activity/history:
+    get:
+      operationId: getPokerLiveActivityHistory
+      tags: [poker]
+      summary: Get closed live ledger history
+      description: Returns closed live ledgers with their entries and balance results, without including them in the historical poker Session Log.
+      responses:
+        "200":
+          description: Closed live ledger records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivityHistoryResponse"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/live-activity/sync:
+    post:
+      operationId: syncPokerLiveActivity
+      tags: [poker]
+      summary: Retry the live ledger sheet backup
+      description: Retries the Live Activity sheet mirror while keeping the database-backed ledger available.
+      responses:
+        "200":
+          description: Current ledger and sheet backup status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivitySnapshot"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/live-activity/{eventId}:
+    parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      operationId: updatePokerLiveActivity
+      tags: [poker]
+      summary: Edit a live poker activity entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveActivityUpdate"
+      responses:
+        "200":
+          description: Activity entry updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivitySnapshot"
+        "400":
+          description: Invalid activity entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Activity entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deletePokerLiveActivity
+      tags: [poker]
+      summary: Remove a live poker activity entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveActivityCommentInput"
+      responses:
+        "200":
+          description: Activity entry removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivitySnapshot"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Activity entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/live-session/start:
+    post:
+      operationId: startPokerLiveSession
+      tags: [poker]
+      summary: Start or resume a live poker session for today
+      responses:
+        "201":
+          description: Live session started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivitySnapshot"
+        "401":
+          description: Member authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /poker/live-session/end:
+    post:
+      operationId: endPokerLiveSession
+      tags: [poker]
+      summary: Close or discard the current live ledger
+      responses:
+        "200":
+          description: Outcome and updated live ledger snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSessionEndResult"
+        "400":
+          description: Session cannot be finalized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    AdminLiveLedgerResetBackupCounts:
+      type: object
+      properties:
+        sessions:
+          type: number
+        events:
+          type: number
+        comments:
+          type: number
+        sheetRows:
+          type: number
+      required: [sessions, events, comments, sheetRows]
+    AdminLiveLedgerResetSession:
+      type: object
+      properties:
+        id:
+          type: number
+        sessionKey:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [open, finalizing, ended]
+        startedBy:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedBy:
+          type: ["string", "null"]
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        finalizedAt:
+          type: ["string", "null"]
+          format: date-time
+        sourceTab:
+          type: ["string", "null"]
+        sourceRowStart:
+          type: ["number", "null"]
+        sourceRowEnd:
+          type: ["number", "null"]
+        totalBuyInCents:
+          type: ["number", "null"]
+        totalCashOutCents:
+          type: ["number", "null"]
+        balanceDifferenceCents:
+          type: ["number", "null"]
+        balanceStatus:
+          type: ["string", "null"]
+      required:
+        - id
+        - sessionKey
+        - sessionDate
+        - status
+        - startedBy
+        - startedAt
+        - endedBy
+        - endedAt
+        - finalizedAt
+        - sourceTab
+        - sourceRowStart
+        - sourceRowEnd
+        - totalBuyInCents
+        - totalCashOutCents
+        - balanceDifferenceCents
+        - balanceStatus
+    AdminLiveLedgerResetEvent:
+      type: object
+      properties:
+        id:
+          type: number
+        eventId:
+          type: string
+        sessionKey:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        memberName:
+          type: string
+        action:
+          type: string
+          enum: [buy_in, cash_out]
+        amountCents:
+          type: number
+        comment:
+          type: ["string", "null"]
+        occurredAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: ["string", "null"]
+          format: date-time
+        deletedBy:
+          type: ["string", "null"]
+        revision:
+          type: number
+        sheetHash:
+          type: ["string", "null"]
+      required:
+        - id
+        - eventId
+        - sessionKey
+        - sessionDate
+        - memberName
+        - action
+        - amountCents
+        - comment
+        - occurredAt
+        - createdBy
+        - createdAt
+        - updatedBy
+        - updatedAt
+        - deletedAt
+        - deletedBy
+        - revision
+        - sheetHash
+    AdminLiveLedgerResetComment:
+      type: object
+      properties:
+        id:
+          type: number
+        eventId:
+          type: string
+        action:
+          type: string
+          enum: [entry, edit, delete]
+        comment:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, eventId, action, comment, createdBy, createdAt]
+    AdminLiveLedgerResetBackup:
+      type: object
+      properties:
+        environment:
+          type: string
+          enum: [development, production]
+        includesSharedSheet:
+          type: boolean
+        backupId:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        createdAt:
+          type: string
+          format: date-time
+        counts:
+          $ref: "#/components/schemas/AdminLiveLedgerResetBackupCounts"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminLiveLedgerResetSession"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminLiveLedgerResetEvent"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminLiveLedgerResetComment"
+        sheetRows:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+      required:
+        - environment
+        - includesSharedSheet
+        - backupId
+        - createdAt
+        - counts
+        - sessions
+        - events
+        - comments
+        - sheetRows
+    AdminLiveLedgerResetInput:
+      type: object
+      properties:
+        backupId:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        confirmation:
+          type: string
+          enum: ["RESET LIVE LEDGER"]
+      required: [backupId, confirmation]
+    AdminLiveLedgerReset:
+      type: object
+      properties:
+        environment:
+          type: string
+          enum: [development, production]
+        deletedSessions:
+          type: number
+        deletedEvents:
+          type: number
+        deletedComments:
+          type: number
+        clearedSheetRows:
+          type: number
+        freshSessionKey:
+          type: string
+        freshSessionDate:
+          type: string
+          format: date
+        freshSessionStartedAt:
+          type: string
+          format: date-time
+      required:
+        - environment
+        - deletedSessions
+        - deletedEvents
+        - deletedComments
+        - clearedSheetRows
+        - freshSessionKey
+        - freshSessionDate
+        - freshSessionStartedAt
+    AdminLiveLedgerSessionDeleteInput:
+      type: object
+      properties:
+        backupId:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        confirmation:
+          type: string
+          minLength: 1
+          maxLength: 80
+      required: [backupId, confirmation]
+    AdminLiveLedgerSessionDeletion:
+      type: object
+      properties:
+        environment:
+          type: string
+          enum: [development, production]
+        sessionKey:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        deletedEvents:
+          type: number
+          minimum: 0
+        deletedComments:
+          type: number
+          minimum: 0
+        clearedSheetRows:
+          type: number
+          minimum: 0
+      required:
+        - environment
+        - sessionKey
+        - sessionDate
+        - deletedEvents
+        - deletedComments
+        - clearedSheetRows
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [SOURCE_TAB_MISSING]
+        sourceTab:
+          type: string
+      required:
+        - error
+    LiveActivityInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [buy_in, cash_out]
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        attributedPlayer:
+          type: string
+          maxLength: 80
+          description: Optional player receiving the attribution; the authenticated member remains the audit actor.
+        comment:
+          type: string
+          maxLength: 500
+          description: Optional note explaining this buy-in or cash-out.
+        eventId:
+          type: string
+      required:
+        - action
+        - amount
+    LiveActivityUpdate:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [buy_in, cash_out]
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        attributedPlayer:
+          type: string
+          maxLength: 80
+          description: Optional player receiving the attribution; the authenticated member remains the audit actor.
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Required reason for editing this entry.
+      required: [action, amount, comment]
+    LiveActivityCommentInput:
+      type: object
+      properties:
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Required reason for deleting this entry.
+      required: [comment]
+    LiveActivityAuditComment:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [entry, edit, delete]
+        comment:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [action, comment, createdBy, createdAt]
+    LiveActivityEntry:
+      type: object
+      properties:
+        eventId:
+          type: string
+        sessionKey:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        memberName:
+          type: string
+        action:
+          type: string
+          enum: [buy_in, cash_out]
+        amount:
+          type: number
+        comment:
+          type: ["string", "null"]
+          description: Optional note provided when the entry was added.
+        auditComments:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveActivityAuditComment"
+        occurredAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        deleted:
+          type: boolean
+        revision:
+          type: number
+      required:
+        - eventId
+        - sessionKey
+        - sessionDate
+        - memberName
+        - action
+        - amount
+        - comment
+        - auditComments
+        - occurredAt
+        - createdBy
+        - createdAt
+        - updatedBy
+        - updatedAt
+        - deleted
+        - revision
+    LiveActivityTotals:
+      type: object
+      properties:
+        buyIns:
+          type: number
+        cashOuts:
+          type: number
+        net:
+          type: number
+      required: [buyIns, cashOuts, net]
+    LivePlayerSummary:
+      type: object
+      properties:
+        playerName:
+          type: string
+        buyIns:
+          type: number
+        cashOuts:
+          type: number
+      required: [playerName, buyIns, cashOuts]
+    LiveSessionEndResult:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum: [closed, discarded, already_closed]
+        snapshot:
+          $ref: "#/components/schemas/LiveActivitySnapshot"
+      required: [outcome, snapshot]
+    LiveActivitySnapshot:
+      type: object
+      properties:
+        sessionKey:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveActivityEntry"
+        hasRecordedActivity:
+          type: boolean
+        playerSummaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LivePlayerSummary"
+        totals:
+          $ref: "#/components/schemas/LiveActivityTotals"
+        syncStatus:
+          type: string
+          enum: [synced, pending, error]
+        syncMessage:
+          type: ["string", "null"]
+        lastSyncedAt:
+          type: ["string", "null"]
+          format: date-time
+        sessionStatus:
+          type: string
+          enum: [not_started, open, finalizing, ended]
+        startedBy:
+          type: ["string", "null"]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        endedBy:
+          type: ["string", "null"]
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        closeSummary:
+          $ref: "#/components/schemas/LiveSessionCloseSummary"
+      required:
+        - sessionKey
+        - sessionDate
+        - entries
+        - hasRecordedActivity
+        - playerSummaries
+        - totals
+        - syncStatus
+        - syncMessage
+        - lastSyncedAt
+        - sessionStatus
+        - startedBy
+        - startedAt
+        - endedBy
+        - endedAt
+        - closeSummary
+    LiveSessionCloseSummary:
+      type: [object, "null"]
+      properties:
+        buyIns:
+          type: number
+        cashOuts:
+          type: number
+        difference:
+          type: number
+        balanceStatus:
+          type: string
+          enum: [balanced, unbalanced]
+        closedAt:
+          type: string
+          format: date-time
+      required:
+        - buyIns
+        - cashOuts
+        - difference
+        - balanceStatus
+        - closedAt
+    LiveActivityHistoryRecord:
+      type: object
+      properties:
+        sessionKey:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        endedBy:
+          type: ["string", "null"]
+        totals:
+          type: object
+          properties:
+            buyIns:
+              type: number
+            cashOuts:
+              type: number
+            difference:
+              type: number
+          required: [buyIns, cashOuts, difference]
+        balanceStatus:
+          type: string
+          enum: [balanced, unbalanced]
+        playerSummaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LivePlayerSummary"
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveActivityEntry"
+      required:
+        - sessionKey
+        - sessionDate
+        - startedAt
+        - endedAt
+        - endedBy
+        - totals
+        - balanceStatus
+        - playerSummaries
+        - entries
+    LiveActivityHistoryResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveActivityHistoryRecord"
+      required: [sessions]
+    PokerTotals:
+      type: object
+      properties:
+        balanceStatus:
+          type: string
+          enum: [balanced, unbalanced]
+        balanceDifference:
+          type: number
+        totalBuyIn:
+          type: number
+        totalCashOut:
+          type: number
+        totalSessions:
+          type: number
+        activePlayers:
+          type: number
+        latestSession:
+          type: ["number", "null"]
+        latestGameDate:
+          type: ["string", "null"]
+        totalRecords:
+          type: number
+        positiveSessions:
+          type: number
+        negativeSessions:
+          type: number
+      required:
+        - balanceStatus
+        - balanceDifference
+        - totalBuyIn
+        - totalCashOut
+        - totalSessions
+        - activePlayers
+        - latestSession
+        - latestGameDate
+        - totalRecords
+        - positiveSessions
+        - negativeSessions
+    PlayerStanding:
+      type: object
+      properties:
+        rank:
+          type: number
+        name:
+          type: string
+        isClubContributor:
+          type: boolean
+        buyInTotal:
+          type: number
+        cashOutTotal:
+          type: number
+        profitTotal:
+          type: number
+        gamesPlayed:
+          type: number
+        profitPerSession:
+          type: number
+        positiveSessionPct:
+          type: number
+        netPct:
+          type: number
+        buyInPerGame:
+          type: number
+        maxWin:
+          type: number
+        maxLoss:
+          type: number
+      required:
+        - rank
+        - name
+        - isClubContributor
+        - buyInTotal
+        - cashOutTotal
+        - profitTotal
+        - gamesPlayed
+        - profitPerSession
+        - positiveSessionPct
+        - netPct
+        - buyInPerGame
+        - maxWin
+        - maxLoss
+    TournamentSnapshotPlayer:
+      type: object
+      properties:
+        player:
+          type: string
+        buyIn:
+          type: number
+        returned:
+          type: number
+        netProfit:
+          type: number
+        tournaments:
+          type: number
+        profitableTournaments:
+          type: number
+        bestResult:
+          type: number
+        worstResult:
+          type: number
+      required: [player, buyIn, returned, netProfit]
+    TournamentResult:
+      type: object
+      properties:
+        player:
+          type: string
+        entries:
+          type: number
+        rebuys:
+          type: number
+        topUp:
+          type: boolean
+        freeEntry:
+          type: boolean
+        finishPlace:
+          type: ["number", "null"]
+        knockouts:
+          type: number
+        eliminatedBy:
+          type: ["string", "null"]
+        invested:
+          type: number
+        bountiesWon:
+          type: number
+        mainPrize:
+          type: number
+        totalReturn:
+          type: number
+        netProfit:
+          type: number
+        inTheMoney:
+          type: boolean
+      required:
+        - player
+        - entries
+        - rebuys
+        - topUp
+        - freeEntry
+        - finishPlace
+        - knockouts
+        - eliminatedBy
+        - invested
+        - bountiesWon
+        - mainPrize
+        - totalReturn
+        - netProfit
+        - inTheMoney
+    TournamentEventShares:
+      type: object
+      properties:
+        first:
+          type: number
+        second:
+          type: number
+        third:
+          type: number
+      required: [first, second, third]
+    TournamentEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        format:
+          type: string
+        startTime:
+          type: ["string", "null"]
+        venue:
+          type: ["string", "null"]
+        buyIn:
+          type: number
+        topUp:
+          type: number
+        bounty:
+          type: number
+        bountyBasis:
+          type: ["string", "null"]
+        startingStack:
+          type: number
+        topUpStack:
+          type: number
+        shares:
+          $ref: "#/components/schemas/TournamentEventShares"
+        players:
+          type: number
+        entries:
+          type: number
+        rebuys:
+          type: number
+        topUps:
+          type: number
+        freeEntries:
+          type: number
+        knockouts:
+          type: number
+        totalCollected:
+          type: number
+        bountyPool:
+          type: number
+        mainPrizePool:
+          type: number
+        winner:
+          type: ["string", "null"]
+        runnerUp:
+          type: ["string", "null"]
+        thirdPlace:
+          type: ["string", "null"]
+        winnerPrize:
+          type: number
+        topBountyHunter:
+          type: ["string", "null"]
+        mostKnockouts:
+          type: number
+        notes:
+          type: ["string", "null"]
+        dataCheck:
+          type: ["string", "null"]
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TournamentResult"
+      required:
+        - id
+        - date
+        - title
+        - status
+        - format
+        - startTime
+        - venue
+        - buyIn
+        - topUp
+        - bounty
+        - bountyBasis
+        - startingStack
+        - topUpStack
+        - shares
+        - players
+        - entries
+        - rebuys
+        - topUps
+        - freeEntries
+        - knockouts
+        - totalCollected
+        - bountyPool
+        - mainPrizePool
+        - winner
+        - runnerUp
+        - thirdPlace
+        - winnerPrize
+        - topBountyHunter
+        - mostKnockouts
+        - notes
+        - dataCheck
+        - results
+    TournamentSnapshot:
+      type: object
+      properties:
+        available:
+          type: boolean
+        eventDate:
+          type: ["string", "null"]
+        totalPlayers:
+          type: number
+        totalInvested:
+          type: number
+        totalReturned:
+          type: number
+        totalNetProfit:
+          type: number
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/TournamentSnapshotPlayer"
+      required:
+        - available
+        - eventDate
+        - totalPlayers
+        - totalInvested
+        - totalReturned
+        - totalNetProfit
+        - players
+    PlayerProfitPoint:
+      type: object
+      properties:
+        sessionNumber:
+          type: number
+        player:
+          type: string
+        cumulativeProfit:
+          type: number
+        date:
+          type: ["string", "null"]
+        month:
+          type: ["string", "null"]
+      required:
+        - sessionNumber
+        - player
+        - cumulativeProfit
+        - date
+        - month
+    SessionPlayer:
+      type: object
+      properties:
+        player:
+          type: string
+        buyIn:
+          type: number
+        cashOut:
+          type: number
+        net:
+          type: number
+        status:
+          type: ["string", "null"]
+      required: [player, buyIn, cashOut, net, status]
+    PokerSession:
+      type: object
+      properties:
+        sessionNumber:
+          type: number
+        date:
+          type: string
+        month:
+          type: string
+        totalBuyIn:
+          type: number
+        totalCashOut:
+          type: number
+        totalNet:
+          type: number
+        playerCount:
+          type: number
+        winner:
+          type: ["string", "null"]
+        winnerProfit:
+          type: number
+        lowPlayer:
+          type: ["string", "null"]
+        lowProfit:
+          type: number
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionPlayer"
+      required:
+        - sessionNumber
+        - date
+        - month
+        - totalBuyIn
+        - totalCashOut
+        - totalNet
+        - playerCount
+        - winner
+        - winnerProfit
+        - lowPlayer
+        - lowProfit
+        - players
+    MonthlySummary:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        range:
+          type: string
+        sessionCount:
+          type: number
+        recordCount:
+          type: number
+        totalBuyIn:
+          type: number
+        totalCashOut:
+          type: number
+        totalNet:
+          type: number
+        avgPot:
+          type: number
+        uniquePlayers:
+          type: number
+        topWinner:
+          type: ["string", "null"]
+        topWinnerProfit:
+          type: number
+        positiveSessions:
+          type: number
+        negativeSessions:
+          type: number
+      required:
+        - month
+        - label
+        - range
+        - sessionCount
+        - recordCount
+        - totalBuyIn
+        - totalCashOut
+        - totalNet
+        - avgPot
+        - uniquePlayers
+        - topWinner
+        - topWinnerProfit
+        - positiveSessions
+        - negativeSessions
+    QuarterlySummary:
+      type: object
+      properties:
+        quarter:
+          type: string
+        label:
+          type: string
+        range:
+          type: string
+        sessionCount:
+          type: number
+        recordCount:
+          type: number
+        totalBuyIn:
+          type: number
+        totalCashOut:
+          type: number
+        totalNet:
+          type: number
+        avgPot:
+          type: number
+        uniquePlayers:
+          type: number
+        topWinner:
+          type: ["string", "null"]
+        topWinnerProfit:
+          type: number
+        positiveSessions:
+          type: number
+        negativeSessions:
+          type: number
+      required:
+        - quarter
+        - label
+        - range
+        - sessionCount
+        - recordCount
+        - totalBuyIn
+        - totalCashOut
+        - totalNet
+        - avgPot
+        - uniquePlayers
+        - topWinner
+        - topWinnerProfit
+        - positiveSessions
+        - negativeSessions
+    PublicMonthActivity:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        range:
+          type: string
+        sessionCount:
+          type: number
+        gameCount:
+          type: number
+      required:
+        - month
+        - label
+        - range
+        - sessionCount
+        - gameCount
+    PublicMonthlyActivity:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        gameCount:
+          type: number
+      required:
+        - month
+        - label
+        - gameCount
+    PublicPokerSummary:
+      type: object
+      properties:
+        title:
+          type: string
+        latestGameDate:
+          type: ["string", "null"]
+        totalSessions:
+          type: number
+        totalPlayers:
+          type: number
+        totalGames:
+          type: number
+        lastUpdated:
+          type: string
+        isStale:
+          type: boolean
+        months:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicMonthActivity"
+        monthlyGames:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicMonthlyActivity"
+      required:
+        - title
+        - latestGameDate
+        - totalSessions
+        - totalPlayers
+        - totalGames
+        - lastUpdated
+        - isStale
+        - months
+        - monthlyGames
+    PokerDashboard:
+      type: object
+      properties:
+        title:
+          type: string
+        spreadsheetUrl:
+          type: string
+        lastUpdated:
+          type: string
+        isStale:
+          type: boolean
+        totals:
+          $ref: "#/components/schemas/PokerTotals"
+        leaderboard:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerStanding"
+        defaultPlayer:
+          type: ["string", "null"]
+        tournamentSnapshot:
+          $ref: "#/components/schemas/TournamentSnapshot"
+        tournaments:
+          type: array
+          items:
+            $ref: "#/components/schemas/TournamentEvent"
+        playerProfitHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerProfitPoint"
+        months:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonthlySummary"
+        quarters:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuarterlySummary"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PokerSession"
+      required:
+        - title
+        - spreadsheetUrl
+        - lastUpdated
+        - isStale
+        - totals
+        - leaderboard
+        - defaultPlayer
+        - tournamentSnapshot
+        - tournaments
+        - playerProfitHistory
+        - months
+        - quarters
+        - sessions
+    AdminVisitsResponse:
+      type: object
+      properties:
+        totalVisits:
+          type: number
+        uniqueMembers:
+          type: number
+        memberCounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminMemberVisitCount"
+        visits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminVisit"
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminMemberUsageSection"
+      required: [totalVisits, uniqueMembers, memberCounts, visits, usage]
+    AdminMemberVisitCount:
+      type: object
+      properties:
+        memberName:
+          type: string
+        visits:
+          type: number
+      required: [memberName, visits]
+    AdminVisit:
+      type: object
+      properties:
+        id:
+          type: number
+        memberName:
+          type: string
+        visitedAt:
+          type: string
+          format: date-time
+      required: [id, memberName, visitedAt]
+    AdminMemberUsageSection:
+      type: object
+      properties:
+        memberName:
+          type: string
+        section:
+          type: string
+          enum: [overview, sessions, live, months, head-to-head, players, guidelines, account]
+        pageViews:
+          type: number
+        activeSeconds:
+          type: number
+        lastActiveAt:
+          type: string
+          format: date-time
+      required: [memberName, section, pageViews, activeSeconds, lastActiveAt]
+    MemberUsageInput:
+      type: object
+      properties:
+        section:
+          type: string
+          enum: [overview, sessions, live, months, head-to-head, players, guidelines, account]
+        pageView:
+          type: boolean
+        activeSeconds:
+          type: number
+          minimum: 0
+          maximum: 60
+      required: [section, pageView, activeSeconds]
+    MemberUsageAccepted:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+      required: [accepted]
+  securitySchemes:
+    MemberSessionCookie:
+      type: apiKey
+      in: cookie
+      name: poker_member_session
+    AdminSessionCookie:
+      type: apiKey
+      in: cookie
+      name: poker_admin_session

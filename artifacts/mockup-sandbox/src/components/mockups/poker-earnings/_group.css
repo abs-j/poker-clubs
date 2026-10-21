@@ -1,0 +1,164 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap");
+
+.poker-earnings {
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0, 0, 0, 0.03);
+  --elevate-2: rgba(0, 0, 0, 0.08);
+  --background: 220 24% 97%;
+  --foreground: 224 27% 16%;
+  --border: 220 20% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 30% 16%;
+  --card-border: 220 20% 88%;
+  --sidebar: 224 39% 16%;
+  --sidebar-foreground: 210 30% 97%;
+  --sidebar-border: 224 26% 28%;
+  --sidebar-primary: 155 59% 65%;
+  --sidebar-primary-foreground: 224 39% 16%;
+  --sidebar-accent: 224 31% 23%;
+  --sidebar-accent-foreground: 210 30% 97%;
+  --sidebar-ring: 155 59% 65%;
+  --popover: 210 30% 99%;
+  --popover-foreground: 224 35% 17%;
+  --popover-border: 215 20% 86%;
+  --primary: 245 76% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 20% 94%;
+  --secondary-foreground: 224 27% 16%;
+  --muted: 220 20% 94%;
+  --muted-foreground: 220 13% 48%;
+  --accent: 39 94% 56%;
+  --accent-foreground: 224 27% 16%;
+  --destructive: 347 70% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 220 18% 80%;
+  --ring: 245 76% 58%;
+  --chart-1: 158 52% 48%;
+  --chart-2: 245 76% 65%;
+  --chart-3: 39 94% 56%;
+  --chart-4: 330 66% 65%;
+  --chart-5: 190 60% 45%;
+  --app-font-sans: "Outfit", sans-serif;
+  --app-font-serif: Georgia, serif;
+  --app-font-mono: "DM Mono", monospace;
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
+  --radius: 0.7rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0), 0px 2px 4px -1px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0);
+  --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+  --primary-border: hsl(245 76% 58%);
+  --secondary-border: hsl(220 20% 94%);
+  --muted-border: hsl(220 20% 94%);
+  --accent-border: hsl(39 94% 56%);
+  --destructive-border: hsl(347 70% 56%);
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  min-width: 320px;
+  font-family: var(--app-font-sans);
+  background-color: hsl(var(--background));
+  background-image: radial-gradient(circle at 8% 12%, hsl(245 76% 58% / 0.045), transparent 26rem),
+    radial-gradient(circle at 90% 5%, hsl(39 94% 56% / 0.035), transparent 30rem);
+}
+
+.poker-earnings.dark {
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+  --background: 224 31% 9%;
+  --foreground: 210 28% 96%;
+  --border: 224 25% 25%;
+  --card: 224 31% 13%;
+  --card-foreground: 210 28% 96%;
+  --card-border: 224 25% 25%;
+  --sidebar: 224 39% 7%;
+  --sidebar-foreground: 210 28% 96%;
+  --sidebar-border: 224 25% 22%;
+  --sidebar-primary: 155 59% 65%;
+  --sidebar-primary-foreground: 224 39% 16%;
+  --sidebar-accent: 224 31% 17%;
+  --sidebar-accent-foreground: 210 28% 96%;
+  --sidebar-ring: 155 59% 65%;
+  --popover: 224 31% 13%;
+  --popover-foreground: 210 28% 96%;
+  --popover-border: 224 25% 25%;
+  --primary: 245 82% 73%;
+  --primary-foreground: 224 39% 16%;
+  --secondary: 224 25% 18%;
+  --secondary-foreground: 210 28% 96%;
+  --muted: 224 25% 18%;
+  --muted-foreground: 213 16% 69%;
+  --accent: 38 94% 62%;
+  --accent-foreground: 224 39% 16%;
+  --destructive: 347 69% 62%;
+  --destructive-foreground: 210 28% 97%;
+  --input: 224 25% 33%;
+  --ring: 245 82% 73%;
+  --chart-1: 158 52% 58%;
+  --chart-2: 347 69% 62%;
+  --chart-3: 39 94% 62%;
+  --chart-4: 330 66% 72%;
+  --chart-5: 210 28% 82%;
+  --primary-border: hsl(245 82% 73%);
+  --secondary-border: hsl(224 25% 18%);
+  --muted-border: hsl(224 25% 18%);
+  --accent-border: hsl(38 94% 62%);
+  --destructive-border: hsl(347 69% 62%);
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+.poker-earnings .font-mono {
+  font-family: var(--app-font-mono);
+}
+
+.poker-earnings .soft-shadow {
+  box-shadow: 0 14px 35px hsl(178 34% 13% / 0.08), 0 2px 5px hsl(178 34% 13% / 0.04);
+}
+
+.poker-earnings .section-label {
+  font-family: var(--app-font-mono);
+  font-size: 10px;
+  line-height: 1.1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.poker-earnings .rise-in {
+  animation: poker-rise-in 520ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+@keyframes poker-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

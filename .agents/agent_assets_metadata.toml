@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "vE-eEgKVMgxOFteOWwc9v"
+uri = "file://docs/website-features-and-integrations.md"
+type = "text"
+title = "Website Features, APIs, and Integrations"
+description = "Project reference covering the poker dashboard, member/admin functionality, API endpoints, Google Sheets and PostgreSQL data flows, authentication, privacy, and developer operations."
+logical_id = "8694f90a-0a6a-41f0-8574-e55aa72ea079"
+content_hash = "sha256:2b99ff4d8546ac13f01c2f5c4bd84c5b2818d268b76105c9ffd875406554f3f3"
+size = 15271
+mtime_ms = 1791622552009
+storage_uri = "gcs://replit-rams-assets-reed/rams/assets/repl:4b58a7c3-f615-40d7-8251-aa68417f1426/8694f90a-0a6a-41f0-8574-e55aa72ea079/6fa9e92e-307a-4d80-9903-f7677100d93e"
+storage_version_token = "1791622564672727"
+content_type = "text/markdown"

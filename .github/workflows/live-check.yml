@@ -1,0 +1,47 @@
+# Checks the real, published site every few hours and fails (so GitHub emails the repo owner)
+# if it is down or serving a broken page. Needs one setting:
+#   GitHub -> Settings -> Secrets and variables -> Actions -> Variables -> New repository variable
+#   Name: LIVE_SITE_URL    Value: the published address, e.g. https://your-app.replit.app
+# Until that variable exists the job is skipped, not failed.
+name: Live site check
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Is the live site healthy?
+    if: ${{ vars.LIVE_SITE_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SITE: ${{ vars.LIVE_SITE_URL }}
+    steps:
+      - name: Check the site and its API
+        run: |
+          set -euo pipefail
+          base="${SITE%/}"
+          fetch() { curl --fail --silent --show-error --location --max-time 30 --retry 2 --retry-delay 5 "$@"; }
+
+          echo "Checking $base"
+          fetch "$base/api/healthz" -o /dev/null && echo "  api health: ok"
+
+          # The database is reachable and the schema is in place if this answers with JSON.
+          fetch "$base/api/clubs/me" -o me.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("me.json"))
+          assert "options" in d, "the clubs API did not answer as expected"
+          print(f"  clubs api: ok (email {'on' if d['options'].get('email') else 'off'})")
+          PY
+
+          fetch "$base/" -o home.html
+          grep -q 'id="root"' home.html && echo "  home page: ok"
+          fetch "$base/terms" -o /dev/null && echo "  terms page: ok"
+          fetch "$base/privacy" -o /dev/null && echo "  privacy page: ok"
+          fetch "$base/manifest.webmanifest" -o /dev/null && echo "  install manifest: ok"

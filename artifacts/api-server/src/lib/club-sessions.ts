@@ -1,0 +1,371 @@
+import { randomUUID } from "node:crypto";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import {
+  clubSessions,
+  clubTournaments,
+  db,
+  liveActivityEvents,
+  liveSessions,
+  normalizeNameKey,
+  players,
+  sessionResults,
+} from "@workspace/db";
+import { buildClubDashboard, type NightInput } from "./club-dashboard";
+import { getDefaultClubId } from "./club-context";
+import { nightFingerprint, type ParsedNight } from "./import-parse";
+import { pickYear, yearsOf } from "./years";
+import { loadTournamentEvents } from "./club-tournaments";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executor = Tx | typeof db;
+
+const toCents = (dollars: number) => Math.round(dollars * 100);
+const toDollars = (cents: number) => cents / 100;
+const tidy = (name: string) => name.trim().replace(/\s+/g, " ");
+
+type NightPlayer = { name: string; buyInCents: number; cashOutCents: number };
+
+/** Finds each name on the club's roster, adding the ones that are new (unclaimed). */
+export async function ensurePlayers(tx: Executor, clubId: number, names: string[]): Promise<Map<string, number>> {
+  const wanted = new Map<string, string>();
+  for (const name of names) {
+    const key = normalizeNameKey(name);
+    if (key && !wanted.has(key)) wanted.set(key, tidy(name));
+  }
+  if (wanted.size === 0) return new Map();
+
+  const found = await tx
+    .select({ id: players.id, nameKey: players.nameKey })
+    .from(players)
+    .where(and(eq(players.clubId, clubId), inArray(players.nameKey, [...wanted.keys()])));
+  const ids = new Map(found.map((row) => [row.nameKey, row.id]));
+
+  const missing = [...wanted.entries()].filter(([key]) => !ids.has(key));
+  if (missing.length > 0) {
+    const created = await tx
+      .insert(players)
+      .values(missing.map(([key, displayName]) => ({ clubId, displayName, nameKey: key })))
+      .onConflictDoNothing({ target: [players.clubId, players.nameKey] })
+      .returning({ id: players.id, nameKey: players.nameKey });
+    for (const row of created) ids.set(row.nameKey, row.id);
+  }
+  // A concurrent insert may have won the race for a name; look those up.
+  const stillMissing = [...wanted.keys()].filter((key) => !ids.has(key));
+  if (stillMissing.length > 0) {
+    const rows = await tx
+      .select({ id: players.id, nameKey: players.nameKey })
+      .from(players)
+      .where(and(eq(players.clubId, clubId), inArray(players.nameKey, stillMissing)));
+    for (const row of rows) ids.set(row.nameKey, row.id);
+  }
+  return ids;
+}
+
+type NewNight = {
+  clubId: number;
+  date: string;
+  source: "live" | "import" | "manual";
+  liveSessionKey?: string;
+  importBatch?: string;
+  createdBy?: string | null;
+  players: NightPlayer[];
+};
+
+/** Writes one night and its results. Returns the new id, or null when the live session was already recorded. */
+async function recordNight(tx: Executor, night: NewNight): Promise<number | null> {
+  const merged = new Map<string, NightPlayer>();
+  for (const player of night.players) {
+    const key = normalizeNameKey(player.name);
+    if (!key) continue;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.buyInCents += player.buyInCents;
+      existing.cashOutCents += player.cashOutCents;
+    } else {
+      merged.set(key, { ...player, name: tidy(player.name) });
+    }
+  }
+  if (merged.size === 0) return null;
+
+  const [session] = await tx
+    .insert(clubSessions)
+    .values({
+      clubId: night.clubId,
+      sessionDate: night.date,
+      source: night.source,
+      liveSessionKey: night.liveSessionKey ?? null,
+      importBatch: night.importBatch ?? null,
+      createdBy: night.createdBy ?? null,
+    })
+    .onConflictDoNothing({ target: clubSessions.liveSessionKey })
+    .returning({ id: clubSessions.id });
+  if (!session) return null;
+
+  const ids = await ensurePlayers(tx, night.clubId, [...merged.values()].map((player) => player.name));
+  await tx.insert(sessionResults).values(
+    [...merged.entries()].map(([key, player]) => ({
+      sessionId: session.id,
+      playerId: ids.get(key)!,
+      buyInCents: player.buyInCents,
+      cashOutCents: player.cashOutCents,
+    })),
+  );
+  return session.id;
+}
+
+/**
+ * Every closed live session becomes a recorded night. Safe to run any time: a live session
+ * that already has its night is left alone. The original club keeps its Google Sheet instead.
+ */
+export async function syncClosedLiveSessions(clubId: number): Promise<number> {
+  if (clubId === (await getDefaultClubId())) return 0;
+
+  const pending = await db
+    .select({ key: liveSessions.sessionKey, date: liveSessions.sessionDate, endedBy: liveSessions.endedBy })
+    .from(liveSessions)
+    .where(
+      and(
+        eq(liveSessions.clubId, clubId),
+        eq(liveSessions.status, "ended"),
+        sql`NOT EXISTS (SELECT 1 FROM ${clubSessions} WHERE ${clubSessions.liveSessionKey} = ${liveSessions.sessionKey})`,
+      ),
+    );
+  let recorded = 0;
+  for (const session of pending) {
+    const events = await db
+      .select({
+        name: liveActivityEvents.memberName,
+        action: liveActivityEvents.action,
+        cents: liveActivityEvents.amountCents,
+        deletedAt: liveActivityEvents.deletedAt,
+      })
+      .from(liveActivityEvents)
+      .where(eq(liveActivityEvents.sessionKey, session.key));
+
+    const byName = new Map<string, NightPlayer>();
+    for (const event of events) {
+      if (event.deletedAt) continue;
+      const key = normalizeNameKey(event.name);
+      const entry = byName.get(key) ?? { name: event.name, buyInCents: 0, cashOutCents: 0 };
+      if (event.action === "buy_in") entry.buyInCents += event.cents;
+      else if (event.action === "cash_out") entry.cashOutCents += event.cents;
+      byName.set(key, entry);
+    }
+    const id = await db.transaction((tx) =>
+      recordNight(tx, {
+        clubId,
+        date: String(session.date).slice(0, 10),
+        source: "live",
+        liveSessionKey: session.key,
+        createdBy: session.endedBy,
+        players: [...byName.values()],
+      }),
+    );
+    if (id !== null) recorded += 1;
+  }
+  return recorded;
+}
+
+/** The nights a deleted or reset ledger session produced go with it. */
+export async function removeNightsForLiveSession(clubId: number, sessionKey: string): Promise<void> {
+  await db
+    .delete(clubSessions)
+    .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.liveSessionKey, sessionKey)));
+}
+
+export async function removeLiveNights(clubId: number): Promise<void> {
+  await db.delete(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.source, "live")));
+}
+
+async function loadNights(clubId: number): Promise<Array<NightInput & { id: number }>> {
+  const rows = await db
+    .select({
+      id: clubSessions.id,
+      date: clubSessions.sessionDate,
+      name: players.displayName,
+      buyInCents: sessionResults.buyInCents,
+      cashOutCents: sessionResults.cashOutCents,
+    })
+    .from(clubSessions)
+    .innerJoin(sessionResults, eq(sessionResults.sessionId, clubSessions.id))
+    .innerJoin(players, eq(players.id, sessionResults.playerId))
+    .where(eq(clubSessions.clubId, clubId))
+    .orderBy(asc(clubSessions.sessionDate), asc(clubSessions.id), asc(sessionResults.id));
+
+  const nights = new Map<number, NightInput & { id: number }>();
+  for (const row of rows) {
+    const night = nights.get(row.id) ?? { id: row.id, date: row.date, players: [] };
+    night.players.push({ name: row.name, buyIn: toDollars(row.buyInCents), cashOut: toDollars(row.cashOutCents) });
+    nights.set(row.id, night);
+  }
+  return [...nights.values()];
+}
+
+/** The years a club has nights in and which one the dashboard shows for the requested value. */
+export async function clubYears(clubId: number, requested: string | undefined) {
+  await syncClosedLiveSessions(clubId);
+  const [nightYears, tournamentYears] = await Promise.all([
+    db
+      .selectDistinct({ date: sql<string>`left(${clubSessions.sessionDate}, 4)` })
+      .from(clubSessions)
+      .where(eq(clubSessions.clubId, clubId)),
+    db
+      .selectDistinct({ date: sql<string>`left(${clubTournaments.eventDate}, 4)` })
+      .from(clubTournaments)
+      .where(eq(clubTournaments.clubId, clubId)),
+  ]);
+  const years = yearsOf([...nightYears, ...tournamentYears].map((row) => row.date));
+  return { years, selected: pickYear(years, requested) };
+}
+
+/**
+ * The dashboard for a club that keeps its own results. A club with several years of history
+ * sees one year at a time; "all" shows every night without month and quarter slices, which
+ * would otherwise mix the same month of different years.
+ */
+export async function loadClubDashboard(clubId: number, title: string, requestedYear?: string) {
+  const { years, selected } = await clubYears(clubId, requestedYear);
+  const nights = await loadNights(clubId);
+  const shown = selected === "all" ? nights : nights.filter((night) => night.date.startsWith(selected));
+  const events = await loadTournamentEvents(clubId);
+  const shownEvents = selected === "all" ? events : events.filter((event) => event.date.startsWith(selected));
+  const dashboard = buildClubDashboard({ title, nights: shown, tournaments: shownEvents });
+  return selected === "all" && years.length > 1 ? { ...dashboard, months: [], quarters: [] } : dashboard;
+}
+
+/** Every recorded night, oldest first, for the CSV export. */
+export async function loadNightsForExport(clubId: number): Promise<NightInput[]> {
+  await syncClosedLiveSessions(clubId);
+  return (await loadNights(clubId)).map(({ date, players }) => ({ date, players }));
+}
+
+export type ImportPreview = {
+  nights: number;
+  duplicates: number;
+  players: number;
+  newPlayers: string[];
+  firstDate: string | null;
+  lastDate: string | null;
+};
+
+async function splitDuplicates(clubId: number, nights: ParsedNight[]) {
+  const existing = new Set((await loadNights(clubId)).map((night) => nightFingerprint(toParsed(night))));
+  const fresh: ParsedNight[] = [];
+  let duplicates = 0;
+  const seen = new Set<string>();
+  for (const night of nights) {
+    const fingerprint = nightFingerprint(night);
+    if (existing.has(fingerprint) || seen.has(fingerprint)) duplicates += 1;
+    else fresh.push(night);
+    seen.add(fingerprint);
+  }
+  return { fresh, duplicates };
+}
+
+const toParsed = (night: NightInput): ParsedNight => ({ date: night.date, players: night.players });
+
+export async function previewImport(clubId: number, nights: ParsedNight[]): Promise<ImportPreview> {
+  const { fresh, duplicates } = await splitDuplicates(clubId, nights);
+  const names = new Map<string, string>();
+  for (const night of fresh) for (const player of night.players) names.set(normalizeNameKey(player.name), tidy(player.name));
+  const known =
+    names.size === 0
+      ? []
+      : await db
+          .select({ nameKey: players.nameKey })
+          .from(players)
+          .where(and(eq(players.clubId, clubId), inArray(players.nameKey, [...names.keys()])));
+  const knownKeys = new Set(known.map((row) => row.nameKey));
+  const dates = fresh.map((night) => night.date).sort();
+  return {
+    nights: fresh.length,
+    duplicates,
+    players: names.size,
+    newPlayers: [...names.entries()].filter(([key]) => !knownKeys.has(key)).map(([, name]) => name).sort(),
+    firstDate: dates[0] ?? null,
+    lastDate: dates[dates.length - 1] ?? null,
+  };
+}
+
+export async function commitImport(
+  clubId: number,
+  createdBy: string | null,
+  nights: ParsedNight[],
+  source: "import" | "manual",
+) {
+  const { fresh, duplicates } = await splitDuplicates(clubId, nights);
+  const batch = randomUUID();
+  const [before] = await db.select({ total: count() }).from(players).where(eq(players.clubId, clubId));
+  await db.transaction(async (tx) => {
+    for (const night of fresh) {
+      await recordNight(tx, {
+        clubId,
+        date: night.date,
+        source,
+        importBatch: batch,
+        createdBy,
+        players: night.players.map((player) => ({
+          name: player.name,
+          buyInCents: toCents(player.buyIn),
+          cashOutCents: toCents(player.cashOut),
+        })),
+      });
+    }
+  });
+  const [after] = await db.select({ total: count() }).from(players).where(eq(players.clubId, clubId));
+  return {
+    batchId: batch,
+    imported: fresh.length,
+    duplicates,
+    playersAdded: (after?.total ?? 0) - (before?.total ?? 0),
+  };
+}
+
+export async function undoImport(clubId: number, batchId: string): Promise<number> {
+  const removed = await db
+    .delete(clubSessions)
+    .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.importBatch, batchId)))
+    .returning({ id: clubSessions.id });
+  return removed.length;
+}
+
+export async function listClubNights(clubId: number) {
+  await syncClosedLiveSessions(clubId);
+  const rows = await db
+    .select({
+      id: clubSessions.id,
+      date: clubSessions.sessionDate,
+      source: clubSessions.source,
+      importBatch: clubSessions.importBatch,
+      createdAt: clubSessions.createdAt,
+      players: count(sessionResults.id),
+      buyInCents: sql<number>`coalesce(sum(${sessionResults.buyInCents}), 0)`.mapWith(Number),
+    })
+    .from(clubSessions)
+    .leftJoin(sessionResults, eq(sessionResults.sessionId, clubSessions.id))
+    .where(eq(clubSessions.clubId, clubId))
+    .groupBy(clubSessions.id)
+    .orderBy(desc(clubSessions.sessionDate), desc(clubSessions.id));
+  return rows.map((row) => ({
+    id: row.id,
+    date: row.date,
+    source: row.source,
+    importBatch: row.importBatch,
+    createdAt: row.createdAt.toISOString(),
+    players: row.players,
+    totalBuyIn: toDollars(row.buyInCents),
+  }));
+}
+
+/** Deletes a hand-entered or imported night. Nights from the live ledger are removed there instead. */
+export async function deleteNight(clubId: number, id: number): Promise<"deleted" | "missing" | "live"> {
+  const [night] = await db
+    .select({ source: clubSessions.source })
+    .from(clubSessions)
+    .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
+    .limit(1);
+  if (!night) return "missing";
+  if (night.source === "live") return "live";
+  await db.delete(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)));
+  return "deleted";
+}

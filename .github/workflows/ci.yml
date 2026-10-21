@@ -1,0 +1,155 @@
+# Runs on every push, on GitHub's servers, so it keeps working when nobody's laptop is on.
+#   1. checks: typecheck, unit tests and production builds
+#   2. smoke:  starts the real API (with a throwaway Postgres) and the site, then clicks
+#              through the main screens on a phone-sized browser
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Typecheck, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck everything
+        run: pnpm run typecheck
+
+      - name: Website tests
+        run: pnpm --filter @workspace/poker-dashboard test
+
+      - name: API tests
+        run: pnpm --filter @workspace/api-server test
+
+      - name: Build the website
+        run: pnpm --filter @workspace/poker-dashboard build
+        env:
+          PORT: "3000"
+          BASE_PATH: /
+
+      - name: Build the API
+        run: pnpm --filter @workspace/api-server build
+
+  smoke:
+    name: Smoke test in a browser
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: poker
+          POSTGRES_PASSWORD: poker
+          POSTGRES_DB: poker_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U poker -d poker_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://poker:poker@localhost:5432/poker_ci
+      SESSION_SECRET: ci-only-session-secret-not-used-anywhere-else
+      ADMIN_PASSWORD: ci-admin-password
+      MEMBER_ACCESS_CODES: '{"Abhay":"ci-member-code"}'
+      # Read the club sheet through its public export; there is no Replit connector here.
+      POKER_SHEET_PUBLIC_ONLY: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Create the database tables
+        run: pnpm --filter @workspace/db push-force
+
+      - name: Start the API
+        run: |
+          PORT=8080 nohup pnpm --filter @workspace/api-server run dev > "$RUNNER_TEMP/api.log" 2>&1 &
+          echo "started"
+
+      - name: Start the website
+        run: |
+          PORT=5173 BASE_PATH=/ API_PROXY_TARGET=http://localhost:8080 \
+            nohup pnpm --filter @workspace/poker-dashboard run dev > "$RUNNER_TEMP/web.log" 2>&1 &
+          echo "started"
+
+      - name: Wait for both to answer
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/api/healthz >/dev/null 2>&1 && curl -fsS http://localhost:5173/ >/dev/null 2>&1; then
+              echo "ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "--- api log"; cat "$RUNNER_TEMP/api.log" || true
+          echo "--- web log"; cat "$RUNNER_TEMP/web.log" || true
+          exit 1
+
+      - name: Install the browser driver (kept out of the project's lockfile)
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund puppeteer-core@25.13.0
+
+      - name: Run the smoke test
+        working-directory: ${{ runner.temp }}/smoke
+        env:
+          SMOKE_BASE_URL: http://localhost:5173
+          SMOKE_MEMBER_CODE: ci-member-code
+          SMOKE_ADMIN_PASSWORD: ci-admin-password
+          # This database is thrown away after the run, so the live-ledger test may write to it.
+          SMOKE_WRITE: "1"
+          CHROME_PATH: /usr/bin/google-chrome
+          SMOKE_OUT: ${{ runner.temp }}/smoke-output
+        run: node "$GITHUB_WORKSPACE/scripts/smoke/smoke.mjs"
+
+      - name: Keep screenshots and logs when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-evidence
+          path: |
+            ${{ runner.temp }}/smoke-output
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+          if-no-files-found: ignore
+          retention-days: 7

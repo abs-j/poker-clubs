@@ -1,0 +1,92 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap");
+
+:root {
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0, 0, 0, 0.03);
+  --elevate-2: rgba(0, 0, 0, 0.08);
+  --background: 220 24% 97%;
+  --foreground: 224 27% 16%;
+  --border: 220 20% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 30% 16%;
+  --card-border: 220 20% 88%;
+  --sidebar: 224 39% 16%;
+  --sidebar-foreground: 210 30% 97%;
+  --sidebar-border: 224 26% 28%;
+  --sidebar-primary: 155 59% 65%;
+  --sidebar-primary-foreground: 224 39% 16%;
+  --sidebar-accent: 224 31% 23%;
+  --sidebar-accent-foreground: 210 30% 97%;
+  --sidebar-ring: 155 59% 65%;
+  --popover: 210 30% 99%;
+  --popover-foreground: 224 35% 17%;
+  --popover-border: 215 20% 86%;
+  --primary: 245 76% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 20% 94%;
+  --secondary-foreground: 224 27% 16%;
+  --muted: 220 20% 94%;
+  --muted-foreground: 220 13% 48%;
+  --accent: 39 94% 56%;
+  --accent-foreground: 224 27% 16%;
+  --destructive: 347 70% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 220 18% 80%;
+  --ring: 245 76% 58%;
+  --chart-1: 158 52% 48%;
+  --chart-2: 245 76% 65%;
+  --chart-3: 39 94% 56%;
+  --chart-4: 330 66% 65%;
+  --chart-5: 190 60% 45%;
+  --app-font-sans: "Outfit", sans-serif;
+  --app-font-mono: "DM Mono", monospace;
+  --radius: 0.7rem;
+}
+
+.dark {
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+  --background: 224 31% 9%;
+  --foreground: 210 28% 96%;
+  --border: 224 25% 25%;
+  --card: 224 31% 13%;
+  --card-foreground: 210 28% 96%;
+  --card-border: 224 25% 25%;
+  --sidebar: 224 39% 7%;
+  --sidebar-foreground: 210 28% 96%;
+  --sidebar-border: 224 25% 22%;
+  --sidebar-primary: 155 59% 65%;
+  --sidebar-primary-foreground: 224 39% 16%;
+  --sidebar-accent: 224 31% 17%;
+  --sidebar-accent-foreground: 210 28% 96%;
+  --sidebar-ring: 155 59% 65%;
+  --popover: 224 31% 13%;
+  --popover-foreground: 210 28% 96%;
+  --popover-border: 224 25% 25%;
+  --primary: 245 82% 73%;
+  --primary-foreground: 224 39% 16%;
+  --secondary: 224 25% 18%;
+  --secondary-foreground: 210 28% 96%;
+  --muted: 224 25% 18%;
+  --muted-foreground: 213 16% 69%;
+  --accent: 38 94% 62%;
+  --accent-foreground: 224 39% 16%;
+  --destructive: 347 69% 62%;
+  --destructive-foreground: 210 28% 97%;
+  --input: 224 25% 33%;
+  --ring: 245 82% 73%;
+  --chart-1: 158 52% 58%;
+  --chart-2: 347 69% 62%;
+  --chart-3: 39 94% 62%;
+  --chart-4: 330 66% 72%;
+  --chart-5: 210 28% 82%;
+}
+
+.live-ledger-flow {
+  font-family: var(--app-font-sans);
+}

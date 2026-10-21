@@ -1,0 +1,28 @@
+kind = "data-app"
+previewPath = "/"
+title = "Poker Clubs"
+description = "Invite-only poker club results: live buy-in ledger, leaderboards, club points, tournaments and shareable recaps for uni clubs and friend groups."
+version = "1.0.0"
+id = "artifacts/poker-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24157
+
+[services.development]
+run = "pnpm --filter @workspace/poker-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/poker-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/poker-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24157"
+BASE_PATH = "/"
