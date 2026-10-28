@@ -5,6 +5,15 @@ Invite-only results tracking for social poker clubs. See [README.md](README.md) 
 
 ## Run & operate
 
+- In Replit, use Run to start the managed workflows `artifacts/api-server: API Server` and
+  `artifacts/poker-dashboard: web`, then open the Poker Clubs preview at `/`.
+- The workspace uses Node 24. Run `pnpm install --frozen-lockfile` after importing or updating dependencies.
+- The development PostgreSQL database is initialized with the existing schema. This is a fresh database;
+  create an account in the preview, then create your first club.
+- `APP_URL` is configured only for development. Before publishing, configure the production `APP_URL`
+  to match the published address.
+- No mail provider is configured: development emails are logged and available at `/api/dev/emails`.
+  Real email delivery is optional; see [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md).
 - `pnpm --filter @workspace/api-server run dev`: API (port 8080)
 - `pnpm --filter @workspace/poker-dashboard run dev`: site (needs `PORT`, `BASE_PATH=/` and `API_PROXY_TARGET`)
 - `pnpm --filter @workspace/db run push`: create or update the database tables

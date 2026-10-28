@@ -7,3 +7,4 @@
 - [Shared live-ledger synchronization](live-ledger-sync-environments.md) — keep development database-only and serialize production syncs, resets, and targeted deletions.
 - [Workspace-scoped package installs](workspace-package-installs.md) — add dependencies to their owning pnpm workspace, not the monorepo root.
 - [Poker tournament snapshot](poker-tournament-snapshot.md) — use one dated event's Net Profit, match exact full names only, ignore summary totals, and keep purple styling.
+- [Imported artifact registration](imported-artifact-registration.md) — existing manifests can need validated replacement to register imported services and workflows.
