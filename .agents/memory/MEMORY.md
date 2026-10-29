@@ -3,6 +3,7 @@
 - [Google Sheets date formatting](google-sheet-date-format.md) — normalize locale-formatted dates before grouping source rows into sessions.
 - [Poker dashboard scope totals](poker-dashboard-scope-totals.md) — headline totals include non-date accounting rows; session cards must not be used as the all-season accounting source.
 - [Auth response caching](auth-response-caching.md) — auth/session JSON must bypass conditional caching so refreshes cannot turn a valid session into an empty 304 response.
+- [Replit preview origins](replit-preview-origins.md) — Better Auth needs the exact browser-visible Replit preview origin in development `APP_URL`, which may differ from the server hostname.
 - [Google Sheets rate limits](google-sheets-rate-limits.md) — fetch monthly source tabs in small batches and fall back to the public export on connector 429s.
 - [Shared live-ledger synchronization](live-ledger-sync-environments.md) — keep development database-only and serialize production syncs, resets, and targeted deletions.
 - [Workspace-scoped package installs](workspace-package-installs.md) — add dependencies to their owning pnpm workspace, not the monorepo root.
