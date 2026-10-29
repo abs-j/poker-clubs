@@ -64,6 +64,21 @@ export type TournamentFormInput = {
   players: Array<{ name: string; finishPlace: number; entries: number; knockouts: number; payout?: string }>;
 };
 
+export type TournamentTabs = { logText: string; resultsText: string };
+export type TournamentImportPreview = {
+  preview: Array<{
+    date: string;
+    title: string;
+    players: number;
+    entries: number;
+    totalCollected: number;
+    winner: string | null;
+    winnerPrize: number;
+    alreadyRecorded: boolean;
+  }>;
+  warnings: string[];
+};
+
 export class AccountError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -149,6 +164,10 @@ export const accountApi = {
       "/api/clubs/current/tournaments",
       send("POST", input),
     ),
+  previewTournamentImport: (tabs: TournamentTabs) =>
+    request<TournamentImportPreview>("/api/clubs/current/tournaments/import/preview", send("POST", tabs)),
+  importTournaments: (tabs: TournamentTabs) =>
+    request<{ imported: number; duplicates: number }>("/api/clubs/current/tournaments/import", send("POST", tabs)),
   deleteTournament: (id: number) => request<void>(`/api/clubs/current/tournaments/${id}`, { method: "DELETE" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<unknown>("/api/identity/change-password", send("POST", { currentPassword, newPassword, revokeOtherSessions: true })),

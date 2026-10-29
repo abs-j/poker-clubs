@@ -112,3 +112,22 @@ test("the form is checked with messages that say what to fix", () => {
   assert.match(err((b) => ({ ...b, buyIn: -5 })), /Buy-in must be/);
   assert.match(err((b) => ({ ...b, players: [{ ...b.players[0], entries: 0 }, b.players[1]] })), /entries must be/);
 });
+
+test("a free entry covers only the first entry; rebuys are paid", () => {
+  const event = build({ ...base(), players: [
+    { name: "A", finishPlace: 1, entries: 3, freeEntry: true },
+    { name: "B", finishPlace: 2, entries: 1 },
+  ] });
+  assert.deepEqual(event.results.map((r) => [r.player, r.invested]), [["A", 40], ["B", 20]]);
+});
+
+test("when the winner keeps their own bounty it is paid and counted in the bounty pool", () => {
+  const body = { ...base(), buyIn: 20, bounty: 5, winnerKeepsBounty: true };
+  const event = build(body);
+  assert.equal(event.bountyPool, 20); // 3 knockouts + the winner's own, at 5
+  assert.equal(event.results[0].bountiesWon, 15); // 2 knockouts + her own
+  assert.equal(event.mainPrizePool, 80);
+  const without = build({ ...body, winnerKeepsBounty: false });
+  assert.equal(without.bountyPool, 15);
+  assert.equal(without.results[0].bountiesWon, 10);
+});
