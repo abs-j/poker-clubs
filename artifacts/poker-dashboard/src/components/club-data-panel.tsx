@@ -6,6 +6,7 @@ import {
   type ImportPreview,
   type ImportSource,
   type NightRow,
+  type TournamentImportPreview,
   type TournamentRow,
 } from "@/lib/account-api";
 import { formatCurrency } from "@/views/shared";
@@ -52,10 +53,125 @@ export function ClubDataPanel({ roster }: { roster: string[] }) {
         any time (cash nights; it can be imported back). Tournaments aren&apos;t in the file yet.
       </p>
       <ImportSection onDone={loadNights} />
+      <ImportTournaments onDone={loadNights} />
       <RecordNight roster={roster} onDone={loadNights} />
       <RecordTournament roster={roster} onDone={loadNights} />
       <NightList nights={nights} tournaments={tournaments} onChanged={loadNights} />
     </div>
+  );
+}
+
+/** Past tournaments from the "Tournament Log" and "Tournament Results" tabs, saved as CSV files or pasted. */
+function ImportTournaments({ onDone }: { onDone: () => void }) {
+  const [log, setLog] = useState({ text: "", name: "" });
+  const [results, setResults] = useState({ text: "", name: "" });
+  const [preview, setPreview] = useState<TournamentImportPreview | null>(null);
+  const [done, setDone] = useState<{ imported: number; duplicates: number } | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ready = log.text.trim().length > 0 && results.text.trim().length > 0;
+  const tabs = { logText: log.text, resultsText: results.text };
+  const reset = () => {
+    setPreview(null);
+    setDone(null);
+    setError("");
+  };
+
+  const choose = (set: (value: { text: string; name: string }) => void) => (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1_500_000) {
+      setError("That file is too large. Split it into smaller files.");
+      return;
+    }
+    void file.text().then((content) => {
+      set({ text: content, name: file.name });
+      reset();
+    });
+  };
+
+  const check = async () => {
+    setBusy(true);
+    reset();
+    try {
+      setPreview(await accountApi.previewTournamentImport(tabs));
+    } catch (caught) {
+      setError(describe(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setDone(await accountApi.importTournaments(tabs));
+      setPreview(null);
+      onDone();
+    } catch (caught) {
+      setError(describe(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fresh = preview?.preview.filter((row) => !row.alreadyRecorded).length ?? 0;
+  return (
+    <section className="mt-6" data-testid="section-import-tournaments">
+      <p className="text-sm font-semibold">Import past tournaments</p>
+      <p className="text-xs text-muted-foreground">
+        Download the Tournament Log and Tournament Results tabs as CSV (File, Download, Comma-separated values) and choose both.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {([["Tournament Log", log, setLog, "input-tournament-log"], ["Tournament Results", results, setResults, "input-tournament-results"]] as const).map(
+          ([label, value, set, testId]) => (
+            <label key={label} className={`${button} cursor-pointer`}>
+              <FileUp className="h-4 w-4" />
+              {value.name || `Choose ${label}`}
+              <input type="file" accept=".csv,text/csv,text/plain" onChange={choose(set)} className="sr-only" data-testid={testId} />
+            </label>
+          ),
+        )}
+        <button type="button" disabled={busy || !ready} onClick={() => void check()} className={primary} data-testid="button-tournament-check">
+          Check
+        </button>
+      </div>
+      {error ? (
+        <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" data-testid="status-tournament-error">
+          {error}
+        </p>
+      ) : null}
+      {preview ? (
+        <div className="mt-3 rounded-xl border border-border p-3 text-sm" data-testid="box-tournament-preview">
+          <ul className="space-y-1 text-xs">
+            {preview.preview.map((row) => (
+              <li key={`${row.date}-${row.title}`}>
+                <span className="font-semibold">{row.date}</span> {row.title}: {row.players} players, {formatCurrency(row.totalCollected)} collected
+                {row.winner ? `, won by ${row.winner} (${formatCurrency(row.winnerPrize)})` : ""}
+                {row.alreadyRecorded ? " (already recorded, will be skipped)" : ""}
+              </li>
+            ))}
+          </ul>
+          {preview.warnings.length > 0 ? (
+            <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground" data-testid="list-tournament-warnings">
+              {preview.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+          <button type="button" disabled={busy || fresh === 0} onClick={() => void run()} className={`${primary} mt-3`} data-testid="button-tournament-run">
+            {fresh === 0 ? "Nothing new to import" : `Import ${fresh} tournament${fresh === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      ) : null}
+      {done ? (
+        <p className="mt-3 rounded-xl border border-border bg-secondary/40 p-3 text-xs" data-testid="box-tournament-done">
+          Imported {done.imported} tournament{done.imported === 1 ? "" : "s"}
+          {done.duplicates > 0 ? `; ${done.duplicates} already recorded ${done.duplicates === 1 ? "was" : "were"} skipped` : ""}. Reload to see them on the dashboard.
+        </p>
+      ) : null}
+    </section>
   );
 }
 

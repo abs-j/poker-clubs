@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { adminClubId, memberClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
 import { recordAdminAction } from "../lib/admin-audit";
-import { deleteTournament, listTournaments, recordTournament } from "../lib/club-tournaments";
+import { commitTournamentImport, deleteTournament, listTournaments, previewTournamentImport, recordTournament } from "../lib/club-tournaments";
+import { parseTournamentImport } from "../lib/tournament-import";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
 import { clubYears, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, undoImport } from "../lib/club-sessions";
 import { nightsToCsv } from "../lib/export-csv";
@@ -155,6 +156,51 @@ router.post("/clubs/current/tournaments", requireAdminSession, async (req, res):
     // "OK" when what was paid out matches what was collected; otherwise says by how much it differs.
     dataCheck: event.dataCheck,
   });
+});
+
+/** The Tournament Log and Tournament Results tabs, pasted or chosen as CSV files. */
+function tournamentTabs(body: Record<string, unknown>) {
+  const { logText, resultsText } = body;
+  if (typeof logText !== "string" || typeof resultsText !== "string") {
+    throw new InputError("Paste or choose both the Tournament Log and the Tournament Results.");
+  }
+  if (logText.length > MAX_SHEET_BYTES || resultsText.length > MAX_SHEET_BYTES) throw new InputError("Those tabs are too large. Import them in smaller parts.");
+  const parsed = parseTournamentImport(logText, resultsText);
+  if (parsed.error) throw new InputError(parsed.error);
+  return parsed;
+}
+
+router.post("/clubs/current/tournaments/import/preview", requireAdminSession, async (req, res): Promise<void> => {
+  try {
+    const parsed = tournamentTabs(req.body ?? {});
+    res.json({ preview: await previewTournamentImport(adminClubId(res), parsed.tournaments), warnings: parsed.warnings });
+  } catch (error) {
+    if (error instanceof InputError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+});
+
+router.post("/clubs/current/tournaments/import", requireAdminSession, async (req, res): Promise<void> => {
+  try {
+    const parsed = tournamentTabs(req.body ?? {});
+    const session = res.locals.adminSession as { memberName?: string | null };
+    const result = await commitTournamentImport(adminClubId(res), session.memberName ?? null, parsed.tournaments);
+    await recordAdminAction(
+      "history_imported",
+      `Imported ${result.imported} tournament(s); ${result.duplicates} already recorded were skipped.`,
+      req,
+    );
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof InputError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.get("/clubs/current/tournaments", requireAdminSession, async (_req, res): Promise<void> => {

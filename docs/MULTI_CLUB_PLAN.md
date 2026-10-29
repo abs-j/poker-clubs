@@ -135,7 +135,7 @@ Known gaps:
   screens work unchanged.
 
 Known gaps:
-- No CSV import for tournaments yet (nights have one).
+- Tournament import (done later): admins choose the "Tournament Log" and "Tournament Results" tabs as CSV, preview, and import. Prizes, entries, knockouts and payouts are kept as recorded, then rebuilt and checked against the sheet's own totals. Needs `winner_keeps_bounty` on `club_tournaments` (run the db push). A free entry now covers only a player's first entry. No tournament CSV export yet.
 - A tournament form with top-ups / free entries is supported by the API but not exposed in the form.
 - Share cards still have Monash-flavoured sample copy in a few tests; the product name is "Poker Clubs" until a brand is chosen
   (`VITE_APP_NAME`).
@@ -165,4 +165,4 @@ Known gaps:
   scheduled live check no longer depends on the Monash sheet.
 
 Not done, and fine for an MVP: avatars still live in Postgres, no public marketing page beyond the sign-in screen, no tournament CSV
-import/export, no platform super-admin, no in-app way to edit a recorded night (delete and re-enter), per-instance rate-limit memory.
+export, no platform super-admin, no in-app way to edit a recorded night (delete and re-enter), per-instance rate-limit memory.

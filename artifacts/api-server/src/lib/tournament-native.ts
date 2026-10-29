@@ -27,6 +27,8 @@ export type TournamentInput = {
   topUp: number;
   bounty: number;
   startingStack: number;
+  /** The winner also collects their own bounty. */
+  winnerKeepsBounty: boolean;
   shares: { first: number; second: number; third: number };
   players: TournamentPlayerInput[];
 };
@@ -117,6 +119,7 @@ export function validateTournament(body: unknown, id: string): { value: Tourname
       topUp: topUp as number,
       bounty: bounty as number,
       startingStack: stack as number,
+      winnerKeepsBounty: input.winnerKeepsBounty === true,
       shares: { first: first as number, second: second as number, third: third as number },
       players,
     },
@@ -145,12 +148,13 @@ function sharePayouts(pool: number, shares: TournamentInput["shares"], placesPre
 
 export function buildTournamentEvent(input: TournamentInput): TournamentEvent {
   const investedBy = (player: TournamentPlayerInput) =>
-    round2((player.freeEntry ? 0 : player.entries * input.buyIn) + (player.topUp ? input.topUp : 0));
+    round2(Math.max(0, player.entries - (player.freeEntry ? 1 : 0)) * input.buyIn + (player.topUp ? input.topUp : 0));
   const totalCollected = round2(input.players.reduce((sum, player) => sum + investedBy(player), 0));
   // Bounties are paid per knockout. Every entry puts one in, but the winner's own is never
-  // claimed, so whatever the knockouts don't pay out rolls into the main prize pool and the
-  // books always balance.
-  const bountyPool = round2(input.players.reduce((sum, player) => sum + player.knockouts, 0) * input.bounty);
+  // claimed unless the club lets the winner keep it, so whatever isn't paid out rolls into the
+  // main prize pool and the books always balance.
+  const winnerBounty = (player: TournamentPlayerInput) => (input.winnerKeepsBounty && player.finishPlace === 1 ? 1 : 0);
+  const bountyPool = round2(input.players.reduce((sum, player) => sum + player.knockouts + winnerBounty(player), 0) * input.bounty);
   const mainPrizePool = round2(Math.max(0, totalCollected - bountyPool));
 
   const anyPayout = input.players.some((player) => player.payout !== null);
@@ -162,7 +166,7 @@ export function buildTournamentEvent(input: TournamentInput): TournamentEvent {
     .map((player) => {
       const invested = investedBy(player);
       const mainPrize = round2(player.payout ?? (player.finishPlace !== null ? auto.get(player.finishPlace) ?? 0 : 0));
-      const bountiesWon = round2(player.knockouts * input.bounty);
+      const bountiesWon = round2((player.knockouts + winnerBounty(player)) * input.bounty);
       const totalReturn = round2(mainPrize + bountiesWon);
       return {
         player: player.name,

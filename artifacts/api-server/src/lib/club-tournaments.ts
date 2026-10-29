@@ -21,6 +21,7 @@ export async function recordTournament(clubId: number, createdBy: string | null,
         topUpCents: toCents(input.topUp),
         bountyCents: toCents(input.bounty),
         startingStack: input.startingStack,
+        winnerKeepsBounty: input.winnerKeepsBounty,
         shareFirst: input.shares.first,
         shareSecond: input.shares.second,
         shareThird: input.shares.third,
@@ -57,6 +58,7 @@ export async function loadTournamentEvents(clubId: number): Promise<TournamentEv
       topUp: clubTournaments.topUpCents,
       bounty: clubTournaments.bountyCents,
       stack: clubTournaments.startingStack,
+      winnerKeepsBounty: clubTournaments.winnerKeepsBounty,
       first: clubTournaments.shareFirst,
       second: clubTournaments.shareSecond,
       third: clubTournaments.shareThird,
@@ -86,6 +88,7 @@ export async function loadTournamentEvents(clubId: number): Promise<TournamentEv
       topUp: toDollars(row.topUp),
       bounty: toDollars(row.bounty),
       startingStack: row.stack,
+      winnerKeepsBounty: row.winnerKeepsBounty,
       shares: { first: row.first, second: row.second, third: row.third },
       players: [] as TournamentPlayerInput[],
     };
@@ -126,4 +129,41 @@ export async function deleteTournament(clubId: number, id: number): Promise<bool
     .where(and(eq(clubTournaments.clubId, clubId), eq(clubTournaments.id, id)))
     .returning({ id: clubTournaments.id });
   return removed.length > 0;
+}
+
+const sameTournament = (a: { date: string; title: string }, b: { date: string; title: string }) =>
+  a.date === b.date && a.title.trim().toLowerCase() === b.title.trim().toLowerCase();
+
+/** What an import would do, tournament by tournament, without saving anything. */
+export async function previewTournamentImport(clubId: number, inputs: TournamentInput[]) {
+  const existing = await listTournaments(clubId);
+  return inputs.map((input) => {
+    const event = buildTournamentEvent(input);
+    return {
+      date: input.date,
+      title: input.title,
+      players: event.players,
+      entries: event.entries,
+      totalCollected: event.totalCollected,
+      winner: event.winner,
+      winnerPrize: event.winnerPrize,
+      alreadyRecorded: existing.some((row) => sameTournament(row, input)),
+    };
+  });
+}
+
+/** Records the tournaments not already in the club (same date and title); returns the counts. */
+export async function commitTournamentImport(clubId: number, createdBy: string | null, inputs: TournamentInput[]) {
+  const existing = await listTournaments(clubId);
+  let imported = 0;
+  let duplicates = 0;
+  for (const input of inputs) {
+    if (existing.some((row) => sameTournament(row, input))) {
+      duplicates += 1;
+      continue;
+    }
+    await recordTournament(clubId, createdBy, input);
+    imported += 1;
+  }
+  return { imported, duplicates };
 }
