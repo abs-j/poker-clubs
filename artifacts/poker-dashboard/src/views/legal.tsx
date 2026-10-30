@@ -82,7 +82,7 @@ export function PrivacyPage() {
         <p>Members of your club see the names and results in that club. Club owners and admins also see members&apos; email addresses and usage. People in other clubs see nothing of yours. We don&apos;t sell your data or show ads.</p>
       </Section>
       <Section title="Who handles it for us">
-        <p>Email is sent through Resend. The site and its database are hosted on Replit. If you choose Google sign-in, Google handles that sign-in. These providers only get what they need to do those jobs.</p>
+        <p>Email is sent through Resend. If a club admin uploads a screenshot of results, the picture is sent to Anthropic (the maker of Claude) to read the text, and we don&apos;t keep the picture. The site and its database are hosted on Replit. If you choose Google sign-in, Google handles that sign-in. These providers only get what they need to do those jobs.</p>
       </Section>
       <Section title="Cookies">
         <p>Only the ones the site needs to work: staying signed in, remembering which club you are in, and which year you are viewing. No advertising or tracking cookies.</p>
