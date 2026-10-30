@@ -9,6 +9,7 @@ import {
   type TournamentImportPreview,
   type TournamentRow,
 } from "@/lib/account-api";
+import { parseNightNotes } from "@/lib/night-notes";
 import { formatCurrency } from "@/views/shared";
 
 const button =
@@ -77,16 +78,23 @@ function ImportTournaments({ onDone }: { onDone: () => void }) {
     setError("");
   };
 
-  const choose = (set: (value: { text: string; name: string }) => void) => (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1_500_000) {
+  // Both tabs can be chosen together and in any order: the Results tab is the one with a Player column.
+  const choose = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = [...(event.target.files ?? [])];
+    event.target.value = "";
+    if (files.length === 0) return;
+    if (files.some((file) => file.size > 1_500_000)) {
       setError("That file is too large. Split it into smaller files.");
       return;
     }
-    void file.text().then((content) => {
-      set({ text: content, name: file.name });
+    void Promise.all(files.map(async (file) => ({ name: file.name, text: await file.text() }))).then((read) => {
       reset();
+      for (const file of read) {
+        const header = file.text.split(/\r?\n/).find((line) => /tournament id/i.test(line)) ?? "";
+        if (/(^|,)\s*"?player"?\s*(,|$)/i.test(header)) setResults(file);
+        else if (header) setLog(file);
+        else setError(`${file.name} doesn't look like the Tournament Log or Tournament Results tab.`);
+      }
     });
   };
 
@@ -124,19 +132,18 @@ function ImportTournaments({ onDone }: { onDone: () => void }) {
         Download the Tournament Log and Tournament Results tabs as CSV (File, Download, Comma-separated values) and choose both.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {([["Tournament Log", log, setLog, "input-tournament-log"], ["Tournament Results", results, setResults, "input-tournament-results"]] as const).map(
-          ([label, value, set, testId]) => (
-            <label key={label} className={`${button} cursor-pointer`}>
-              <FileUp className="h-4 w-4" />
-              {value.name || `Choose ${label}`}
-              <input type="file" accept=".csv,text/csv,text/plain" onChange={choose(set)} className="sr-only" data-testid={testId} />
-            </label>
-          ),
-        )}
+        <label className={`${button} cursor-pointer`}>
+          <FileUp className="h-4 w-4" />
+          Choose both CSV files
+          <input type="file" multiple accept=".csv,text/csv,text/plain" onChange={choose} className="sr-only" data-testid="input-tournament-files" />
+        </label>
         <button type="button" disabled={busy || !ready} onClick={() => void check()} className={primary} data-testid="button-tournament-check">
           Check
         </button>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground" data-testid="status-tournament-files">
+        {log.name ? `Log: ${log.name}` : "Tournament Log: not chosen yet"} · {results.name ? `Results: ${results.name}` : "Tournament Results: not chosen yet"}
+      </p>
       {error ? (
         <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" data-testid="status-tournament-error">
           {error}
@@ -402,6 +409,8 @@ const emptyRows = (): Row[] => Array.from({ length: 4 }, () => ({ name: "", buyI
 function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void }) {
   const [date, setDate] = useState(today());
   const [rows, setRows] = useState<Row[]>(emptyRows);
+  const [notes, setNotes] = useState("");
+  const [noteSummary, setNoteSummary] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -413,6 +422,22 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
 
   const update = (index: number, patch: Partial<Row>) =>
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  // Fills the table from pasted notes such as "Ann - $10 -> $48", one player per line.
+  const fillFromNotes = () => {
+    const read = parseNightNotes(notes, roster);
+    if (read.rows.length === 0) {
+      setNoteSummary("Couldn't find any players. Use one line per player, like: Ann - $10 -> $48");
+      return;
+    }
+    setRows([...read.rows, ...emptyRows().slice(0, 2)]);
+    const extras = [
+      read.newNames.length > 0 ? `${read.newNames.join(", ")} ${read.newNames.length === 1 ? "isn't" : "aren't"} in the club yet and would be added as new. Rename in the table if it's someone listed.` : "",
+      read.skipped.length > 0 ? `Skipped: ${read.skipped.slice(0, 3).join("; ")}.` : "",
+    ].filter(Boolean);
+    setNoteSummary(`Filled in ${read.rows.length} players. Check the table, then save. ${extras.join(" ")}`.trim());
+    setNotes("");
+  };
 
   const save = async () => {
     setBusy(true);
@@ -437,6 +462,21 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
         <label className="text-xs text-muted-foreground" htmlFor="night-date">Date</label>
         <input id="night-date" type="date" value={date} max={today()} onChange={(event) => setDate(event.target.value)} className={input} data-testid="input-night-date" />
       </div>
+      <details className="mt-3 rounded-xl border border-border p-3" data-testid="box-night-notes">
+        <summary className="cursor-pointer text-xs font-semibold">Paste from your notes</summary>
+        <textarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={6}
+          placeholder={"Ann - $10 -> $48\nBo - $30 -> $5.10"}
+          className="mt-2 w-full rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary"
+          data-testid="input-night-notes"
+        />
+        <button type="button" disabled={!notes.trim()} onClick={fillFromNotes} className={`${button} mt-2`} data-testid="button-night-notes-fill">
+          Fill the table
+        </button>
+      </details>
+      {noteSummary && <p className="mt-2 text-xs text-muted-foreground" data-testid="status-night-notes">{noteSummary}</p>}
       <datalist id="club-roster">
         {roster.map((name) => (
           <option key={name} value={name} />
