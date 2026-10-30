@@ -183,6 +183,8 @@ export const clubTournaments = pgTable(
     /** Paid to a player for each knockout. Each paid entry puts this much into the bounty pool. */
     bountyCents: integer("bounty_cents").notNull().default(0),
     startingStack: integer("starting_stack").notNull().default(0),
+    /** The winner also collects their own bounty, so every entry's bounty is claimed by someone. */
+    winnerKeepsBounty: boolean("winner_keeps_bounty").notNull().default(false),
     /** Prize shares for 1st, 2nd and 3rd as whole or half percentages (50 means 50%). */
     shareFirst: integer("share_first").notNull().default(50),
     shareSecond: integer("share_second").notNull().default(30),

@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-base-3.13", "postgresql-16"]
+modules = ["web", "bash", "nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -21,3 +21,11 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.development]
+APP_URL = "https://67ed4534-e0c8-4009-bbff-81aa1e8b991d-00-2546t1ds68wv4.replit.dev"
+
+[userenv.production]
+APP_URL = "https://pokerclubs.abhayjhade.com"

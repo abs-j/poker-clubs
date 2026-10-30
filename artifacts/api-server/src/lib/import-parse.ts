@@ -183,6 +183,7 @@ export function parseHistory(text: string, options: { dateOrder?: DateOrder } = 
   let rowsRead = 0;
   let rowsSkipped = 0;
   const skippedNames = new Set<string>();
+  const jackpotNet = new Map<ParsedNight, number>();
 
   for (let index = header.index + 1; index < rows.length; index += 1) {
     const cells = rows[index];
@@ -216,6 +217,11 @@ export function parseHistory(text: string, options: { dateOrder?: DateOrder } = 
       continue;
     }
     if (NOT_A_PLAYER.test(name)) {
+      if (current && /jackpot/i.test(name)) {
+        // The pot's own row is what balances the night, so remember it for the balance check below.
+        const pot = (parseMoney(cell(columns.cashOut)) ?? 0) - (parseMoney(cell(columns.buyIn)) ?? 0);
+        jackpotNet.set(current, (jackpotNet.get(current) ?? 0) + pot);
+      }
       skippedNames.add(name);
       rowsSkipped += 1;
       continue;
@@ -269,8 +275,10 @@ export function parseHistory(text: string, options: { dateOrder?: DateOrder } = 
   for (const night of kept) {
     const buy = night.players.reduce((sum, player) => sum + player.buyIn, 0);
     const cash = night.players.reduce((sum, player) => sum + player.cashOut, 0);
-    if (Math.abs(buy - cash) > 0.5) {
-      warn(`${night.date}: buy-ins and cash-outs differ by $${Math.abs(buy - cash).toFixed(2)}. Imported as it is.`);
+    // What the jackpot row took in or paid out is part of the night's balance, so it isn't a gap.
+    const gap = buy - cash - (jackpotNet.get(night) ?? 0);
+    if (Math.abs(gap) > 0.5) {
+      warn(`${night.date}: buy-ins and cash-outs differ by $${Math.abs(gap).toFixed(2)}. Imported as it is.`);
     }
   }
   return { nights: kept, warnings, rowsRead, rowsSkipped };

@@ -119,6 +119,19 @@ test("rows that are not people are skipped, and the import says so", () => {
   assert.ok(result.warnings.some((w) => w.includes("Bad Beat Jackpot") && w.includes("Balance (Hide)")));
 });
 
+test("a jackpot row that balances the night is not reported as a gap", () => {
+  const text = "Date,Player,Buy-in,Cash-out\n2026-10-06,Sam,20,15\n,Al,10,7.75\n,Bad Beat Jackpot,0,7.25";
+  const result = parseHistory(text);
+  assert.deepEqual(result.nights[0].players.map((p) => p.name), ["Sam", "Al"]);
+  assert.ok(!result.warnings.some((w) => w.includes("differ by")));
+});
+
+test("a night that is out by more than its jackpot row still warns, by the remaining amount", () => {
+  const text = "Date,Player,Buy-in,Cash-out\n2026-10-06,Sam,20,10\n,Al,10,7.75\n,Bad Beat Jackpot,0,7.25";
+  const result = parseHistory(text);
+  assert.ok(result.warnings.some((w) => w.includes("differ by $5.00")));
+});
+
 test("a second row for the same person on a night is a rebuy and is added up quietly", () => {
   const text = "Date,Player,Buy-in,Cash-out\n2026-03-13,Sam,10,0\n,Al,10,25\n,Sam,10,5";
   const result = parseHistory(text);
