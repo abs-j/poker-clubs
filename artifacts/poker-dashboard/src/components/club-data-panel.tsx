@@ -10,6 +10,7 @@ import {
   type TournamentRow,
 } from "@/lib/account-api";
 import { parseNightNotes } from "@/lib/night-notes";
+import { prepareNotesImage } from "@/lib/notes-image";
 import { formatCurrency } from "@/views/shared";
 
 const button =
@@ -411,6 +412,7 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
   const [rows, setRows] = useState<Row[]>(emptyRows);
   const [notes, setNotes] = useState("");
   const [noteSummary, setNoteSummary] = useState("");
+  const [reading, setReading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -424,8 +426,8 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
   // Fills the table from pasted notes such as "Ann - $10 -> $48", one player per line.
-  const fillFromNotes = () => {
-    const read = parseNightNotes(notes, roster);
+  const fillFromNotes = (text = notes) => {
+    const read = parseNightNotes(text, roster);
     if (read.rows.length === 0) {
       setNoteSummary("Couldn't find any players. Use one line per player, like: Ann - $10 -> $48");
       return;
@@ -436,7 +438,25 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
       read.skipped.length > 0 ? `Skipped: ${read.skipped.slice(0, 3).join("; ")}.` : "",
     ].filter(Boolean);
     setNoteSummary(`Filled in ${read.rows.length} players. Check the table, then save. ${extras.join(" ")}`.trim());
-    setNotes("");
+  };
+
+  // A screenshot or photo of the notes is read into text, shown in the box, and used to fill the table.
+  const readPicture = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setReading(true);
+    setNoteSummary("");
+    try {
+      const { text } = await accountApi.readNotesImage(await prepareNotesImage(file));
+      setNotes(text);
+      if (text.trim()) fillFromNotes(text);
+      else setNoteSummary("Couldn't find any players in that picture. Try a clearer screenshot, or paste the text.");
+    } catch (caught) {
+      setNoteSummary(caught instanceof AccountError ? caught.message : "Couldn't open that picture. Try another one, or paste the text.");
+    } finally {
+      setReading(false);
+    }
   };
 
   const save = async () => {
@@ -472,9 +492,16 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
           className="mt-2 w-full rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary"
           data-testid="input-night-notes"
         />
-        <button type="button" disabled={!notes.trim()} onClick={fillFromNotes} className={`${button} mt-2`} data-testid="button-night-notes-fill">
-          Fill the table
-        </button>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" disabled={!notes.trim()} onClick={() => fillFromNotes()} className={button} data-testid="button-night-notes-fill">
+            Fill the table
+          </button>
+          <label className={`${button} cursor-pointer ${reading ? "opacity-60" : ""}`}>
+            <FileUp className="h-4 w-4" />
+            {reading ? "Reading the picture..." : "Or choose a screenshot"}
+            <input type="file" accept="image/*" disabled={reading} onChange={(event) => void readPicture(event)} className="sr-only" data-testid="input-night-notes-image" />
+          </label>
+        </div>
       </details>
       {noteSummary && <p className="mt-2 text-xs text-muted-foreground" data-testid="status-night-notes">{noteSummary}</p>}
       <datalist id="club-roster">

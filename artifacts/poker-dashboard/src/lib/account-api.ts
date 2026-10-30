@@ -168,6 +168,8 @@ export const accountApi = {
     request<TournamentImportPreview>("/api/clubs/current/tournaments/import/preview", send("POST", tabs)),
   importTournaments: (tabs: TournamentTabs) =>
     request<{ imported: number; duplicates: number }>("/api/clubs/current/tournaments/import", send("POST", tabs)),
+  readNotesImage: (image: { data: string; mediaType: string }) =>
+    request<{ text: string }>("/api/clubs/current/sessions/notes-image", send("POST", image)),
   deleteTournament: (id: number) => request<void>(`/api/clubs/current/tournaments/${id}`, { method: "DELETE" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<unknown>("/api/identity/change-password", send("POST", { currentPassword, newPassword, revokeOtherSessions: true })),

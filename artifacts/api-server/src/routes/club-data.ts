@@ -3,6 +3,8 @@ import { adminClubId, memberClubId, requireAdminSession, requireMemberSession } 
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, listTournaments, previewTournamentImport, recordTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
+import Anthropic from "@anthropic-ai/sdk";
+import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
 import { clubYears, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, undoImport } from "../lib/club-sessions";
 import { nightsToCsv } from "../lib/export-csv";
@@ -156,6 +158,46 @@ router.post("/clubs/current/tournaments", requireAdminSession, async (req, res):
     // "OK" when what was paid out matches what was collected; otherwise says by how much it differs.
     dataCheck: event.dataCheck,
   });
+});
+
+const NOTES_IMAGES_PER_CLUB_PER_DAY = 20;
+const notesImageUse = new Map<number, { day: string; count: number }>();
+
+/** Counts one use for the club today; false once the daily cap is reached. Per server instance, like the other rate limits. */
+function takeNotesImageUse(clubId: number): boolean {
+  const day = new Date().toISOString().slice(0, 10);
+  const entry = notesImageUse.get(clubId);
+  const count = entry?.day === day ? entry.count : 0;
+  if (count >= NOTES_IMAGES_PER_CLUB_PER_DAY) return false;
+  notesImageUse.set(clubId, { day, count: count + 1 });
+  return true;
+}
+
+/** Reads a screenshot of notes into text lines. The site then fills the form from them, and nothing is saved here. */
+router.post("/clubs/current/sessions/notes-image", requireAdminSession, async (req, res): Promise<void> => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    res.status(503).json({ error: "Reading screenshots isn't switched on for this site. Paste the text instead." });
+    return;
+  }
+  const checked = validateNotesImage(req.body);
+  if ("error" in checked) {
+    res.status(400).json({ error: checked.error });
+    return;
+  }
+  if (!takeNotesImageUse(adminClubId(res))) {
+    res.status(429).json({ error: "Your club has used its screenshot reads for today. Paste the text instead, or try tomorrow." });
+    return;
+  }
+  try {
+    res.json({ text: await readNightFromImage(checked.value) });
+  } catch (error) {
+    if (error instanceof NotesImageError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+    req.log?.error({ err: error instanceof Anthropic.APIError ? { status: error.status, message: error.message } : error }, "notes image read failed");
+    res.status(502).json({ error: "Couldn't read that picture right now. Paste the text instead." });
+  }
 });
 
 /** The Tournament Log and Tournament Results tabs, pasted or chosen as CSV files. */
