@@ -15,6 +15,7 @@ import { getDefaultClubId } from "./club-context";
 import { nightFingerprint, type ParsedNight } from "./import-parse";
 import { pickYear, yearsOf } from "./years";
 import { loadTournamentEvents } from "./club-tournaments";
+import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Executor = Tx | typeof db;
@@ -68,6 +69,8 @@ type NewNight = {
   liveSessionKey?: string;
   importBatch?: string;
   createdBy?: string | null;
+  /** Surplus that went into the bad beat jackpot. */
+  jackpotCents?: number;
   players: NightPlayer[];
 };
 
@@ -95,6 +98,7 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
       source: night.source,
       liveSessionKey: night.liveSessionKey ?? null,
       importBatch: night.importBatch ?? null,
+      jackpotCents: night.jackpotCents ?? 0,
       createdBy: night.createdBy ?? null,
     })
     .onConflictDoNothing({ target: clubSessions.liveSessionKey })
@@ -121,7 +125,7 @@ export async function syncClosedLiveSessions(clubId: number): Promise<number> {
   if (clubId === (await getDefaultClubId())) return 0;
 
   const pending = await db
-    .select({ key: liveSessions.sessionKey, date: liveSessions.sessionDate, endedBy: liveSessions.endedBy })
+    .select({ key: liveSessions.sessionKey, date: liveSessions.sessionDate, endedBy: liveSessions.endedBy, resolution: liveSessions.balanceResolution })
     .from(liveSessions)
     .where(
       and(
@@ -151,6 +155,8 @@ export async function syncClosedLiveSessions(clubId: number): Promise<number> {
       else if (event.action === "cash_out") entry.cashOutCents += event.cents;
       byName.set(key, entry);
     }
+    // The admin's choice about any gap (jackpot, one player, shared) is applied as the night is recorded.
+    const balanced = resolveBalance([...byName.values()], parseResolution(session.resolution));
     const id = await db.transaction((tx) =>
       recordNight(tx, {
         clubId,
@@ -158,7 +164,8 @@ export async function syncClosedLiveSessions(clubId: number): Promise<number> {
         source: "live",
         liveSessionKey: session.key,
         createdBy: session.endedBy,
-        players: [...byName.values()],
+        jackpotCents: balanced.jackpotCents,
+        players: balanced.players,
       }),
     );
     if (id !== null) recorded += 1;
@@ -337,6 +344,7 @@ export async function listClubNights(clubId: number) {
       date: clubSessions.sessionDate,
       source: clubSessions.source,
       importBatch: clubSessions.importBatch,
+      jackpotCents: clubSessions.jackpotCents,
       createdAt: clubSessions.createdAt,
       players: count(sessionResults.id),
       buyInCents: sql<number>`coalesce(sum(${sessionResults.buyInCents}), 0)`.mapWith(Number),
@@ -354,7 +362,21 @@ export async function listClubNights(clubId: number) {
     createdAt: row.createdAt.toISOString(),
     players: row.players,
     totalBuyIn: toDollars(row.buyInCents),
+    jackpot: toDollars(row.jackpotCents),
   }));
+}
+
+/** Everything the club has put into its bad beat jackpot so far, in dollars, and how many nights added to it. */
+export async function clubJackpot(clubId: number): Promise<{ total: number; nights: number }> {
+  await syncClosedLiveSessions(clubId);
+  const [row] = await db
+    .select({
+      total: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
+      nights: sql<number>`count(*) filter (where ${clubSessions.jackpotCents} > 0)`.mapWith(Number),
+    })
+    .from(clubSessions)
+    .where(eq(clubSessions.clubId, clubId));
+  return { total: toDollars(row?.total ?? 0), nights: row?.nights ?? 0 };
 }
 
 /** Deletes a hand-entered or imported night. Nights from the live ledger are removed there instead. */
@@ -368,4 +390,43 @@ export async function deleteNight(clubId: number, id: number): Promise<"deleted"
   if (night.source === "live") return "live";
   await db.delete(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)));
   return "deleted";
+}
+
+/**
+ * Records what to do with the open ledger's gap, applied when it closes. Returns the gap it was chosen for,
+ * or a reason it can't be used (no open ledger, or a choice that doesn't fit the gap).
+ */
+export async function setLedgerResolution(
+  clubId: number,
+  resolution: BalanceResolution,
+): Promise<{ ok: true; direction: "balanced" | "over" | "under"; cents: number } | { ok: false; error: string }> {
+  return db.transaction(async (tx) => {
+    const [session] = await tx
+      .select({ key: liveSessions.sessionKey })
+      .from(liveSessions)
+      .where(and(eq(liveSessions.clubId, clubId), inArray(liveSessions.status, ["open", "finalizing"])))
+      .orderBy(desc(liveSessions.startedAt))
+      .limit(1)
+      .for("update");
+    if (!session) return { ok: false as const, error: "There is no open ledger to balance." };
+
+    const events = await tx
+      .select({ name: liveActivityEvents.memberName, action: liveActivityEvents.action, cents: liveActivityEvents.amountCents, deletedAt: liveActivityEvents.deletedAt })
+      .from(liveActivityEvents)
+      .where(eq(liveActivityEvents.sessionKey, session.key));
+    const byName = new Map<string, NightPlayer>();
+    for (const event of events) {
+      if (event.deletedAt) continue;
+      const key = normalizeNameKey(event.name);
+      const entry = byName.get(key) ?? { name: event.name, buyInCents: 0, cashOutCents: 0 };
+      if (event.action === "buy_in") entry.buyInCents += event.cents;
+      else if (event.action === "cash_out") entry.cashOutCents += event.cents;
+      byName.set(key, entry);
+    }
+    const nightPlayers = [...byName.values()];
+    const problem = checkResolution(nightPlayers, resolution);
+    if (problem) return { ok: false as const, error: problem };
+    await tx.update(liveSessions).set({ balanceResolution: resolution }).where(eq(liveSessions.sessionKey, session.key));
+    return { ok: true as const, ...gapOf(nightPlayers) };
+  });
 }

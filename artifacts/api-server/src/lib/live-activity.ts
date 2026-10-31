@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { parseResolution } from "./night-balance";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { ReplitConnectors } from "@replit/connectors-sdk";
 import {
@@ -1614,6 +1615,12 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
 
     const events = allEvents.filter((event) => !event.deletedAt);
     const totals = calculateLiveLedgerTotals(events);
+    // A gap would otherwise land on the leaderboard as it is. Clubs record to the database, so an admin
+    // must say what to do with it first (the original club's sheet backup keeps its old behaviour).
+    if (totals.balanceStatus === "unbalanced" && !parseResolution(session.balanceResolution) && clubId !== (await getDefaultClubId())) {
+      const gap = (Math.abs(totals.differenceCents) / 100).toFixed(2);
+      throw new Error(`This ledger is out by ${gap}. A club admin needs to choose how to balance it before it closes.`);
+    }
     const closedAt = new Date();
     const [closedSession] = await tx
       .update(liveSessions)

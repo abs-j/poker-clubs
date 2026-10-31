@@ -175,4 +175,9 @@ export, no platform super-admin, no in-app way to edit a recorded night (delete 
 - Launch audit (31 Oct): credentialed CORS restricted to trusted origins, API security headers, claim-a-name no longer fails when the
   current name only has tournament results, a share-ready invite is created with every new club, member empty state, Monash wording
   removed from generic screens. Larger UX work (admin area separate from "My account", retiring `/admin`) is still open.
+- Closing a ledger that does not balance (31 Oct): an admin must choose first. Surplus goes to the club's bad beat jackpot
+  (`club_sessions.jackpot_cents`, shown on the Live page); a shortfall comes off one player's cash-out or is shared across everyone
+  who cashed out; or the night is closed out by the gap. The choice is stored as intent on `live_sessions.balance_resolution`
+  and applied when the night is recorded (`lib/night-balance.ts`). Needs `pnpm --filter @workspace/db run push`. Not yet:
+  paying the jackpot out, jackpot in the CSV export, balancing hand-entered or imported nights.
 

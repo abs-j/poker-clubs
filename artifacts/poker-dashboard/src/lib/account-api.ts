@@ -51,6 +51,8 @@ export type NightRow = {
   source: "live" | "import" | "manual";
   players: number;
   totalBuyIn: number;
+  /** Surplus from this night that went into the bad beat jackpot, in dollars. */
+  jackpot: number;
 };
 export type NightInput = { date: string; players: Array<{ name: string; buyIn: string; cashOut: string }> };
 
@@ -106,7 +108,13 @@ const send = (method: string, body?: unknown): RequestInit => ({
   body: JSON.stringify(body ?? {}),
 });
 
+export type BalanceChoice = { mode: "jackpot" } | { mode: "player"; name: string } | { mode: "split" } | { mode: "none" };
+
 export const accountApi = {
+  /** Admins: what to do with a gap in tonight's ledger when it closes. */
+  setLedgerResolution: (choice: BalanceChoice) => request<{ mode: string; direction: string; cents: number }>("/api/clubs/current/ledger/resolution", send("PUT", choice)),
+  /** What the club has put into its bad beat jackpot, in dollars. */
+  jackpot: () => request<{ total: number; nights: number }>("/api/clubs/current/jackpot", { cache: "no-store" }),
   me: () => request<MeResponse>("/api/clubs/me", { cache: "no-store" }),
   signUp: (input: { name: string; email: string; password: string }) =>
     // The confirmation email's link brings the person back to the app, on this address.

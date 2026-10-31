@@ -11,6 +11,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { clubFileSlug, clubTimeZone } from "@/lib/club-format";
 import { useClubSettings } from "@/components/club-settings-context";
+import { accountApi, type BalanceChoice } from "@/lib/account-api";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
 
@@ -21,6 +22,11 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const { toast } = useToast();
   const { settings: clubSettings } = useClubSettings();
   const [endPromptOpen, setEndPromptOpen] = useState(false);
+  // What to do with a gap when closing: money left on the table goes to the jackpot; money paid out beyond it comes off players.
+  const [balanceMode, setBalanceMode] = useState<BalanceChoice["mode"] | null>(null);
+  const [balancePlayer, setBalancePlayer] = useState("");
+  const [canBalance, setCanBalance] = useState<boolean | null>(null);
+  const [jackpot, setJackpot] = useState<{ total: number; nights: number } | null>(null);
   const liveQuery = useGetPokerLiveActivity({
     query: {
       queryKey: getGetPokerLiveActivityQueryKey(),
@@ -243,11 +249,27 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     if (snapshot) setEndPromptOpen(true);
   };
 
-  const confirmEnd = () => {
+  const confirmEnd = async () => {
     if (!snapshot) return;
     setEndPromptOpen(false);
     const isDiscard = !snapshot.hasRecordedActivity;
     setFormError("");
+    let balanceNote = "";
+    if (needsChoice) {
+      const choice: BalanceChoice | null = balanceMode === "player" ? (balancePlayer ? { mode: "player", name: balancePlayer } : null) : balanceMode ? { mode: balanceMode } : null;
+      if (!choice) return;
+      const amount = formatCurrency(gapCents / 100);
+      balanceNote = choice.mode === "jackpot" ? ` ${amount} went into the bad beat jackpot.`
+        : choice.mode === "player" ? ` ${amount} was taken off ${choice.name}.`
+        : choice.mode === "split" ? ` ${amount} was shared across the players who cashed out.`
+        : ` The night was closed out by ${amount}.`;
+      try {
+        await accountApi.setLedgerResolution(choice);
+      } catch (error) {
+        setFormError(apiErrorMessage(error));
+        return;
+      }
+    }
     endMutation.mutate(undefined, {
       onSuccess: (result) => {
         queryClient.setQueryData(liveQuery.queryKey, result.snapshot);
@@ -258,7 +280,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             : isDiscard
               ? "Activity was recorded before discard completed, so the session was closed and saved to history."
               : "Session closed and saved to ledger history.";
-        setSessionNotice(notice);
+        setSessionNotice(notice + (result.outcome === "closed" ? balanceNote : ""));
         if (result.outcome !== "discarded") {
           void queryClient.invalidateQueries({ queryKey: ["/api/poker/live-activity/history"] });
         }
@@ -297,6 +319,28 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     setShowHistory(willShow);
     if (willShow) void historyQuery.refetch();
   };
+
+  const sessionStatus = snapshot?.sessionStatus;
+  useEffect(() => {
+    if (clubSettings.isOriginal) return;
+    let cancelled = false;
+    accountApi.jackpot().then((value) => { if (!cancelled) setJackpot(value); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [clubSettings.isOriginal, sessionStatus]);
+
+  // Only a club that records to the database needs a choice; the original club's sheet backup keeps its old behaviour.
+  const gapCents = snapshot ? Math.round(Math.abs(snapshot.totals.buyIns - snapshot.totals.cashOuts) * 100) : 0;
+  const needsChoice = Boolean(snapshot?.hasRecordedActivity) && !clubSettings.isOriginal && gapCents > 0;
+  const ledgerIsOver = snapshot ? snapshot.totals.buyIns > snapshot.totals.cashOuts : false;
+  useEffect(() => {
+    if (!endPromptOpen || !needsChoice) return;
+    setBalanceMode(ledgerIsOver ? "jackpot" : null);
+    setBalancePlayer("");
+    let cancelled = false;
+    setCanBalance(null);
+    accountApi.me().then((me) => { if (!cancelled) setCanBalance(me.clubs.find((club) => club.slug === me.active)?.role !== "member"); }).catch(() => { if (!cancelled) setCanBalance(false); });
+    return () => { cancelled = true; };
+  }, [endPromptOpen, needsChoice, ledgerIsOver]);
 
   if (liveQuery.isLoading) {
     return <LiveActivityLoading />;
@@ -388,7 +432,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
             <span className="sm:hidden">
               {snapshot.sessionStatus === "ended"
-                ? "Saved separately · excluded from historical results."
+                ? clubSettings.isOriginal ? "Saved separately · excluded from historical results." : "Saved to the club's recorded nights."
                 : snapshot.sessionStatus === "open"
                   ? `${snapshot.startedBy ?? "A member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}${snapshot.hasRecordedActivity ? "" : " · empty session"}`
                   : "Start when the game begins."}
@@ -535,6 +579,12 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
         </div>}
       </div>
 
+      {!clubSettings.isOriginal && jackpot && jackpot.total > 0 && <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
+        <p className="section-label">Bad beat jackpot</p>
+        <p className="mt-1 font-mono text-2xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
+        <p className="mt-1 text-xs text-muted-foreground">Built from the surplus of {jackpot.nights} {jackpot.nights === 1 ? "night" : "nights"} that closed over.</p>
+      </section>}
+
       <section className="rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="section-live-ledger-history">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div><p className="section-label">Ledger history</p><h2 className="mt-1 text-lg font-semibold">Past sessions</h2></div>
@@ -564,8 +614,18 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
                       <strong className="font-mono">{formatCurrency(snapshot.totals.cashOuts)}</strong>
                     </p>
                     <p className={Math.abs(balance) < 0.01 ? "text-chart-1" : "font-semibold text-amber-700 dark:text-amber-300"}>
-                      {Math.abs(balance) < 0.01 ? "The ledger is balanced." : `Unbalanced by ${formatCurrency(Math.abs(balance))}. Check cash-outs before closing.`}
+                      {Math.abs(balance) < 0.01 ? "The ledger is balanced." : ledgerIsOver ? `${formatCurrency(Math.abs(balance))} more went in than came out.` : `${formatCurrency(Math.abs(balance))} more came out than went in.`}
                     </p>
+                    {needsChoice && canBalance === false && <p data-testid="text-balance-admin-only" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300">A club admin needs to close this ledger and choose how to balance it. Check the entries first; you may have missed a cash-out.</p>}
+                    {needsChoice && canBalance !== false && <fieldset className="space-y-2 rounded-xl border border-border p-3 text-left" data-testid="fieldset-balance">
+                      <legend className="px-1 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">How should it balance?</legend>
+                      {ledgerIsOver ? <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "jackpot"} onChange={() => setBalanceMode("jackpot")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-jackpot" /><span>Add {formatCurrency(gapCents / 100)} to the bad beat jackpot</span></label> : <>
+                        <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "player"} onChange={() => setBalanceMode("player")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-player" /><span>Take {formatCurrency(gapCents / 100)} off one player</span></label>
+                        {balanceMode === "player" && <select value={balancePlayer} onChange={(event) => setBalancePlayer(event.target.value)} className="ml-7 h-11 w-[calc(100%-1.75rem)] rounded-lg border border-border bg-background px-2 text-sm" data-testid="select-balance-player" aria-label="Player to take it from"><option value="">Choose a player…</option>{snapshot.playerSummaries.filter((row) => Math.round(row.cashOuts * 100) >= gapCents).map((row) => <option key={row.playerName} value={row.playerName}>{row.playerName} (cashed out {formatCurrency(row.cashOuts)})</option>)}</select>}
+                        <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "split"} onChange={() => setBalanceMode("split")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-split" /><span>Share it across everyone who cashed out</span></label>
+                      </>}
+                      <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "none"} onChange={() => setBalanceMode("none")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-none" /><span className="text-muted-foreground">Close anyway and leave the night out by {formatCurrency(gapCents / 100)}</span></label>
+                    </fieldset>}
                     {snapshot.entries.length === 0 && <p>All activity rows were removed, but this used session will stay in ledger history.</p>}
                     <p>{clubSettings.isOriginal ? "It stays in history and is not added to the historical Session Log." : "It is saved to ledger history and counted as a game on the leaderboard."}</p>
                   </>
@@ -577,7 +637,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep playing</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmEnd} data-testid="button-confirm-end-live-session">
+            <AlertDialogAction onClick={() => void confirmEnd()} disabled={needsChoice && (canBalance !== true || balanceMode === null || (balanceMode === "player" && !balancePlayer))} data-testid="button-confirm-end-live-session">
               {snapshot.hasRecordedActivity ? "Close ledger" : "Discard session"}
             </AlertDialogAction>
           </AlertDialogFooter>
