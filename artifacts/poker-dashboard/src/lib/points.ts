@@ -329,47 +329,6 @@ export function pointsExamples(rules: PointsRules = POINTS_RULES) {
   return cases.map(({ label, input }) => ({ label, points: round1(scorePlacement(input, rules).points) }));
 }
 
-export type PointsAfterNight = {
-  /** Calendar month the night belongs to, e.g. "2026-10". */
-  season: string;
-  /** The table as it stood once this night was counted, best first. */
-  rows: Array<{ name: string; points: number; earned: number; rank: number }>;
-  /** Everyone who scored on the night, best first. */
-  earnedTonight: Array<{ name: string; earned: number }>;
-};
-
-/**
- * The season table as of a given night, with the points each player earned on it. Used for the
- * "club points after this night" recap slide.
- */
-export function pointsAfterNight(
-  cashNights: PointsCashNight[],
-  tournaments: TournamentEvent[],
-  night: { date: string; sessionNumber?: number; tournamentId?: string },
-  rules: PointsRules = POINTS_RULES,
-): PointsAfterNight {
-  const season = seasonOf(night.date);
-  const upTo = (date: string) => date <= night.date;
-  const rows = buildPointsLeaderboard(
-    cashNights.filter((entry) => upTo(entry.date)),
-    tournaments.filter((entry) => upTo(entry.date)),
-    { season, rules },
-  );
-  const id = night.tournamentId !== undefined ? `tournament-${night.tournamentId}` : `cash-${night.sessionNumber}`;
-  const earned = new Map(
-    scoreNights(cashNights, tournaments, rules)
-      .filter((entry) => entry.night.id === id)
-      .map((entry) => [entry.key, round1(entry.night.points)] as const),
-  );
-  return {
-    season,
-    rows: rows.map((row) => ({ name: row.name, points: round1(row.points), earned: earned.get(row.key) ?? 0, rank: row.rank })),
-    earnedTonight: [...earned.entries()]
-      .map(([key, value]) => ({ name: rows.find((row) => row.key === key)?.name ?? key, earned: value }))
-      .sort((a, b) => b.earned - a.earned),
-  };
-}
-
 /**
  * The points season a period filter implies: the same month, or "ALL" for all time. Returns null
  * when that month has no scored night (so the page can say so instead of guessing).

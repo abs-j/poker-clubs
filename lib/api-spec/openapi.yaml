@@ -115,88 +115,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /admin/live-ledger/sessions:
-    get:
-      operationId: getAdminLiveLedgerSessions
-      tags: [admin]
-      summary: List closed live ledger sessions for administrators
-      description: Returns closed live ledgers so administrators can review and remove old sessions.
-      responses:
-        "200":
-          description: Closed live ledger records
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LiveActivityHistoryResponse"
-        "401":
-          description: Admin authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "502":
-          description: Ledger history unavailable
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /admin/live-ledger/sessions/{sessionKey}:
-    parameters:
-      - name: sessionKey
-        in: path
-        required: true
-        schema:
-          type: string
-          minLength: 1
-          maxLength: 64
-    delete:
-      operationId: deleteAdminLiveLedgerSession
-      tags: [admin]
-      summary: Delete a closed live ledger session
-      description: Permanently removes a closed session and its entries from this environment. Production also clears only its matching rows from the shared Live Activity sheet. Requires a fresh backup and exact session confirmation.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminLiveLedgerSessionDeleteInput"
-      responses:
-        "200":
-          description: Closed session removed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminLiveLedgerSessionDeletion"
-        "400":
-          description: Confirmation was invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Admin authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Closed session was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "409":
-          description: Ledger changed after the backup or session is not closed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "502":
-          description: Session deletion failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /healthz:
     get:
       operationId: healthCheck
@@ -638,44 +556,6 @@ components:
         - freshSessionKey
         - freshSessionDate
         - freshSessionStartedAt
-    AdminLiveLedgerSessionDeleteInput:
-      type: object
-      properties:
-        backupId:
-          type: string
-          pattern: "^[0-9a-f]{64}$"
-        confirmation:
-          type: string
-          minLength: 1
-          maxLength: 80
-      required: [backupId, confirmation]
-    AdminLiveLedgerSessionDeletion:
-      type: object
-      properties:
-        environment:
-          type: string
-          enum: [development, production]
-        sessionKey:
-          type: string
-        sessionDate:
-          type: string
-          format: date
-        deletedEvents:
-          type: number
-          minimum: 0
-        deletedComments:
-          type: number
-          minimum: 0
-        clearedSheetRows:
-          type: number
-          minimum: 0
-      required:
-        - environment
-        - sessionKey
-        - sessionDate
-        - deletedEvents
-        - deletedComments
-        - clearedSheetRows
     HealthStatus:
       type: object
       properties:
@@ -687,11 +567,6 @@ components:
       type: object
       properties:
         error:
-          type: string
-        code:
-          type: string
-          enum: [SOURCE_TAB_MISSING]
-        sourceTab:
           type: string
       required:
         - error
@@ -1433,73 +1308,6 @@ components:
         - topWinnerProfit
         - positiveSessions
         - negativeSessions
-    PublicMonthActivity:
-      type: object
-      properties:
-        month:
-          type: string
-        label:
-          type: string
-        range:
-          type: string
-        sessionCount:
-          type: number
-        gameCount:
-          type: number
-      required:
-        - month
-        - label
-        - range
-        - sessionCount
-        - gameCount
-    PublicMonthlyActivity:
-      type: object
-      properties:
-        month:
-          type: string
-        label:
-          type: string
-        gameCount:
-          type: number
-      required:
-        - month
-        - label
-        - gameCount
-    PublicPokerSummary:
-      type: object
-      properties:
-        title:
-          type: string
-        latestGameDate:
-          type: ["string", "null"]
-        totalSessions:
-          type: number
-        totalPlayers:
-          type: number
-        totalGames:
-          type: number
-        lastUpdated:
-          type: string
-        isStale:
-          type: boolean
-        months:
-          type: array
-          items:
-            $ref: "#/components/schemas/PublicMonthActivity"
-        monthlyGames:
-          type: array
-          items:
-            $ref: "#/components/schemas/PublicMonthlyActivity"
-      required:
-        - title
-        - latestGameDate
-        - totalSessions
-        - totalPlayers
-        - totalGames
-        - lastUpdated
-        - isStale
-        - months
-        - monthlyGames
     PokerDashboard:
       type: object
       properties:
@@ -1579,7 +1387,3 @@ components:
       type: apiKey
       in: cookie
       name: poker_member_session
-    AdminSessionCookie:
-      type: apiKey
-      in: cookie
-      name: poker_admin_session

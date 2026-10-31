@@ -403,6 +403,10 @@ router.post("/clubs/current/tournaments", requireMemberSession, async (req, res)
   });
 });
 
+router.get("/clubs/current/tournaments", requireAdminSession, async (_req, res): Promise<void> => {
+  res.json({ tournaments: await listTournaments(adminClubId(res)) });
+});
+
 const NOTES_IMAGES_PER_CLUB_PER_DAY = 20;
 const notesImageUse = new Map<number, { day: string; count: number }>();
 
@@ -499,10 +503,6 @@ router.post("/clubs/current/tournaments/import", requireAdminSession, async (req
   }
 });
 
-router.get("/clubs/current/tournaments", requireAdminSession, async (_req, res): Promise<void> => {
-  res.json({ tournaments: await listTournaments(adminClubId(res)) });
-});
-
 router.get("/clubs/current/tournaments/:id", async (req, res): Promise<void> => {
   if (!(await requireClubAdmin(req, res))) return;
   const id = nightId(req.params.id);
@@ -585,24 +585,6 @@ router.get("/clubs/current/tournaments/export/log.csv", requireAdminSession, asy
 
 router.get("/clubs/current/tournaments/export/results.csv", requireAdminSession, async (req, res): Promise<void> => {
   await sendTournamentSheet(req, res, "results");
-});
-
-/** Records one night by hand: { date: "YYYY-MM-DD", players: [{ name, buyIn, cashOut }] }. */
-router.post("/clubs/current/sessions", requireAdminSession, async (req, res): Promise<void> => {
-  const night = readNightBody(req.body ?? {});
-  if ("error" in night) {
-    res.status(400).json({ error: night.error });
-    return;
-  }
-  const session = res.locals.adminSession as { memberName?: string | null };
-  const result = await commitImport(adminClubId(res), session.memberName ?? null, [night], "manual");
-  if (result.imported === 0) {
-    res.status(409).json({ error: "That exact night is already recorded." });
-    return;
-  }
-  const buy = night.players.reduce((sum, p) => sum + p.buyIn, 0);
-  const cash = night.players.reduce((sum, p) => sum + p.cashOut, 0);
-  res.status(201).json({ ...result, balanced: Math.abs(buy - cash) <= 0.5, difference: Math.round((cash - buy) * 100) / 100 });
 });
 
 export default router;

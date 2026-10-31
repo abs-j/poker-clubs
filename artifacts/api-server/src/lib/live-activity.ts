@@ -24,84 +24,17 @@ import { clubTimezone } from "./club-settings";
 import {
   calculateLiveLedgerTotals,
   calculateLivePlayerTotals,
-  formatLiveLedgerTimestamp,
   chooseLedgerDate,
   cleanNotesPlayers,
   liveLedgerSessionDate,
-  liveLedgerSheetRowRangesForSession,
-  normalizeGoogleSheetsDate,
-  parseMelbourneTimestamp,
   resolveCurrentLiveSession,
   shouldDiscardEmptyLiveSession,
 } from "./live-ledger-utils";
-import {
-  assertLiveActivitySessionIsClosed,
-  assertValidLiveActivityDeleteBackupId,
-  deleteLiveActivitySessionSafely,
-} from "./live-ledger-deletion";
-
-export {
-  LiveActivitySessionDeleteConflictError,
-  LiveActivitySessionNotClosedError,
-  LiveActivitySessionNotFoundError,
-} from "./live-ledger-deletion";
-
-const LIVE_ACTIVITY_HEADERS = [
-  "event_id",
-  "session_key",
-  "session_date",
-  "member_name",
-  "action",
-  "amount",
-  "occurred_at",
-  "created_by",
-  "created_at",
-  "updated_by",
-  "updated_at",
-  "deleted",
-  "revision",
-  "comment",
-] as const;
 
 export type LiveActivityAction = "buy_in" | "cash_out";
 export type LiveActivityAuditAction = "entry" | "edit" | "delete";
 export type LiveSyncStatus = "synced" | "pending" | "error";
 export type LiveSessionStatus = "not_started" | "open" | "finalizing" | "ended";
-
-type SheetMetadata = {
-  sheets?: Array<{
-    properties?: {
-      sheetId?: number;
-      title?: string;
-    };
-  }>;
-};
-
-type SheetValueResponse = { values?: unknown[][] };
-type ConnectorRequestInit = {
-  method: string;
-  headers?: Record<string, string>;
-  body?: string;
-};
-
-type ParsedSheetEvent = {
-  eventId: string;
-  sessionKey: string;
-  sessionDate: string;
-  memberName: string;
-  action: LiveActivityAction;
-  amountCents: number;
-  occurredAt: Date;
-  createdBy: string;
-  createdAt: Date;
-  updatedBy: string;
-  updatedAt: Date;
-  deletedAt: Date | null;
-  deletedBy: string | null;
-  revision: number;
-  comment: string | null;
-  sheetHash: string;
-};
 
 export type LiveActivityAuditComment = {
   action: LiveActivityAuditAction;
@@ -185,40 +118,12 @@ export type LiveSessionEndResult = {
   snapshot: LiveActivitySnapshot;
 };
 
-export class LiveActivitySyncError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "LiveActivitySyncError";
-  }
-}
-
-
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function amountToCents(value: unknown): number {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : Number(String(value ?? "").replace(/[$,\s]/g, ""));
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.round(parsed * 100);
-}
-
 function centsToAmount(cents: number): number {
   return roundMoney(cents / 100);
-}
-
-function validDate(value: unknown): Date | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  if (typeof value === "string") {
-    const melbourneDate = parseMelbourneTimestamp(value);
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}(?:[ ,]+|$)/.test(value.trim())) return melbourneDate;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function legacySessionKeyForDate(sessionDate: string): string {
@@ -568,75 +473,6 @@ async function snapshotForSession(session: typeof liveSessions.$inferSelect | nu
 export async function getLiveActivitySnapshot(clubId: number): Promise<LiveActivitySnapshot> {
   const timeZone = await clubTimezone(clubId);
   return snapshotForSession(await getCurrentLiveSession(clubId, liveLedgerSessionDate(new Date(), timeZone), timeZone));
-}
-
-export async function deleteLiveActivityLedgerSession(
-  sessionKey: string,
-  backupId: string,
-  clubId: number,
-) {
-  assertValidLiveActivityDeleteBackupId(backupId);
-
-  const environment = liveActivityEnvironment();
-
-  return (
-    db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(0, hashtext('live-session'))`,
-      );
-      await tx.select().from(liveSessions).where(eq(liveSessions.clubId, clubId)).for("update");
-      await tx.select().from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId)).for("update");
-
-      const [sessionRows, eventRows, commentRows] = await Promise.all([
-        tx.select().from(liveSessions).where(eq(liveSessions.clubId, clubId)).orderBy(asc(liveSessions.id)),
-        tx.select().from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId)).orderBy(asc(liveActivityEvents.id)),
-        tx
-          .select()
-          .from(liveActivityEventComments)
-          .where(inArray(liveActivityEventComments.eventId, clubEventIds(clubId)))
-          .orderBy(asc(liveActivityEventComments.id)),
-      ]);
-      const session = sessionRows.find((row) => row.sessionKey === sessionKey);
-      assertLiveActivitySessionIsClosed(session);
-
-      const backup = buildLiveActivityResetBackup(sessionRows, eventRows, commentRows, environment, []);
-      const sessionEvents = eventRows.filter((event) => event.sessionKey === sessionKey);
-      const eventIds = new Set(sessionEvents.map((event) => event.eventId));
-      const sessionComments = commentRows.filter((comment) => eventIds.has(comment.eventId));
-      const { clearedSheetRows } = await deleteLiveActivitySessionSafely({
-        session,
-        backupId,
-        currentBackupId: backup.backupId,
-        // No spreadsheet is involved: these hooks exist for the shared deletion helper and do nothing.
-        environment: "development",
-        rows: [],
-        sessionKey,
-        eventIds,
-        selectRanges: () => [],
-        onMutationStarted: () => undefined,
-        clearRanges: async () => undefined,
-        deleteEvents: async (eventIdsToDelete) => {
-          await tx
-            .delete(liveActivityEvents)
-            .where(inArray(liveActivityEvents.eventId, [...eventIdsToDelete]));
-        },
-        deleteSession: async (sessionKeyToDelete) => {
-          await tx
-            .delete(liveSessions)
-            .where(eq(liveSessions.sessionKey, sessionKeyToDelete));
-        },
-      });
-
-      return {
-        environment,
-        sessionKey,
-        sessionDate: session.sessionDate,
-        deletedEvents: sessionEvents.length,
-        deletedComments: sessionComments.length,
-        clearedSheetRows,
-      };
-    })
-  );
 }
 
 export async function getLiveActivityHistory(clubId: number): Promise<LiveActivityHistoryRecord[]> {

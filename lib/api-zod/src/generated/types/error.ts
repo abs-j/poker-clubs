@@ -5,10 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ErrorCode } from './errorCode';
 
 export interface Error {
   error: string;
-  code?: ErrorCode;
-  sourceTab?: string;
 }

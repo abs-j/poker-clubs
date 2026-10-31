@@ -67,17 +67,6 @@ export type ImportPreview = {
   lastDate: string | null;
 };
 export type ImportSource = { text?: string; sheetUrl?: string; dateOrder: "dmy" | "mdy" };
-export type NightRow = {
-  id: number;
-  date: string;
-  source: "live" | "import" | "manual";
-  players: number;
-  totalBuyIn: number;
-  /** Surplus from this night that went into the bad beat jackpot, in dollars. */
-  jackpot: number;
-};
-
-export type TournamentRow = { id: number; date: string; title: string; players: number; entries: number };
 export type TournamentDraft = {
   id: string;
   date: string;
@@ -305,13 +294,11 @@ export const accountApi = {
       send("POST", source),
     ),
   undoImport: (batchId: string) => request<{ removed: number }>(`/api/clubs/current/import/${batchId}`, { method: "DELETE" }),
-  nights: () => request<{ sessions: NightRow[] }>("/api/clubs/current/sessions", { cache: "no-store" }),
   /** Edit and delete targets for Games cards, and whether this person can reopen the latest night. */
   gameTools: () => request<GameTools>("/api/clubs/current/game-tools", { cache: "no-store" }),
   updateNight: (id: number, input: { date: string; players: Array<{ name: string; buyIn: string; cashOut: string }> }) =>
     request<{ id: number; date: string; players: number }>(`/api/clubs/current/sessions/${id}`, send("PATCH", input)),
   deleteNight: (id: number) => request<void>(`/api/clubs/current/sessions/${id}`, { method: "DELETE" }),
-  tournaments: () => request<{ tournaments: TournamentRow[] }>("/api/clubs/current/tournaments", { cache: "no-store" }),
   recordTournament: (input: TournamentFormInput) =>
     request<{ id: number; players: number; totalCollected: number; mainPrizePool: number; dataCheck: string }>(
       "/api/clubs/current/tournaments",

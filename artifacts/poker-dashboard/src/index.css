@@ -1,7 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -615,18 +614,3 @@
   button:not(:disabled):active { transform: none; }
 }
 
-/* Season card and recap slides */
-.season-leader {
-  background: linear-gradient(135deg, hsl(262 58% 30%), hsl(284 55% 38%) 55%, hsl(262 60% 32%));
-  background-size: 180% 180%;
-  animation: sf-drift 18s ease-in-out infinite alternate;
-  box-shadow: 0 14px 30px hsl(262 50% 22% / 0.22);
-}
-.recap-eyebrow { font-family: var(--app-font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.75; }
-.recap-big { margin-top: 14px; font-size: clamp(38px, 11vw, 54px); font-weight: 600; line-height: 1; letter-spacing: -0.04em; animation: drop-in 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
-.recap-name { margin-top: 16px; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; animation: drop-in 0.5s ease-out both; }
-.recap-line { margin-top: 10px; font-size: 20px; font-weight: 500; animation: drop-in 0.55s 0.08s ease-out both; }
-.recap-sub { margin-top: 8px; max-width: 22rem; font-size: 13px; opacity: 0.8; animation: drop-in 0.55s 0.16s ease-out both; }
-@media (prefers-reduced-motion: reduce) {
-  .season-leader, .recap-big, .recap-name, .recap-line, .recap-sub { animation: none; }
-}

@@ -1,7 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { ArrowLeft, Crown, Swords, Trophy } from "lucide-react";
 import { Avatar } from "@/components/avatar";
-import { usePoints } from "@/components/points-context";
 import type { TournamentEvent, TournamentResultRow } from "@/lib/earnings-analytics";
 import { ordinal } from "@/lib/utils";
 import {
@@ -93,7 +92,6 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer, footer }: { eve
   const payouts = useMemo(() => payoutRows(event), [event]);
   const hunters = useMemo(() => knockoutLeaders(event), [event]);
   const fullOrder = hasFullOrder(event);
-  const { afterNight } = usePoints();
 
   return (
     <section data-testid="section-tournament-detail" className="space-y-4">
