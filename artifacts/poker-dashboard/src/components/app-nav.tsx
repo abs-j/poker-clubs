@@ -137,7 +137,7 @@ export function BottomTabBar({ active, onNavigate, liveOpen }: NavProps) {
                   <span className="absolute -right-1.5 -top-1"><LiveDot /></span>
                 )}
               </span>
-              {section.label}
+              <span className="max-w-full px-0.5 text-center leading-none tracking-tight">{section.label}</span>
               {current && <span className="absolute inset-x-5 top-0 h-0.5 rounded-full bg-primary" />}
             </button>
           );
@@ -152,7 +152,7 @@ const PLAYER_VIEWS: Array<{ id: DashboardView; label: string }> = [
   { id: "players", label: "Profile" },
 ];
 
-/** Switches between the two player views inside the Players section. */
+/** Switches between the ranking and a profile inside the Leaderboard section. */
 export function PlayersSubnav({ active, onChange }: { active: DashboardView; onChange: (view: DashboardView) => void }) {
   return (
     <div role="tablist" aria-label="Player views" data-testid="subnav-players" className="mt-4 inline-flex gap-1 rounded-xl bg-secondary/55 p-1">

@@ -5,15 +5,15 @@ import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/
 import { liveSessionRole } from "../lib/live-activity";
 import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
-import { commitTournamentImport, deleteTournament, getTournament, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
+import { commitTournamentImport, deleteTournament, getTournament, listTournaments, loadTournamentInputs, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
+import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadJackpotPayoutsForExport, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
 import { loadGameTools } from "../lib/game-tools";
 import { parseResolution } from "../lib/night-balance";
-import { nightsToCsv } from "../lib/export-csv";
+import { nightsToCsv, tournamentsToCsv } from "../lib/export-csv";
 import { getClubSettings } from "../lib/club-settings";
 import {
   parseDate,
@@ -403,6 +403,10 @@ router.post("/clubs/current/tournaments", requireMemberSession, async (req, res)
   });
 });
 
+router.get("/clubs/current/tournaments", requireAdminSession, async (_req, res): Promise<void> => {
+  res.json({ tournaments: await listTournaments(adminClubId(res)) });
+});
+
 const NOTES_IMAGES_PER_CLUB_PER_DAY = 20;
 const notesImageUse = new Map<number, { day: string; count: number }>();
 
@@ -548,13 +552,39 @@ router.delete("/clubs/current/tournaments/:id", async (req, res): Promise<void> 
   res.status(204).end();
 });
 
+function sendCsv(res: ExpressResponse, filename: string, body: string): void {
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(body);
+}
+
 router.get("/clubs/current/export.csv", requireAdminSession, async (req, res): Promise<void> => {
   const clubId = adminClubId(res);
-  const [nights, settings] = await Promise.all([loadNightsForExport(clubId), getClubSettings(clubId)]);
-  res.set("Content-Type", "text/csv; charset=utf-8");
-  res.set("Content-Disposition", `attachment; filename="${settings.slug}-results.csv"`);
-  await recordAdminAction("results_exported", `Downloaded the results CSV (${nights.length} nights).`, req);
-  res.send(nightsToCsv(nights));
+  const settings = await getClubSettings(clubId);
+  const [nights, payouts] = await Promise.all([
+    loadNightsForExport(clubId),
+    loadJackpotPayoutsForExport(clubId, settings.timezone),
+  ]);
+  await recordAdminAction("results_exported", `Downloaded the results CSV (${nights.length} nights, ${payouts.length} jackpot payouts).`, req);
+  sendCsv(res, `${settings.slug}-results.csv`, nightsToCsv(nights, payouts));
+});
+
+/** Tournament Log or Tournament Results, in the shape the tournament CSV import reads. */
+async function sendTournamentSheet(req: Request, res: ExpressResponse, sheet: "log" | "results"): Promise<void> {
+  const clubId = adminClubId(res);
+  const [inputs, settings] = await Promise.all([loadTournamentInputs(clubId), getClubSettings(clubId)]);
+  const csv = tournamentsToCsv(inputs);
+  const filename = sheet === "log" ? `${settings.slug}-tournament-log.csv` : `${settings.slug}-tournament-results.csv`;
+  await recordAdminAction("tournaments_exported", `Downloaded the tournament ${sheet} CSV (${inputs.length} tournaments).`, req);
+  sendCsv(res, filename, sheet === "log" ? csv.log : csv.results);
+}
+
+router.get("/clubs/current/tournaments/export/log.csv", requireAdminSession, async (req, res): Promise<void> => {
+  await sendTournamentSheet(req, res, "log");
+});
+
+router.get("/clubs/current/tournaments/export/results.csv", requireAdminSession, async (req, res): Promise<void> => {
+  await sendTournamentSheet(req, res, "results");
 });
 
 export default router;

@@ -586,26 +586,85 @@ console.log("\nAccounts and clubs");
   });
 
   await check("a club's results can be exported and imported into another club unchanged", async () => {
-    const a = cookieJar(), b = cookieJar(), outsider = cookieJar();
-    for (const [jar, name] of [[a, "Exp Orter"], [b, "Imp Orter"], [outsider, "Out Sider"]]) {
-      await api("/api/identity/sign-up/email", { jar, method: "POST", headers: origin, body: { name, email: `${name.replace(" ", "").toLowerCase()}-${stamp}@example.com`, password } });
+    const a = cookieJar(), b = cookieJar(), outsider = cookieJar(), member = cookieJar();
+    for (const [jar, name] of [[a, "Exp Orter"], [b, "Imp Orter"], [outsider, "Out Sider"], [member, "Mem Ber"]]) {
+      await api("/api/identity/sign-up/email", { jar, method: "POST", headers: origin, body: { name, email: `${name.replace(/ /g, "").toLowerCase()}-${stamp}@example.com`, password } });
     }
     await api("/api/clubs", { jar: a, method: "POST", body: { name: `Export ${stamp}`, playerName: "Exp" } });
     await api("/api/clubs", { jar: b, method: "POST", body: { name: `Import ${stamp}`, playerName: "Imp" } });
+    const invite = await api("/api/clubs/current/invites", { jar: a, method: "POST", body: {} });
+    expect(invite.status === 201, `invite ${invite.status}`);
+    const code = (await invite.json()).invite.code;
+    expect((await api(`/api/invites/${code}/accept`, { jar: member, method: "POST", body: { name: "Mem Ber" } })).ok, "member could not join");
+
     const text = "Date,Player,Buy-in,Cash-out\n2026-03-03,Ann,20,35.5\n,\"Bo, Jr.\",20,4.5\n2026-03-10,Ann,10,0\n,\"Bo, Jr.\",10,20";
     expect((await api("/api/clubs/current/import", { jar: a, method: "POST", body: { text } })).ok, "seed import failed");
+    const add = (action, amount, attributedPlayer) => api("/api/poker/live-activity", { jar: a, method: "POST", body: { action, amount, attributedPlayer } });
+    expect((await api("/api/poker/live-session/start", { jar: a, method: "POST" })).ok, "could not start the jackpot night");
+    expect((await add("buy_in", 10, "Exp")).ok, "jackpot buy-in failed");
+    expect((await add("cash_out", 6, "Exp")).ok, "jackpot cash-out failed");
+    expect((await api("/api/clubs/current/ledger/resolution", { jar: a, method: "PUT", body: { mode: "jackpot" } })).ok, "jackpot choice refused");
+    expect((await api("/api/poker/live-session/end", { jar: a, method: "POST" })).ok, "jackpot night did not close");
+    const paid = await api("/api/clubs/current/jackpot/payouts", { jar: a, method: "POST", body: { name: "Bo, Jr.", amount: 1.5 } });
+    expect(paid.status === 201, `payout ${paid.status}`);
+    const payoutAt = (await paid.json()).payouts[0].at;
+    const payoutDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Melbourne", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(payoutAt));
+
+    const tournament = {
+      date: "2026-10-04", title: "Export Freezeout", venue: "Hall, Room 2", buyIn: 10, bounty: 2.5, winnerKeepsBounty: true,
+      shares: { first: 60, second: 40, third: 0 },
+      players: [
+        { name: "Ann", finishPlace: 1, entries: 1, knockouts: 1 },
+        { name: "Bo, Jr.", finishPlace: 2, entries: 1, knockouts: 0 },
+      ],
+    };
+    expect((await api("/api/clubs/current/tournaments", { jar: a, method: "POST", body: tournament })).status === 201, "could not record the tournament");
+    const rivalOnly = { date: "2026-09-01", title: "Import Only", buyIn: 10, players: [{ name: "Imp", finishPlace: 1, entries: 1 }, { name: "Other", finishPlace: 2, entries: 1 }] };
+    expect((await api("/api/clubs/current/tournaments", { jar: b, method: "POST", body: rivalOnly })).status === 201, "could not record the other club's tournament");
+
     const exported = await api("/api/clubs/current/export.csv", { jar: a });
     expect(exported.ok && /text\/csv/.test(exported.headers.get("content-type")), `export ${exported.status}`);
     const csv = await exported.text();
-    expect(/attachment/.test(exported.headers.get("content-disposition") ?? ""), "export should download as a file");
+    expect(/attachment/.test(exported.headers.get("content-disposition") ?? "") && /-results\.csv/.test(exported.headers.get("content-disposition") ?? ""), "export should download as a file");
+    const nights = await (await api("/api/clubs/current/sessions", { jar: a })).json();
+    const jackpotNight = nights.sessions.find((night) => night.jackpot === 4);
+    expect(jackpotNight, "the surplus night was not recorded");
+    expect(csv.includes(`${jackpotNight.date},Bad Beat Jackpot,0.00,4.00,4.00`), "the surplus row is missing");
+    expect(csv.includes(`${payoutDay},"Bad Beat Jackpot payout to Bo, Jr.",1.50,0.00,-1.50`), "the payout row is missing");
+    expect(!csv.includes("Import Only") && !csv.includes(",Imp,"), "another club's data was in the cash export");
+    const otherCash = await (await api("/api/clubs/current/export.csv", { jar: b })).text();
+    expect(!otherCash.includes("Ann") && !otherCash.includes("Bad Beat Jackpot"), "this club's cash export included the other club");
+
     const copied = await api("/api/clubs/current/import", { jar: b, method: "POST", body: { text: csv } });
-    expect(copied.status === 201 && (await copied.json()).imported === 2, "the export did not import cleanly");
+    expect(copied.status === 201 && (await copied.json()).imported === 3, "the export did not import cleanly");
     const original = await (await api("/api/poker/dashboard", { jar: a })).json();
     const copy = await (await api("/api/poker/dashboard", { jar: b })).json();
     const shape = (d) => JSON.stringify(d.leaderboard.map((p) => [p.name, p.profitTotal, p.gamesPlayed]));
     expect(shape(original) === shape(copy), `standings differ:\n${shape(original)}\n${shape(copy)}`);
-    const refused = await api("/api/clubs/current/export.csv", { jar: outsider });
-    expect(refused.status === 401, `non-admins should be refused, got ${refused.status}`);
+    const copyPot = await (await api("/api/clubs/current/jackpot", { jar: b })).json();
+    expect(copyPot.total === 0 && copyPot.payouts.length === 0, "importing the cash file recreated the jackpot");
+
+    const log = await api("/api/clubs/current/tournaments/export/log.csv", { jar: a });
+    const results = await api("/api/clubs/current/tournaments/export/results.csv", { jar: a });
+    expect(log.ok && results.ok, `tournament export ${log.status}/${results.status}`);
+    const logText = await log.text();
+    const resultsText = await results.text();
+    expect(logText.includes("Export Freezeout") && logText.includes("Hall, Room 2"), "the tournament log is missing the tournament");
+    expect(resultsText.includes("Bo, Jr.") && !logText.includes("Import Only") && !resultsText.includes("Import Only"), "tournament export leaked the other club");
+    const otherLog = await (await api("/api/clubs/current/tournaments/export/log.csv", { jar: b })).text();
+    expect(otherLog.includes("Import Only") && !otherLog.includes("Export Freezeout"), "the other club's tournament export included this club");
+    const brought = await api("/api/clubs/current/tournaments/import", { jar: b, method: "POST", body: { logText, resultsText } });
+    expect(brought.status === 201 && (await brought.json()).imported === 1, "the tournament export did not import");
+    const again = await (await api("/api/poker/dashboard", { jar: b })).json();
+    const strip = (event) => { const { id, ...rest } = event; return rest; };
+    const fromA = original.tournaments.find((event) => event.title === "Export Freezeout");
+    const fromB = again.tournaments.find((event) => event.title === "Export Freezeout");
+    expect(fromA && fromB && JSON.stringify(strip(fromA)) === JSON.stringify(strip(fromB)), "the imported tournament differs");
+
+    for (const path of ["/api/clubs/current/export.csv", "/api/clubs/current/tournaments/export/log.csv", "/api/clubs/current/tournaments/export/results.csv"]) {
+      expect((await api(path, { jar: member })).status === 401, `a member could download ${path}`);
+      expect((await api(path, { jar: outsider })).status === 401, `a signed-in outsider could download ${path}`);
+    }
   });
 
   await check("a lone owner's account deletion takes their club with it", async () => {
@@ -781,23 +840,60 @@ await check("signing in lands on Home with the tab bar on screen", async () => {
   await page.screenshot({ path: `${OUT}/home.png` });
 });
 
-await check("Home shows two podiums, net profit first then club points", async () => {
+await check("Home shows your summary, last game and the profit podium", async () => {
   await sleep(1500);
-  const ids = await testIdsInOrder(/^(card-home-standings|card-home-points-podium)$/);
-  expect(ids.join() === "card-home-standings,card-home-points-podium", `order was ${ids.join(", ")}`);
+  await visible('[data-testid="text-personal-net"]');
+  await visible('[data-testid="card-my-night"]');
+  await visible('[data-testid="card-home-standings"]');
+  const tabs = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="nav-bottom-tabs"] button')].map((button) => button.textContent.trim()),
+  );
+  expect(tabs.join(",") === "Home,Games,Live,Leaderboard,Club", `tabs were ${tabs.join(", ")}`);
+  const gone = await page.evaluate(() => ({
+    points: !!document.querySelector('[data-testid="card-home-points-podium"]'),
+    chart: !!document.querySelector('[data-testid="card-home-results"]'),
+    tournament: !!document.querySelector('[data-testid="card-latest-tournament"]'),
+    season: !!document.querySelector('[data-testid="card-season"]'),
+    buzz: !!document.querySelector('[data-testid="card-club-buzz"]'),
+    history: !!document.querySelector('[data-testid="button-show-history-chart"]'),
+    banner: !!document.querySelector('[data-testid="banner-live-game"]'),
+  }));
+  expect(!gone.points && !gone.chart && !gone.tournament && !gone.season && !gone.buzz && !gone.history && !gone.banner, `Home still has extra cards ${JSON.stringify(gone)}`);
   const podiums = await page.evaluate(() => document.querySelectorAll('[data-testid="podium"]').length);
-  expect(podiums === 2, `expected 2 podiums, found ${podiums}`);
+  expect(podiums === 1, `expected the profit podium only, found ${podiums}`);
+  await page.screenshot({ path: `${OUT}/home.png` });
 });
 
-await check("Home states your tournament finish the same way everywhere", async () => {
-  const text = await page.evaluate(() => ({
-    night: document.querySelector('[data-testid="card-my-night"]')?.innerText ?? "",
-    latest: document.querySelector('[data-testid="text-latest-tournament-mine"]')?.innerText ?? "",
+await check("Home states your last tournament finish", async () => {
+  const night = await page.$eval('[data-testid="card-my-night"]', (node) => node.innerText);
+  expect(/your last tournament/i.test(night), `last game was not the tournament: ${night.replace(/\s+/g, " ").slice(0, 160)}`);
+  expect(/1st of 4/.test(night), `finish line was ${night.match(/\d+(?:st|nd|rd|th) of \d+/)?.[0] ?? "missing"}`);
+});
+
+await check("a live night replaces the summary with the banner, and closing brings it back", async () => {
+  const started = await page.evaluate(async () => {
+    const response = await fetch("/api/poker/live-session/start", { method: "POST", credentials: "include" });
+    return response.status;
+  });
+  expect(started === 200 || started === 201, `start returned ${started}`);
+  await page.reload({ waitUntil: "networkidle2" });
+  await visible('[data-testid="banner-live-game"]');
+  await visible('[data-testid="card-home-standings"]');
+  const hidden = await page.evaluate(() => ({
+    summary: !!document.querySelector('[data-testid="text-personal-net"]'),
+    night: !!document.querySelector('[data-testid="card-my-night"]'),
   }));
-  const place = (t) => (t.match(/(\d+(?:st|nd|rd|th)) of (\d+)/) ?? []).slice(1, 3).join(" of ");
-  if (/Your last tournament/.test(text.night) && /of \d+/.test(text.latest)) {
-    expect(place(text.night) === place(text.latest), `last-game card says "${place(text.night)}", tournament card says "${place(text.latest)}"`);
-  }
+  expect(!hidden.summary && !hidden.night, `summary still showing ${JSON.stringify(hidden)}`);
+  const ended = await page.evaluate(async () => {
+    const response = await fetch("/api/poker/live-session/end", { method: "POST", credentials: "include" });
+    return response.status;
+  });
+  expect(ended === 200, `close returned ${ended}`);
+  await page.reload({ waitUntil: "networkidle2" });
+  await visible('[data-testid="text-personal-net"]');
+  await visible('[data-testid="card-my-night"]');
+  const banner = await page.$('[data-testid="banner-live-game"]');
+  expect(banner === null, "the live banner stayed after the empty night was discarded");
 });
 
 await check("Games opens on All and lists games", async () => {
@@ -843,11 +939,17 @@ await check("leaderboard: profit podium, points podium, then the tables", async 
   await page.tap('[data-testid="tab-months"]');
   await visible('[data-testid="section-period-leaderboards"]');
   await visible('[data-testid="card-points-podium"]');
+  const label = await page.$eval('[data-testid="text-leaderboard-label"]', (node) => node.textContent.trim());
+  expect(label === "Leaderboard", `the table label was "${label}"`);
   const ids = await testIdsInOrder(/^(card-podium|card-points-podium|card-leaderboard-bars|section-points-leaderboard)$/);
   expect(
     ids.join() === "card-podium,card-points-podium,card-leaderboard-bars,section-points-leaderboard",
     `order was ${ids.join(", ")}`,
   );
+  await visible('[data-testid="card-season"]');
+  await visible('[data-testid="button-show-history-chart"]');
+  const buzz = await page.$('[data-testid="card-club-buzz"]');
+  expect(buzz === null, "club buzz should live on the Club tab");
   await page.screenshot({ path: `${OUT}/leaderboard.png` });
 });
 
@@ -882,6 +984,8 @@ await check("no text is smaller than 11px on the main pages", async () => {
 await check("tapping a podium name opens that player's profile", async () => {
   await page.tap('[data-testid="card-podium"] [data-testid="podium-name-1"]');
   await visible('[data-testid="metric-player-profit"]');
+  const title = await page.$eval('[data-testid="text-page-title-profile"]', (node) => node.textContent.trim());
+  expect(title === "Profile", `profile title was "${title}"`);
   const order = await testIdsInOrder(/^(metric-player-profit|card-points-breakdown)$/);
   expect(order[0] === "metric-player-profit", `profit should come first: ${order.join(", ")}`);
 });
@@ -897,6 +1001,7 @@ await check("Live ledger and Club pages load", async () => {
   await visible('[data-testid="button-share-invite"]');
   await visible('[data-testid="button-invite-qr"]');
   await visible('[data-testid="section-club-jackpot"]');
+  await visible('[data-testid="card-club-buzz"]');
   await visible('[data-testid="section-admin"]');
   await visible('[data-testid="section-admin-people"]');
   await visible('[data-testid="section-admin-setup"]');
@@ -904,6 +1009,9 @@ await check("Live ledger and Club pages load", async () => {
   await visible('[data-testid="section-admin-danger"]');
   await visible('[data-testid="section-import"]');
   await visible('[data-testid="section-import-tournaments"]');
+  await visible('[data-testid="link-export-csv"]');
+  await visible('[data-testid="link-export-tournament-log"]');
+  await visible('[data-testid="link-export-tournament-results"]');
   await visible('[data-testid="button-reset-invite"]');
   await visible('[data-testid="section-delete-club"]');
   const dangerOpen = await page.$eval('[data-testid="section-admin-danger"]', (node) => node.open);
@@ -1277,6 +1385,9 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     await wait('[data-testid="section-admin-setup"]');
     await wait('[data-testid="section-import"]');
     await wait('[data-testid="section-import-tournaments"]');
+    await wait('[data-testid="link-export-csv"]');
+    await wait('[data-testid="link-export-tournament-log"]');
+    await wait('[data-testid="link-export-tournament-results"]');
     const moved = await phone.$('[data-testid="section-record-tournament"]');
     expect(moved === null, "the tournament form should stay off the admin Setup page");
     await press('[data-testid="button-mobile-dashboard-menu"]');

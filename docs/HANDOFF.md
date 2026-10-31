@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run after the dead-code cleanup: typecheck clean, API 131 tests, dashboard 99 tests, smoke 55/55. Schema unchanged.
+State as of 31 Oct 2026. Last local run after the dead-code cleanup, merged with jackpot CSV rows, tournament CSV export, and the Home/Leaderboard simplification: typecheck clean, API 138 tests, dashboard 99 tests, smoke 56/56. Schema unchanged.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -15,7 +15,7 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 ## Where work stopped
 
 L4 is done (jackpot payout, and tournaments started from the Live tab's New night menu). L3 (past nights and notes, no schema change), L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, Games-tab edit and delete, and the platform usage page do not change the schema, so publishing them does not need a database push. The platform usage page is done. The next structure step is the Leaderboard tab label and Home content from the plan.
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, Games-tab edit and delete, the platform usage page, and the Leaderboard label and Home content do not change the schema, so publishing them does not need a database push. The simplification plan's build order is finished. Nothing in that plan is left to start.
 
 ## How to work
 
@@ -115,11 +115,19 @@ Done. No schema change, so no database push.
 - The Privacy page (and the matching Terms sentence) says usage is visible only to the platform owner. Club admins still see member emails.
 - Set `PLATFORM_ADMIN_EMAILS` in Replit Secrets. Smoke uses `smoke-platform@example.com` for that check, so the API process and the smoke process need the same value.
 
-Next structure step: **the Leaderboard tab label and Home content** from `docs/SIMPLIFICATION_PLAN.md`. Do not start those in the platform-usage PR.
+### S5. Leaderboard label and Home content
+Done. No schema change, so no database push.
+- The phone and desktop tabs read Home, Games, Live, Leaderboard, Club. The ranking table's label is Leaderboard (it had said Leaderboards). A player's page, opened from that tab, is titled Profile. The platform usage page calls that section Profile too.
+- Home with no night on: your summary (all-time net, rank, cash and tournament split), your last game, anything you still owe or are owed, and the profit podium.
+- Home while a night is on: the live banner instead of the summary and last game. The profit podium stays, and so does settle-up.
+- The points podium, the points table, season highlights, and the optional running-totals chart stay on the Leaderboard. Club buzz stays, on the Club tab. The result-by-game chart stays on a profile. The separate latest-tournament card is gone; Games already lists tournaments, and the last-game card still states a tournament finish.
+
+The simplification plan has no further steps.
 
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Unused tables and columns stay in `lib/db` on purpose. There is no migration and nothing was dropped, renamed, or altered: `auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`.
 - The called dashboard route still returns an empty `quarters` field so that payload shape stays the same. Ledger backup and reset still return `sheetRows` / `clearedSheetRows` (always empty; there is no spreadsheet). `/api/healthz` is unchanged.
-- Removed as unused, with no schema change: shadcn components nothing imported and the packages only they used; `.recap-*` and `.season-leader` CSS; the sheet row helpers (`liveLedgerSheetRowRangesForSession`, `normalizeGoogleSheetsDate`, `parseMelbourneTimestamp`, `formatLiveLedgerTimestamp`, `lib/live-ledger-deletion.ts`); the recap helper `pointsAfterNight`; uncalled routes `GET /api/auth/admin/session`, `GET` and `DELETE /api/admin/live-ledger/sessions`, `POST /api/clubs/current/sessions`, and `GET /api/clubs/current/tournaments`. Every route the site, smoke, or tests still call is unchanged, including ledger backup and reset. `@opentelemetry/api` stays on the API: the production bundle leaves those imports external, and Better Auth and Drizzle load them at startup.
-- Not done: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3) and the platform usage page (S4) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only. Still ahead: the Leaderboard tab label and Home content from the plan.
+- Removed as unused, with no schema change: shadcn components nothing imported and the packages only they used; `.recap-*` and `.season-leader` CSS; the sheet row helpers (`liveLedgerSheetRowRangesForSession`, `normalizeGoogleSheetsDate`, `parseMelbourneTimestamp`, `formatLiveLedgerTimestamp`, `lib/live-ledger-deletion.ts`); the recap helper `pointsAfterNight`; uncalled routes `GET /api/auth/admin/session`, `GET` and `DELETE /api/admin/live-ledger/sessions`, and `POST /api/clubs/current/sessions`. `GET /api/clubs/current/tournaments` stays: the tournament CSV export tests list stored tournaments through it. Every other route the site, smoke, or tests still call is unchanged, including ledger backup and reset and the cash and tournament CSV downloads. `@opentelemetry/api` stays on the API: the production bundle leaves those imports external, and Better Auth and Drizzle load them at startup.
+- Done, no schema change: the cash CSV (`GET /api/clubs/current/export.csv`, club owner or admin, same as before) includes jackpot rows. A surplus is a `Bad Beat Jackpot` row on that night (buy-in 0, cash-out the amount that went in). A payout is its own row, `Bad Beat Jackpot payout to <name>` (buy-in the amount that left, cash-out 0). Re-importing the file still records the players and skips those rows. Tournament log and results download from Club admin > Setup (`GET /api/clubs/current/tournaments/export/log.csv` and `.../results.csv`) and import back through the existing tournament CSV import.
+- Not done, and not part of the simplification plan: avatars still stored in Postgres, a public landing page. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3), the platform usage page (S4), and the Leaderboard label and Home content (S5) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only.

@@ -62,8 +62,8 @@
 .sf-split strong { display: block; margin-top: 6px; font-family: var(--app-font-mono); font-size: 17px; font-weight: 600; }
 .sf-note { margin: 12px 0 0; color: var(--sf-muted); font-size: 11px; line-height: 1.5; }
 
-/* Standings + results row */
-.sf-content { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+/* The profit podium sits on its own, under the summary. */
+.sf-content { display: block; }
 
 /* Standings list */
 .sf-ranking { padding: 0; }
@@ -89,7 +89,7 @@
 @media (max-width: 760px) {
   .sf-intro { align-items: start; flex-direction: column; gap: 12px; }
   .sf-date-tag { align-self: flex-start; }
-  .sf-story, .sf-content { grid-template-columns: 1fr; }
+  .sf-story { grid-template-columns: 1fr; }
   .sf-hero-card { min-height: 190px; }
 }
 
