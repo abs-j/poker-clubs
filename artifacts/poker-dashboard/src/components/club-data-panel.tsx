@@ -10,8 +10,9 @@ import {
   type TournamentRow,
 } from "@/lib/account-api";
 import { parseNightNotes } from "@/lib/night-notes";
+import { plural } from "@/lib/utils";
 import { prepareNotesImage } from "@/lib/notes-image";
-import { formatCurrency } from "@/views/shared";
+import { formatCurrency, formatDate } from "@/views/shared";
 
 const button =
   "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary disabled:opacity-60";
@@ -94,7 +95,7 @@ function ImportTournaments({ onDone }: { onDone: () => void }) {
         const header = file.text.split(/\r?\n/).find((line) => /tournament id/i.test(line)) ?? "";
         if (/(^|,)\s*"?player"?\s*(,|$)/i.test(header)) setResults(file);
         else if (header) setLog(file);
-        else setError(`${file.name} doesn't look like the Tournament Log or Tournament Results tab.`);
+        else setError(`${file.name} doesn't look like a tournament log or tournament results export.`);
       }
     });
   };
@@ -130,7 +131,7 @@ function ImportTournaments({ onDone }: { onDone: () => void }) {
     <section className="mt-6" data-testid="section-import-tournaments">
       <p className="text-sm font-semibold">Import past tournaments</p>
       <p className="text-xs text-muted-foreground">
-        Download the Tournament Log and Tournament Results tabs as CSV (File, Download, Comma-separated values) and choose both.
+        Coming from a spreadsheet? Export your tournament log and tournament results sheets as CSV (File, Download, Comma-separated values) and choose both.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <label className={`${button} cursor-pointer`}>
@@ -143,7 +144,7 @@ function ImportTournaments({ onDone }: { onDone: () => void }) {
         </button>
       </div>
       <p className="mt-2 text-xs text-muted-foreground" data-testid="status-tournament-files">
-        {log.name ? `Log: ${log.name}` : "Tournament Log: not chosen yet"} · {results.name ? `Results: ${results.name}` : "Tournament Results: not chosen yet"}
+        {log.name ? `Log: ${log.name}` : "Log: not chosen yet"} · {results.name ? `Results: ${results.name}` : "Results: not chosen yet"}
       </p>
       {error ? (
         <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" data-testid="status-tournament-error">
@@ -155,7 +156,7 @@ function ImportTournaments({ onDone }: { onDone: () => void }) {
           <ul className="space-y-1 text-xs">
             {preview.preview.map((row) => (
               <li key={`${row.date}-${row.title}`}>
-                <span className="font-semibold">{row.date}</span> {row.title}: {row.players} players, {formatCurrency(row.totalCollected)} collected
+                <span className="font-semibold">{row.date}</span> {row.title}: {plural(row.players, "player")}, {formatCurrency(row.totalCollected)} collected
                 {row.winner ? `, won by ${row.winner} (${formatCurrency(row.winnerPrize)})` : ""}
                 {row.alreadyRecorded ? " (already recorded, will be skipped)" : ""}
               </li>
@@ -341,10 +342,10 @@ function ImportSection({ onDone }: { onDone: () => void }) {
         <div className="mt-3 rounded-xl border border-border p-3 text-sm" data-testid="box-import-preview">
           <p className="font-semibold">
             {preview.preview.nights} night{preview.preview.nights === 1 ? "" : "s"} ready
-            {preview.preview.firstDate && preview.preview.lastDate ? ` · ${preview.preview.firstDate} to ${preview.preview.lastDate}` : ""}
+            {preview.preview.firstDate && preview.preview.lastDate ? ` · ${formatDate(preview.preview.firstDate)} to ${formatDate(preview.preview.lastDate)}` : ""}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {preview.preview.players} players
+            {plural(preview.preview.players, "player")}
             {preview.preview.newPlayers.length > 0 ? `, ${preview.preview.newPlayers.length} new to the roster` : ""}
             {preview.preview.duplicates > 0 ? ` · ${preview.preview.duplicates} already recorded, skipped` : ""}
           </p>
@@ -437,7 +438,7 @@ function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void 
       read.newNames.length > 0 ? `${read.newNames.join(", ")} ${read.newNames.length === 1 ? "isn't" : "aren't"} in the club yet and would be added as new. Rename in the table if it's someone listed.` : "",
       read.skipped.length > 0 ? `Skipped: ${read.skipped.slice(0, 3).join("; ")}.` : "",
     ].filter(Boolean);
-    setNoteSummary(`Filled in ${read.rows.length} players. Check the table, then save. ${extras.join(" ")}`.trim());
+    setNoteSummary(`Filled in ${plural(read.rows.length, "player")}. Check the table, then save. ${extras.join(" ")}`.trim());
   };
 
   // A screenshot or photo of the notes is read into text, shown in the box, and used to fill the table.
@@ -559,7 +560,7 @@ function NightList({ nights, tournaments, onChanged }: { nights: NightRow[]; tou
             <div className="min-w-0">
               <p className="font-semibold">{night.date}</p>
               <p className="text-[11px] text-muted-foreground">
-                {night.players} players · ${night.totalBuyIn.toFixed(2)} in · {sourceLabel[night.source]}
+                {plural(night.players, "player")} · ${night.totalBuyIn.toFixed(2)} in · {sourceLabel[night.source]}
               </p>
             </div>
             {night.source !== "live" && (
@@ -588,7 +589,7 @@ function NightList({ nights, tournaments, onChanged }: { nights: NightRow[]; tou
               <li key={tournament.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{tournament.title}</p>
-                  <p className="text-[11px] text-muted-foreground">{tournament.date} · {tournament.players} players · {tournament.entries} entries</p>
+                  <p className="text-[11px] text-muted-foreground">{tournament.date} · {plural(tournament.players, "player")} · {plural(tournament.entries, "entry", "entries")}</p>
                 </div>
                 <button
                   type="button"

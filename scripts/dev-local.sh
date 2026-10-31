@@ -16,7 +16,7 @@ source .env.local
 set +a
 
 echo "Applying the database schema..."
-pnpm --filter @workspace/db run push-force
+pnpm --filter @workspace/db run push
 
 cleanup() { kill "${API_PID:-}" "${WEB_PID:-}" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM

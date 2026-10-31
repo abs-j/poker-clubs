@@ -28,8 +28,8 @@ function Shell({ children, eyebrow, title, intro }: { children: ReactNode; eyebr
             {intro && <div className="mt-2 text-sm leading-6 text-muted-foreground">{intro}</div>}
             <div className="mt-6">{children}</div>
           </div>
-          <p className="mt-5 text-center text-[11px] text-muted-foreground">
-            <a href="/terms" className="hover:text-primary hover:underline">Terms</a> · <a href="/privacy" className="hover:text-primary hover:underline">Privacy</a>
+          <p className="mt-3 text-center text-[11px] text-muted-foreground">
+            <a href="/terms" className="inline-block px-2 py-3 hover:text-primary hover:underline">Terms</a> · <a href="/privacy" className="inline-block px-2 py-3 hover:text-primary hover:underline">Privacy</a>
           </p>
         </div>
       </div>
@@ -189,7 +189,7 @@ export function AccountForm({
       {mode === "signup" && <p className="mt-2 text-xs text-muted-foreground">At least 8 characters.</p>}
       {mode === "signup" && (
         <label className="mt-4 flex items-start gap-2 text-xs leading-5" data-testid="label-terms">
-          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5" data-testid="checkbox-terms" />
+          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" data-testid="checkbox-terms" />
           <span>
             I&apos;m 18 or over and agree to the <a href="/terms" target="_blank" rel="noreferrer" className="text-primary underline">Terms</a> and{" "}
             <a href="/privacy" target="_blank" rel="noreferrer" className="text-primary underline">Privacy Policy</a>.
@@ -197,7 +197,7 @@ export function AccountForm({
         </label>
       )}
       {mode === "signin" && emailEnabled && (
-        <button type="button" onClick={() => { setMode("forgot"); setError(""); }} className="mt-2 text-xs text-muted-foreground hover:text-primary hover:underline" data-testid="button-forgot">
+        <button type="button" onClick={() => { setMode("forgot"); setError(""); }} className="mt-1 inline-flex min-h-[44px] items-center text-xs text-muted-foreground hover:text-primary hover:underline" data-testid="button-forgot">
           Forgot your password?
         </button>
       )}
@@ -315,7 +315,7 @@ function Onboarding({ user, onDone }: { user: { name: string }; onDone: () => vo
       <button
         type="button"
         onClick={() => void accountApi.signOut().then(onDone)}
-        className="mt-5 w-full text-center text-xs text-muted-foreground hover:text-primary hover:underline"
+        className="mt-3 min-h-[44px] w-full text-center text-xs text-muted-foreground hover:text-primary hover:underline"
       >
         Sign out
       </button>

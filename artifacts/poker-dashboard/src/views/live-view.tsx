@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { clubFileSlug, clubTimeZone } from "@/lib/club-format";
+import { useClubSettings } from "@/components/club-settings-context";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
 
@@ -18,6 +19,7 @@ type LiveSessionViewProps = { memberName: string; availablePlayers: string[] };
 export function LiveSessionView({ memberName, availablePlayers }: LiveSessionViewProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { settings: clubSettings } = useClubSettings();
   const [endPromptOpen, setEndPromptOpen] = useState(false);
   const liveQuery = useGetPokerLiveActivity({
     query: {
@@ -320,7 +322,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <PageIntro eyebrow="Live session ledger" title="Track tonight as it happens" description="Log buy-ins and cash-outs, check the balance, and keep a separate record of each session. Times use Melbourne time (AEST/AEDT)." count={`${snapshot.sessionStatus === "ended" ? "Closed" : snapshot.sessionStatus === "open" ? "Open" : "Not started"} · ${formatActivitySessionDate(snapshot.sessionDate)}`} compactOnMobile />
         <div className="flex shrink-0 items-center gap-2">
-          <SyncBadge status={snapshot.syncStatus} lastSyncedAt={snapshot.lastSyncedAt} message={snapshot.syncMessage} compact />
+          {clubSettings.isOriginal && <SyncBadge status={snapshot.syncStatus} lastSyncedAt={snapshot.lastSyncedAt} message={snapshot.syncMessage} compact />}
           <div className="hidden items-center gap-2 lg:flex">
             <button type="button" onClick={() => setShowQr((value) => !value)} aria-expanded={showQr} aria-controls={showQr ? "live-ledger-qr" : undefined} data-testid="button-toggle-live-qr" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold"><QrCode className="h-3.5 w-3.5" />{showQr ? "Hide QR" : "Share Live"}</button>
             {snapshot.syncStatus !== "synced" && <button onClick={retrySheetBackup} disabled={syncMutation.isPending} data-testid="button-retry-live-sync" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold disabled:opacity-60"><RefreshCw className={syncMutation.isPending ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />{syncMutation.isPending ? "Retrying" : "Retry backup"}</button>}
@@ -529,7 +531,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             <div><p className="section-label">Close summary</p><h2 className={`mt-1 text-xl font-semibold ${snapshot.closeSummary.balanceStatus === "balanced" ? "text-foreground" : "text-amber-700 dark:text-amber-300"}`}>{snapshot.closeSummary.balanceStatus === "balanced" ? "Balanced" : "Unbalanced"}</h2></div>
             <span data-testid={`status-live-balance-${snapshot.closeSummary.balanceStatus}`} className="font-mono text-sm font-semibold">{snapshot.closeSummary.difference >= 0 ? "+" : "−"}{formatCurrency(Math.abs(snapshot.closeSummary.difference))} difference</span>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Closed {formatActivityTime(snapshot.closeSummary.closedAt)}. Saved in ledger history only.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Closed {formatActivityTime(snapshot.closeSummary.closedAt)}. {clubSettings.isOriginal ? "Saved in ledger history only." : "Saved to ledger history and counted as a game on the leaderboard."}</p>
         </div>}
       </div>
 
@@ -565,7 +567,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
                       {Math.abs(balance) < 0.01 ? "The ledger is balanced." : `Unbalanced by ${formatCurrency(Math.abs(balance))}. Check cash-outs before closing.`}
                     </p>
                     {snapshot.entries.length === 0 && <p>All activity rows were removed, but this used session will stay in ledger history.</p>}
-                    <p>It stays in history and is not added to the historical Session Log.</p>
+                    <p>{clubSettings.isOriginal ? "It stays in history and is not added to the historical Session Log." : "It is saved to ledger history and counted as a game on the leaderboard."}</p>
                   </>
                 ) : (
                   <p>It has no activity and will be removed completely rather than kept in ledger history.</p>

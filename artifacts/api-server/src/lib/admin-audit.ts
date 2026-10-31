@@ -13,6 +13,7 @@ export type AdminAuditAction =
   | "history_imported"
   | "history_import_undone"
   | "night_deleted"
+  | "tournament_deleted"
   | "night_recorded"
   | "settings_updated"
   | "results_exported";

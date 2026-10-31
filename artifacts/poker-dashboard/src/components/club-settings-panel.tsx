@@ -147,7 +147,7 @@ export function ClubSettingsPanel() {
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {[...presets.map((item) => ({ id: item.id as PresetChoice, label: item.label, description: item.description })), { id: "custom" as PresetChoice, label: "Custom", description: "Set every number yourself." }].map((option) => (
             <label key={option.id} className={`flex cursor-pointer gap-3 rounded-xl border p-3 text-sm ${preset === option.id ? "border-primary bg-primary/5" : "border-border"}`}>
-              <input type="radio" name="points-preset" checked={preset === option.id} onChange={() => { setPreset(option.id); if (option.id === "custom") setCustom(activeRules); }} data-testid={`radio-points-${option.id}`} />
+              <input type="radio" name="points-preset" checked={preset === option.id} onChange={() => { setPreset(option.id); if (option.id === "custom") setCustom(activeRules); }} data-testid={`radio-points-${option.id}`} className="mt-0.5 h-5 w-5 shrink-0" />
               <span>
                 <span className="block font-semibold">{option.label}</span>
                 <span className="block text-xs text-muted-foreground">{option.description}</span>
