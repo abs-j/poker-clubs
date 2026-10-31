@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. `main` is clean and green (typecheck, API 112 tests, dashboard 95 tests, browser smoke 44/44 in CI).
+State as of 31 Oct 2026. `main` is clean and green (typecheck, API 115 tests, dashboard 95 tests, browser smoke 45/45 in CI).
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -14,7 +14,7 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 
 ## Where work stopped
 
-Branch `ledger-hosts` exists locally, cut from `main`, **with no changes**. Nothing is half-built. Start step L1 below.
+L1 is merged (PR #14). `live_sessions.host_name` is additive and nullable; production still needs `pnpm --filter @workspace/db run push` when that build is published. Nothing from L2 is started. Continue with L2 below.
 
 ## How to work
 
@@ -50,14 +50,7 @@ does. One PR per step, CI must be green, then merge.
 ## Steps (one PR each, in this order)
 
 ### L1. Hosts, permissions, reopen
-Existing model: `live_sessions.started_by` is the starter's display name; `live_activity_events.created_by` is the logger's display name;
-`member_name` on an event is the attributed player. Match people by `nameKey` (`lib/club-access.ts`).
-1. Schema: add `live_sessions.host_name text null` (`lib/db/src/schema/index.ts`); register `["live_sessions","host_name"]` in `lib/schema-check.ts`. Host = `host_name ?? started_by`.
-2. New pure module `artifacts/api-server/src/lib/ledger-permissions.ts` (+ `.test.mjs`): `canManageNight`, `canEditEntry`. Cover admin, host, author, other member, name-case differences.
-3. `lib/live-activity.ts`: pass the actor (`{ name, isAdmin }`) into `updateLiveActivityEvent`, `deleteLiveActivityEvent` and `endLiveSession`; check inside their transactions where the session and event are already loaded; throw a typed permission error and map it to 403 in `routes/poker.ts`.
-4. New routes in `routes/poker.ts`: `GET /poker/live-session/role` (host name, `canManage`), `POST /poker/live-session/reopen` (manage only; latest ended session when none is open; delete the produced night with `removeNightsForLiveSession` in `lib/club-sessions.ts`; set status back to `open`), `POST /poker/live-session/host` (host or admin; target must be a member name). Add an admin-audit action for each.
-5. UI `artifacts/poker-dashboard/src/views/live-view.tsx`: show "Host: name"; hide End/Discard unless `canManage` (say who can close); hide pencil/trash on entries the viewer cannot change; "Hand over" control for host/admin; "Reopen" on a closed ledger for managers. Client helpers in `lib/account-api.ts`.
-6. Smoke (`scripts/smoke/smoke.mjs`): a non-host member cannot close; an author can edit their own entry but not someone else's; the host closes; reopen puts the night back and re-closing does not duplicate it.
+Done in PR #14. Host is `host_name`, or `started_by` when that is null. Reopening deletes the recorded night and clears the saved balance choice, so closing again records the night once and asks for the choice again if the ledger is still out. The balance choice is allowed for the host as well as an admin (`PUT /clubs/current/ledger/resolution` returns 403, not 401, when the caller cannot manage the night).
 
 ### L2. Bank and settle-up
 `live_sessions.bank_name`; new table `night_settlements (club_session_id, player_id, settled_at, settled_by)` or a column on `session_results`.
