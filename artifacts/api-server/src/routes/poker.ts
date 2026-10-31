@@ -13,7 +13,10 @@ import {
   UpdatePokerLiveActivityResponse,
 } from "@workspace/api-zod";
 import { loadClubDashboard } from "../lib/club-sessions";
-import { memberClubId, requireMemberSession } from "../lib/auth";
+import { memberClubId, requireMemberSession, type AuthSession } from "../lib/auth";
+import { isClubAdmin } from "../lib/club-access";
+import { recordAdminAction } from "../lib/admin-audit";
+import { LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { resolveAttributedPlayer } from "../lib/live-activity-player";
 import {
   createLiveActivityEvent,
@@ -21,11 +24,24 @@ import {
   getLiveActivityHistory,
   getLiveActivitySnapshot,
   endLiveSession,
+  liveSessionRole,
+  reopenLiveSession,
+  setLiveSessionHost,
   startLiveSession,
   updateLiveActivityEvent,
 } from "../lib/live-activity";
 
 const router: IRouter = Router();
+
+function ledgerActor(res: { locals: { memberSession?: AuthSession } }): LedgerActor | null {
+  const session = res.locals.memberSession;
+  if (!session?.memberName) return null;
+  return { name: session.memberName, isAdmin: isClubAdmin(session.clubRole ?? "member") };
+}
+
+function refused(error: unknown): number | null {
+  return error instanceof LedgerPermissionError ? 403 : null;
+}
 
 async function validateAttributedPlayer(
   attributedPlayer: string | undefined,
@@ -130,8 +146,8 @@ router.patch(
     }
 
     try {
-      const session = res.locals.memberSession as { memberName: string | null };
-      if (!session.memberName) {
+      const actor = ledgerActor(res);
+      if (!actor) {
         res.status(401).json({ error: "Member authentication required." });
         return;
       }
@@ -146,22 +162,22 @@ router.patch(
       const requestedPlayer = parsed.data.attributedPlayer;
       const validatedPlayer = await validateAttributedPlayer(
         parsed.data.attributedPlayer,
-        session.memberName,
+        actor.name,
       );
       const attributedPlayer =
-        requestedPlayer === undefined ? undefined : validatedPlayer ?? session.memberName;
+        requestedPlayer === undefined ? undefined : validatedPlayer ?? actor.name;
       const snapshot = await updateLiveActivityEvent({
         clubId: memberClubId(res),
         eventId,
         ...parsed.data,
-        memberName: session.memberName,
+        actor,
         attributedPlayer,
       });
       res.json(UpdatePokerLiveActivityResponse.parse(snapshot));
     } catch (error) {
       req.log.error({ err: error }, "Unable to update live poker activity");
       const message = error instanceof Error ? error.message : "Unable to update live poker activity.";
-      res.status(message.includes("no longer exists") ? 404 : 502).json({ error: message });
+      res.status(refused(error) ?? (message.includes("no longer exists") ? 404 : 502)).json({ error: message });
     }
   },
 );
@@ -192,18 +208,75 @@ router.post("/poker/live-session/end", requireMemberSession, async (req, res): P
   res.removeHeader("ETag");
   res.removeHeader("Last-Modified");
   try {
-    const session = res.locals.memberSession as { memberName: string | null };
-    if (!session.memberName) {
+    const actor = ledgerActor(res);
+    if (!actor) {
       res.status(401).json({ error: "Member authentication required." });
       return;
     }
-    res.json(EndPokerLiveSessionResponse.parse(await endLiveSession(session.memberName, memberClubId(res))));
+    res.json(EndPokerLiveSessionResponse.parse(await endLiveSession(actor, memberClubId(res))));
   } catch (error) {
     req.log.error({ err: error }, "Unable to end live poker session");
     const message = error instanceof Error ? error.message : "Unable to end live poker session.";
-    res.status(message.includes("Start the") || message.includes("Add at least") ? 400 : message.includes("out by") ? 409 : 502).json({
-      error: message,
-    });
+    const status = refused(error) ?? (message.includes("Start the") || message.includes("Add at least") ? 400 : message.includes("out by") ? 409 : 502);
+    res.status(status).json({ error: message });
+  }
+});
+
+router.get("/poker/live-session/role", requireMemberSession, async (req, res): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  try {
+    res.json(await liveSessionRole(actor, memberClubId(res)));
+  } catch (error) {
+    req.log.error({ err: error }, "Unable to load the live session role");
+    res.status(502).json({ error: "Unable to load who is hosting right now." });
+  }
+});
+
+router.post("/poker/live-session/host", requireMemberSession, async (req, res): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name || name.length > 80) {
+    res.status(400).json({ error: "Choose a member to host this night." });
+    return;
+  }
+  try {
+    const role = await setLiveSessionHost(actor, memberClubId(res), name);
+    await recordAdminAction("night_handed_over", `Handed the open night to ${role.hostName}.`, req);
+    res.json(role);
+  } catch (error) {
+    req.log.error({ err: error }, "Unable to hand over the live session");
+    const message = error instanceof Error ? error.message : "Unable to hand this night over.";
+    const status = refused(error) ?? (message.includes("not a member") || message.includes("Choose a member") || message.includes("Start a night") ? 400 : 502);
+    res.status(status).json({ error: message });
+  }
+});
+
+router.post("/poker/live-session/reopen", requireMemberSession, async (req, res): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  try {
+    const snapshot = await reopenLiveSession(actor, memberClubId(res));
+    await recordAdminAction("night_reopened", `Reopened live night ${snapshot.sessionKey}.`, req);
+    res.json(StartPokerLiveSessionResponse.parse(snapshot));
+  } catch (error) {
+    req.log.error({ err: error }, "Unable to reopen the live session");
+    const message = error instanceof Error ? error.message : "Unable to reopen this night.";
+    const status = refused(error) ?? (message.includes("Close the open") ? 409 : message.includes("no closed night") ? 400 : 502);
+    res.status(status).json({ error: message });
   }
 });
 
@@ -220,8 +293,8 @@ router.delete(
       return;
     }
     try {
-      const session = res.locals.memberSession as { memberName: string | null };
-      if (!session.memberName) {
+      const actor = ledgerActor(res);
+      if (!actor) {
         res.status(401).json({ error: "Member authentication required." });
         return;
       }
@@ -235,7 +308,7 @@ router.delete(
       }
       const snapshot = await deleteLiveActivityEvent(
         eventId,
-        session.memberName,
+        actor,
         parsed.data.comment,
         memberClubId(res),
       );
@@ -243,7 +316,7 @@ router.delete(
     } catch (error) {
       req.log.error({ err: error }, "Unable to delete live poker activity");
       const message = error instanceof Error ? error.message : "Unable to delete live poker activity.";
-      res.status(message.includes("no longer exists") ? 404 : 502).json({ error: message });
+      res.status(refused(error) ?? (message.includes("no longer exists") ? 404 : 502)).json({ error: message });
     }
   },
 );

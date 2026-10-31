@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
-import { adminClubId, memberClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
+import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, type AuthSession } from "../lib/auth";
+import { isClubAdmin } from "../lib/club-access";
+import { LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, listTournaments, previewTournamentImport, recordTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
@@ -20,6 +22,12 @@ import {
 } from "../lib/import-parse";
 
 const router: IRouter = Router();
+
+function ledgerActor(res: { locals: { memberSession?: AuthSession } }): LedgerActor | null {
+  const session = res.locals.memberSession;
+  if (!session?.memberName) return null;
+  return { name: session.memberName, isAdmin: isClubAdmin(session.clubRole ?? "member") };
+}
 
 
 router.use("/clubs/current", (_req, res, next) => {
@@ -115,20 +123,33 @@ router.delete("/clubs/current/import/:batchId", requireAdminSession, async (req,
   res.json({ removed });
 });
 
-/** What to do with a gap in tonight's ledger. Applied when the ledger closes; admins only. */
-router.put("/clubs/current/ledger/resolution", requireAdminSession, async (req, res): Promise<void> => {
+/** What to do with a gap in tonight's ledger. Applied when the ledger closes; the host or an admin. */
+router.put("/clubs/current/ledger/resolution", requireMemberSession, async (req, res): Promise<void> => {
   const resolution = parseResolution(req.body);
   if (!resolution) {
     res.status(400).json({ error: "Choose how to balance the ledger." });
     return;
   }
-  const result = await setLedgerResolution(adminClubId(res), resolution);
-  if (!result.ok) {
-    res.status(409).json({ error: result.error });
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
     return;
   }
-  await recordAdminAction("ledger_balanced", `Chose "${resolution.mode}" for a ledger out by ${(result.cents / 100).toFixed(2)} (${result.direction}).`, req);
-  res.json({ mode: resolution.mode, direction: result.direction, cents: result.cents });
+  try {
+    const result = await setLedgerResolution(memberClubId(res), resolution, actor);
+    if (!result.ok) {
+      res.status(409).json({ error: result.error });
+      return;
+    }
+    await recordAdminAction("ledger_balanced", `Chose "${resolution.mode}" for a ledger out by ${(result.cents / 100).toFixed(2)} (${result.direction}).`, req);
+    res.json({ mode: resolution.mode, direction: result.direction, cents: result.cents });
+  } catch (error) {
+    if (error instanceof LedgerPermissionError) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 /** The club's bad beat jackpot so far: surplus from balanced nights. */

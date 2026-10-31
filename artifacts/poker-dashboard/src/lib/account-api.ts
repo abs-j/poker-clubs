@@ -133,9 +133,19 @@ export function detectedDefaults(): { timezone?: string; currency?: string } {
 
 export type BalanceChoice = { mode: "jackpot" } | { mode: "player"; name: string } | { mode: "split" } | { mode: "none" };
 
+export type LiveSessionRole = {
+  hostName: string | null;
+  canManage: boolean;
+  status: "open" | "ended" | "none";
+};
+
 export const accountApi = {
-  /** Admins: what to do with a gap in tonight's ledger when it closes. */
+  /** Host or admin: what to do with a gap in tonight's ledger when it closes. */
   setLedgerResolution: (choice: BalanceChoice) => request<{ mode: string; direction: string; cents: number }>("/api/clubs/current/ledger/resolution", send("PUT", choice)),
+  /** Who is hosting the open night, or the latest closed one, and whether the viewer can run it. */
+  liveSessionRole: () => request<LiveSessionRole>("/api/poker/live-session/role", { cache: "no-store" }),
+  setLiveHost: (name: string) => request<LiveSessionRole>("/api/poker/live-session/host", send("POST", { name })),
+  reopenLiveSession: () => request<unknown>("/api/poker/live-session/reopen", send("POST")),
   /** What the club has put into its bad beat jackpot, in dollars. */
   jackpot: () => request<{ total: number; nights: number }>("/api/clubs/current/jackpot", { cache: "no-store" }),
   me: () => request<MeResponse>("/api/clubs/me", { cache: "no-store" }),

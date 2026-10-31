@@ -50,6 +50,8 @@ export const liveSessions = pgTable(
     sessionDate: text("session_date").notNull(),
     status: varchar("status", { length: 16 }).notNull(),
     startedBy: text("started_by").notNull(),
+    /** Who runs this night. Null means the person who started it is still the host. */
+    hostName: text("host_name"),
     startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
     endedBy: text("ended_by"),
     endedAt: timestamp("ended_at", { withTimezone: true }),

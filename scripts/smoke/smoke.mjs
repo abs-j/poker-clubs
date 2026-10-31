@@ -245,7 +245,7 @@ console.log("\nAccounts and clubs");
     await add("buy_in", 10, "Smoke Guest");
     await add("cash_out", 6, "Smoke Guest");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).status === 409, "an unbalanced ledger closed without a choice");
-    expect((await resolve(guest, { mode: "jackpot" })).status === 401, "a member could choose how to balance");
+    expect((await resolve(guest, { mode: "jackpot" })).status === 403, "a member who is not the host could choose how to balance");
     expect((await resolve(owner, { mode: "split" })).status === 409, "a shortfall option was accepted for a surplus");
     expect((await resolve(owner, { mode: "jackpot" })).ok, "jackpot choice refused");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "ledger did not close after the choice");
@@ -261,6 +261,52 @@ console.log("\nAccounts and clubs");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "ledger did not close");
     const after = await (await api("/api/clubs/current/jackpot", { jar: owner })).json();
     expect(after.total === 4, "a shortfall changed the jackpot");
+  });
+
+  await check("the host manages the night, and reopening it does not record it twice", async () => {
+    const nights = async () => (await (await api("/api/poker/dashboard", { jar: owner })).json()).sessions.length;
+    const before = await nights();
+
+    expect((await api("/api/poker/live-session/start", { jar: owner, method: "POST" })).ok, "could not start");
+    const hosting = await (await api("/api/poker/live-session/role", { jar: owner })).json();
+    expect(hosting.status === "open" && hosting.canManage === true && hosting.hostName === "Pat Imported", `role ${JSON.stringify(hosting)}`);
+    expect((await api("/api/poker/live-session/end", { jar: guest, method: "POST" })).status === 403, "a member who is not the host closed the night");
+
+    const add = (jar, action, amount) => api("/api/poker/live-activity", { jar, method: "POST", body: { action, amount } });
+    expect((await add(guest, "buy_in", 10)).ok, "guest buy-in failed");
+    expect((await add(owner, "buy_in", 10)).ok, "owner buy-in failed");
+    expect((await add(guest, "cash_out", 10)).ok, "guest cash-out failed");
+    expect((await add(owner, "cash_out", 10)).ok, "owner cash-out failed");
+
+    const ledger = await (await api("/api/poker/live-activity", { jar: guest })).json();
+    const own = ledger.entries.find((entry) => entry.createdBy === "Smoke Guest" && entry.action === "buy_in");
+    const theirs = ledger.entries.find((entry) => entry.createdBy === "Pat Imported" && entry.action === "buy_in");
+    expect(own && theirs, "the two buy-ins were not both on the ledger");
+    const edit = (jar, eventId) => api(`/api/poker/live-activity/${eventId}`, {
+      jar, method: "PATCH", body: { action: "buy_in", amount: 10, comment: "A correction" },
+    });
+    expect((await edit(guest, own.eventId)).ok, "the author could not edit their own entry");
+    expect((await edit(guest, theirs.eventId)).status === 403, "a member edited an entry they did not log");
+
+    const handed = await api("/api/poker/live-session/host", { jar: owner, method: "POST", body: { name: "smoke guest" } });
+    expect(handed.ok, `hand over ${handed.status}`);
+    const guestHost = await (await api("/api/poker/live-session/role", { jar: guest })).json();
+    expect(guestHost.canManage === true && guestHost.hostName === "Smoke Guest", `after hand over ${JSON.stringify(guestHost)}`);
+    // The night is balanced, so the choice is refused, but only after the host is allowed to make one.
+    expect((await api("/api/clubs/current/ledger/resolution", { jar: guest, method: "PUT", body: { mode: "jackpot" } })).status === 409, "the host was blocked from the balance step");
+    expect((await api("/api/poker/live-session/host", { jar: guest, method: "POST", body: { name: "Nobody Here" } })).status === 400, "a non-member was accepted as host");
+    expect((await api("/api/poker/live-session/host", { jar: guest, method: "POST", body: { name: "Pat Imported" } })).ok, "could not hand the night back");
+
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "the host could not close");
+    expect(await nights() === before + 1, "the closed night was not recorded");
+    expect((await api("/api/poker/live-session/reopen", { jar: guest, method: "POST" })).status === 403, "a member who is not the host reopened the night");
+    const reopened = await api("/api/poker/live-session/reopen", { jar: owner, method: "POST" });
+    expect(reopened.ok, `reopen ${reopened.status}`);
+    const openAgain = await (await api("/api/poker/live-activity", { jar: owner })).json();
+    expect(openAgain.sessionStatus === "open", `expected the night to be open, got ${openAgain.sessionStatus}`);
+    expect(await nights() === before, "reopening left the recorded night in place");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close the reopened night");
+    expect(await nights() === before + 1, "closing again recorded a second copy of the night");
   });
 
   await check("an imported batch can be undone; members cannot import", async () => {
