@@ -88,7 +88,7 @@ export function HomeOverview({
             <button
               type="button"
               onClick={onOpenAccount}
-              aria-label="Open my account"
+              aria-label="Open Me"
               data-testid="button-home-avatar"
               className="shrink-0 rounded-full transition-transform hover:scale-105"
             >

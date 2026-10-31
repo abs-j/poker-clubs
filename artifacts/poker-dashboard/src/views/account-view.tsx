@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Camera, Download, LogOut, Moon, Sun } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { AvatarPickerDialog } from "@/components/avatar-picker-dialog";
@@ -13,8 +13,10 @@ import { getBadgePopups, setBadgePopups } from "@/lib/preferences";
 import { ordinal } from "@/lib/utils";
 import { usePoints } from "@/components/points-context";
 import { pointsFor, seasonLabel } from "@/lib/points";
-import { ClubPanel } from "@/components/club-panel";
-import { PageIntro, formatDate, signedCurrency } from "./shared";
+import { AccountSecurity } from "@/components/account-security";
+import { MeClubs, VerifyEmailNotice } from "@/components/club-panel";
+import { accountApi, type MeResponse } from "@/lib/account-api";
+import { PageIntro, signedCurrency } from "./shared";
 
 type AccountViewProps = {
   memberName: string;
@@ -50,7 +52,7 @@ function SettingRow({ title, detail, children }: { title: string; detail: string
   );
 }
 
-/** Everything about the signed-in member in one place: picture, record, badges and settings. */
+/** Personal page opened from the avatar: picture, record, trophies and account settings. Club admin lives on the Club tab. */
 export function AccountView({
   memberName,
   sessions,
@@ -68,7 +70,13 @@ export function AccountView({
   const { remove } = useAvatarMutations();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [popups, setPopups] = useState(getBadgePopups);
+  const [me, setMe] = useState<MeResponse | null>(null);
   const current = memberAvatars.get(avatarKey(memberName));
+  useEffect(() => {
+    let cancelled = false;
+    accountApi.me().then((next) => { if (!cancelled) setMe(next); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   const { badges: badgeMap, careers } = useAchievements();
   const career = careerFor(careers, memberName);
@@ -78,7 +86,7 @@ export function AccountView({
 
   return (
     <section data-testid="section-account" className="space-y-4">
-      <PageIntro eyebrow="Account" title="My account" description="Your picture, record, badges and settings." count={`${stats?.games ?? 0} ${stats?.games === 1 ? "game" : "games"} played`} />
+      <PageIntro eyebrow="You" title="Me" description="Your picture, record, trophies and settings." count={`${stats?.games ?? 0} ${stats?.games === 1 ? "game" : "games"} played`} />
 
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
@@ -161,7 +169,8 @@ export function AccountView({
 
       <TrophyShelf sessions={sessions} playerName={memberName} badgeMap={badgeMap} careerGames={career?.games} />
 
-      <ClubPanel />
+      {me?.options.email && me.user && !me.user.emailVerified && <VerifyEmailNotice email={me.user.email} />}
+      {me?.user && <AccountSecurity user={me.user} part="password" />}
 
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         <p className="section-label text-primary">Settings</p>
@@ -201,6 +210,11 @@ export function AccountView({
             </button>
           </SettingRow>
         )}
+      </div>
+
+      <MeClubs />
+
+      <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         <SettingRow title="Sign out" detail={`Signed in as ${memberName}.`}>
           <button
             type="button"
@@ -213,6 +227,8 @@ export function AccountView({
           </button>
         </SettingRow>
       </div>
+
+      {me?.user && <AccountSecurity user={me.user} part="danger" />}
 
       <AvatarPickerDialog open={pickerOpen} onOpenChange={setPickerOpen} name={memberName} current={current} />
     </section>
