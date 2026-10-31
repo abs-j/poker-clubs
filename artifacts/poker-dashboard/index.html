@@ -17,6 +17,10 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="theme-color" content="#100a19" />
     <script>
+      // The site is static, so it cannot send a frame-ancestors header: refuse to run inside someone else's frame.
+      if (window.top !== window.self) { try { window.top.location = window.self.location; } catch (e) { document.documentElement.innerHTML = ""; } }
+    </script>
+    <script>
       // Dark is the default on every page (sign-in, admin and dashboard). Only an explicit
       // "light" choice is remembered. Runs before first paint so there is no white flash.
       (function () {
