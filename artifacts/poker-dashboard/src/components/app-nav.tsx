@@ -6,7 +6,6 @@ export type DashboardView =
   | "sessions"
   | "live"
   | "months"
-  | "head-to-head"
   | "players"
   | "guidelines"
   | "account";
@@ -25,7 +24,7 @@ export const SECTIONS: Section[] = [
   { id: "overview", label: "Home", icon: House, views: ["overview"] },
   { id: "sessions", label: "Games", icon: CalendarDays, views: ["sessions"] },
   { id: "live", label: "Live", icon: CircleDollarSign, views: ["live"] },
-  { id: "months", label: "Leaderboard", icon: Users, views: ["months", "players", "head-to-head"] },
+  { id: "months", label: "Leaderboard", icon: Users, views: ["months", "players"] },
   { id: "guidelines", label: "Club", icon: BookOpen, views: ["guidelines"] },
 ];
 
@@ -151,10 +150,9 @@ export function BottomTabBar({ active, onNavigate, liveOpen }: NavProps) {
 const PLAYER_VIEWS: Array<{ id: DashboardView; label: string }> = [
   { id: "months", label: "Leaderboard" },
   { id: "players", label: "Profile" },
-  { id: "head-to-head", label: "Compare" },
 ];
 
-/** Switches between the three player views inside the Players section. */
+/** Switches between the two player views inside the Players section. */
 export function PlayersSubnav({ active, onChange }: { active: DashboardView; onChange: (view: DashboardView) => void }) {
   return (
     <div role="tablist" aria-label="Player views" data-testid="subnav-players" className="mt-4 inline-flex gap-1 rounded-xl bg-secondary/55 p-1">

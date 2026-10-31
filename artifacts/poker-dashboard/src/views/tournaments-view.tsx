@@ -1,12 +1,9 @@
-import { useMemo, useState } from "react";
-import { ArrowLeft, Crown, Image as ImageIcon, Swords, Trophy } from "lucide-react";
+import { useMemo } from "react";
+import { ArrowLeft, Crown, Swords, Trophy } from "lucide-react";
 import { Avatar } from "@/components/avatar";
-import { RecapStudio } from "@/components/recap-studio";
 import { usePoints } from "@/components/points-context";
 import type { TournamentEvent, TournamentResultRow } from "@/lib/earnings-analytics";
-import { quarterOf, seasonLabel } from "@/lib/points";
-import { tournamentRecapFromEvent } from "@/lib/recaps";
-import { ordinal } from "@/lib/share-card";
+import { ordinal } from "@/lib/utils";
 import {
   dataCheckPasses,
   hasFullOrder,
@@ -92,19 +89,10 @@ function ResultsList({ event, viewer, onOpenPlayer }: { event: TournamentEvent; 
 }
 
 function TournamentDetail({ event, viewer, onBack, onOpenPlayer }: { event: TournamentEvent; viewer: string; onBack: () => void; onOpenPlayer: (name: string) => void }) {
-  const [imageOpen, setImageOpen] = useState(false);
   const payouts = useMemo(() => payoutRows(event), [event]);
   const hunters = useMemo(() => knockoutLeaders(event), [event]);
   const fullOrder = hasFullOrder(event);
   const { afterNight } = usePoints();
-  const recapPack = useMemo(
-    () =>
-      tournamentRecapFromEvent(event, {
-        pointsAfter: afterNight({ date: event.date, tournamentId: event.id }),
-        seasonName: seasonLabel(quarterOf(event.date)),
-      }),
-    [event, afterNight],
-  );
 
   return (
     <section data-testid="section-tournament-detail" className="space-y-4">
@@ -121,15 +109,6 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer }: { event: Tour
             <p className="mt-1 text-sm text-muted-foreground">{event.title}{event.format ? ` · ${event.format}` : ""}{event.startTime ? ` · ${event.startTime}` : ""}</p>
             <p className="mt-2 text-xs text-muted-foreground">{rulesSummary(event)}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setImageOpen(true)}
-            data-testid="button-share-tournament"
-            className="inline-flex h-10 shrink-0 items-center gap-2 self-start rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-          >
-            <ImageIcon className="h-3.5 w-3.5" />
-            Instagram recap
-          </button>
         </div>
         {!dataCheckPasses(event) && (
           <p role="status" className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
@@ -200,7 +179,6 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer }: { event: Tour
         </div>
       </div>
 
-      <RecapStudio open={imageOpen} onOpenChange={setImageOpen} pack={recapPack} />
     </section>
   );
 }

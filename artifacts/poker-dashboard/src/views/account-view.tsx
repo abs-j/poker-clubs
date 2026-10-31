@@ -10,7 +10,7 @@ import { careerFor } from "@/lib/career";
 import { avatarKey, useAvatarMutations, useMemberAvatars } from "@/lib/avatars";
 import type { ChartSession } from "@/lib/club-charts";
 import { getBadgePopups, setBadgePopups } from "@/lib/preferences";
-import { ordinal } from "@/lib/share-card";
+import { ordinal } from "@/lib/utils";
 import { usePoints } from "@/components/points-context";
 import { pointsFor, seasonLabel } from "@/lib/points";
 import { ClubPanel } from "@/components/club-panel";

@@ -14,12 +14,6 @@ export const clubName = () => current.name;
 export const clubTimeZone = () => current.timeZone;
 export const clubCurrency = () => current.currency;
 
-/** "#myclub": the club's name squashed into one tag. */
-export function clubHashtag(): string {
-  const squashed = current.name.toLowerCase().replace(/[^a-z0-9]+/g, "");
-  return `#${squashed || "pokerclub"}`;
-}
-
 /** File-name friendly version of the club name. */
 export function clubFileSlug(): string {
   return current.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "poker-club";

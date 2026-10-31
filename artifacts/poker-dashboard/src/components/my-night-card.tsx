@@ -1,16 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Copy, Image as ImageIcon, Images, Share2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { buildMyNight, normalizeName, type ChartSession, type MyNight } from "@/lib/club-charts";
-import { copyTextToClipboard } from "@/lib/live-player-summary";
+import { buildMyNight, normalizeName, type ChartSession } from "@/lib/club-charts";
 import { useAchievements } from "@/components/achievements-context";
 import { usePoints } from "@/components/points-context";
-import { RecapStudio } from "@/components/recap-studio";
-import { buildCashRecap, buildPersonalRecap, tournamentRecapFromEvent } from "@/lib/recaps";
-import { quarterOf, seasonLabel } from "@/lib/points";
 import { nightPointsFor } from "@/lib/points";
 import { careerFor } from "@/lib/career";
-import { clubName } from "@/lib/club-format";
 import { formatCurrency, formatDate, signedCurrency } from "@/views/shared";
 
 function ordinal(n: number) {
@@ -30,17 +23,6 @@ function moveHeadline(movement: number | null) {
   if (movement === 0) return "Held your place";
   const places = Math.abs(movement);
   return `${movement > 0 ? "Up" : "Down"} ${places} ${places === 1 ? "place" : "places"}`;
-}
-
-function shareSummary(night: MyNight, rank: number, of: number, streakValue: number, finishText: string) {
-  const parts = [
-    `${night.playerName}: ${signedCurrency(night.last.net)} on ${formatDate(night.last.date)}`,
-    finishText,
-    `${ordinal(rank)} of ${of} on the leaderboard`,
-  ];
-  const streak = streakText(streakValue);
-  if (streak) parts.push(streak);
-  return `${parts.join(" · ")} — ${clubName()}`;
 }
 
 export type OfficialStanding = {
@@ -97,14 +79,12 @@ type MyNightCardProps = {
 export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   const night = useMemo(() => buildMyNight(sessions, viewer), [sessions, viewer]);
   const { careers } = useAchievements();
-  const { rowsFor, afterNight } = usePoints();
-  const [studio, setStudio] = useState<null | "personal" | "night">(null);
+  const { rowsFor } = usePoints();
   const { tournaments } = usePoints();
   // Form and best game use the whole record when it is known, not only the dated nights.
   const career = careerFor(careers, viewer);
   const streakValue = career && career.results.length ? career.currentStreak : night?.streak ?? 0;
   const bestGameValue = career ? career.bestGame : night?.bestGame ?? 0;
-  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [burst, setBurst] = useState(false);
 
   // Celebrate a winning night once per game per browser session.
@@ -125,10 +105,6 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   if (!night) return null;
 
   const { last } = night;
-  // The same night for the whole table: a cash night's pack, or the tournament's.
-  const nightSession = last.isTournament
-    ? null
-    : sessions.find((session) => session.sessionNumber === last.sessionNumber && session.date === last.date) ?? null;
   const tournamentEvent = last.isTournament ? tournaments.find((event) => event.date === last.date) ?? null : null;
   const myTournamentResult = tournamentEvent?.results.find((result) => normalizeName(result.player) === normalizeName(night.playerName));
   // A tournament is ranked by where you finished; a cash night by the night's results. Say which.
@@ -149,64 +125,6 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   });
   const rank = standing?.rank ?? night.standing.rank;
   const of = standing?.of ?? night.standing.of;
-
-  const share = async () => {
-    const text = shareSummary(night, rank, of, streakValue, finishText);
-    try {
-      if (typeof navigator.share === "function") {
-        await navigator.share({ text });
-        return;
-      }
-    } catch (error) {
-      // The member closing the share sheet is not a failure.
-      if (error instanceof DOMException && error.name === "AbortError") return;
-    }
-    try {
-      await copyTextToClipboard(text);
-      setStatus("copied");
-    } catch {
-      setStatus("failed");
-    }
-    window.setTimeout(() => setStatus("idle"), 2500);
-  };
-
-  const personalPack = studio === "personal"
-    ? buildPersonalRecap({
-        id: `me-${last.date}`,
-        name: night.playerName,
-        date: last.date,
-        net: last.net,
-        buyIn: last.buyIn,
-        cashOut: last.cashOut,
-        kind: last.isTournament ? "tournament" : "cash",
-        finishText,
-        tiles: [
-          { label: "Leaderboard move", value: moveHeadline(standing ? standing.movement : night.standing.movement), detail: `Now ${ordinal(rank)} of ${of}`, tone: "neutral" },
-          { label: "Form", value: streak ?? "No streak", detail: career ? `Across ${career.games} games` : undefined, tone: "neutral" },
-          { label: "Best game", value: signedCurrency(bestGameValue), detail: career ? `${Math.round(career.inProfitPct)}% in profit` : undefined, tone: bestGameValue >= 0 ? "good" : "bad" },
-          ...(nightPoints ? [{ label: "Club points", value: `+${Math.round(nightPoints.points * 10) / 10}`, detail: "from this night", tone: "good" as const }] : []),
-        ],
-      })
-    : null;
-  const nightPack =
-    studio === "night"
-      ? nightSession
-        ? buildCashRecap({
-            date: nightSession.date,
-            sessionNumber: nightSession.sessionNumber,
-            totalBuyIn: nightSession.totalBuyIn,
-            players: nightSession.players.map((player) => ({ player: player.player, buyIn: player.buyIn, cashOut: player.cashOut, net: player.net })),
-            pointsAfter: afterNight({ date: nightSession.date, sessionNumber: nightSession.sessionNumber }),
-            seasonName: seasonLabel(quarterOf(nightSession.date)),
-          })
-        : tournamentEvent
-          ? tournamentRecapFromEvent(tournamentEvent, {
-              pointsAfter: afterNight({ date: tournamentEvent.date, tournamentId: tournamentEvent.id }),
-              seasonName: seasonLabel(quarterOf(tournamentEvent.date)),
-            })
-          : null
-      : null;
-  const activePack = personalPack ?? nightPack;
 
   return (
     <section
@@ -236,35 +154,6 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
             </p>
           )}
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              data-testid="button-share-menu"
-              className="inline-flex h-10 shrink-0 items-center gap-2 self-start rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
-            >
-              <Share2 className="h-3.5 w-3.5" />
-              {status === "copied" ? "Copied" : status === "failed" ? "Couldn't copy" : "Share"}
-              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem onSelect={() => setStudio("personal")} data-testid="menu-share-my-result">
-              <ImageIcon className="h-4 w-4" />
-              My result as a picture
-            </DropdownMenuItem>
-            {(nightSession || tournamentEvent) && (
-              <DropdownMenuItem onSelect={() => setStudio("night")} data-testid="menu-share-the-night">
-                <Images className="h-4 w-4" />
-                {last.isTournament ? "The whole tournament" : "The whole night"} (Instagram)
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onSelect={() => void share()} data-testid="menu-share-text">
-              <Copy className="h-4 w-4" />
-              Copy as text
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       <dl className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
@@ -292,8 +181,6 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
           </dd>
         </div>
       </dl>
-      <RecapStudio open={studio !== null} onOpenChange={(open) => setStudio(open ? studio : null)} pack={activePack} />
-      <p role="status" className="sr-only">{status === "copied" ? "Summary copied to the clipboard" : ""}</p>
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ChartCard } from "@/components/club-charts";
 import type { TournamentEvent } from "@/lib/earnings-analytics";
-import { ordinal } from "@/lib/share-card";
+import { ordinal } from "@/lib/utils";
 import { playerTournamentRecord } from "@/lib/tournaments";
 import { formatCurrency, formatDate, signedCurrency } from "@/views/shared";
 

@@ -1,11 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { type PerformanceScope, type DashboardSession as Session } from "@/lib/earnings-analytics";
-import { ArrowDown, ChevronDown, Image as ImageIcon, Trophy } from "lucide-react";
-import { RecapStudio } from "@/components/recap-studio";
-import { usePoints } from "@/components/points-context";
-import { buildCashRecap } from "@/lib/recaps";
+import { ArrowDown, ChevronDown, Trophy } from "lucide-react";
 import { plural } from "@/lib/utils";
-import { quarterOf, seasonLabel } from "@/lib/points";
 import { EmptyPanel, PageIntro, formatCurrency, formatDate, monthLabel, signedCurrency, slug } from "./shared";
 
 type SessionsViewProps = {
@@ -94,22 +90,6 @@ export function SessionsView({ sessions, scope, selectedSession, onSelectSession
 
 export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { session: Session; expanded: boolean; onToggle: () => void; onOpenPlayer: (name: string) => void }) {
   const isTournament = session.eventType === "tournament";
-  const [imageOpen, setImageOpen] = useState(false);
-  const { afterNight } = usePoints();
-  const recapPack = useMemo(
-    () =>
-      expanded || imageOpen
-        ? buildCashRecap({
-            date: session.date,
-            sessionNumber: session.sessionNumber,
-            totalBuyIn: session.totalBuyIn,
-            players: session.players.map((player) => ({ player: player.player, buyIn: player.buyIn, cashOut: player.cashOut, net: player.net })),
-            pointsAfter: afterNight({ date: session.date, sessionNumber: session.sessionNumber }),
-            seasonName: seasonLabel(quarterOf(session.date)),
-          })
-        : null,
-    [expanded, imageOpen, session, afterNight],
-  );
   return <article data-testid={`card-session-${session.sessionNumber}`} className={`group soft-shadow overflow-hidden rounded-2xl border bg-card transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${expanded ? "border-primary/60" : "border-border hover:border-primary/35"}`}>
     <button onClick={onToggle} aria-expanded={expanded} data-testid={`button-expand-session-${session.sessionNumber}`} className="w-full text-left">
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
@@ -160,17 +140,7 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { ses
             </div>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setImageOpen(true)}
-          data-testid={`button-share-night-${session.sessionNumber}`}
-          className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold hover:bg-secondary"
-        >
-          <ImageIcon className="h-3.5 w-3.5" />
-          Instagram recap
-        </button>
       </div>
     )}
-    {recapPack && <RecapStudio open={imageOpen} onOpenChange={setImageOpen} pack={recapPack} />}
   </article>;
 }
