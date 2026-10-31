@@ -1,14 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 import { parseResolution } from "./night-balance";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   db,
   liveActivityEventComments,
   liveActivityEvents,
   liveSessions,
+  memberships,
+  players,
 } from "@workspace/db";
 import { logger } from "./logger";
-import { syncClosedLiveSessions } from "./club-sessions";
+import { nameKey } from "./club-access";
+import { removeNightsForLiveSession, syncClosedLiveSessions } from "./club-sessions";
+import {
+  canEditEntry,
+  canManageNight,
+  hostOf,
+  LedgerPermissionError,
+  type LedgerActor,
+} from "./ledger-permissions";
 import { clubTimezone } from "./club-settings";
 import {
   calculateLiveLedgerTotals,
@@ -742,7 +752,7 @@ export async function updateLiveActivityEvent(input: {
   eventId: string;
   action: LiveActivityAction;
   amount: number;
-  memberName: string;
+  actor: LedgerActor;
   attributedPlayer?: string;
   comment: string;
 }): Promise<LiveActivitySnapshot> {
@@ -773,13 +783,16 @@ export async function updateLiveActivityEvent(input: {
     if (!lockedSession || lockedSession.status !== "open") {
       throw new Error("Only an open live session can be edited.");
     }
+    if (!canEditEntry(input.actor, hostOf(lockedSession), event.createdBy)) {
+      throw new LedgerPermissionError("Only the person who logged this, the host, or an admin can change it.");
+    }
 
     const playerName = input.attributedPlayer?.trim() || event.memberName;
     await tx.insert(liveActivityEventComments).values({
       eventId: input.eventId,
       action: "edit",
       comment,
-      createdBy: input.memberName,
+      createdBy: input.actor.name,
       createdAt: now,
     });
     await tx
@@ -789,7 +802,7 @@ export async function updateLiveActivityEvent(input: {
         action: input.action,
         amountCents: Math.round(input.amount * 100),
         comment,
-        updatedBy: input.memberName,
+        updatedBy: input.actor.name,
         updatedAt: now,
         revision: event.revision + 1,
         sheetHash: null,
@@ -803,7 +816,7 @@ export async function updateLiveActivityEvent(input: {
 
 export async function deleteLiveActivityEvent(
   eventId: string,
-  memberName: string,
+  actor: LedgerActor,
   comment: string,
   clubId: number,
 ): Promise<LiveActivitySnapshot> {
@@ -830,21 +843,24 @@ export async function deleteLiveActivityEvent(
     if (!lockedSession || lockedSession.status !== "open") {
       throw new Error("Only an open live session can be edited.");
     }
+    if (!canEditEntry(actor, hostOf(lockedSession), event.createdBy)) {
+      throw new LedgerPermissionError("Only the person who logged this, the host, or an admin can change it.");
+    }
 
     await tx.insert(liveActivityEventComments).values({
       eventId,
       action: "delete",
       comment: reason,
-      createdBy: memberName,
+      createdBy: actor.name,
       createdAt: now,
     });
     await tx
       .update(liveActivityEvents)
       .set({
         deletedAt: now,
-        deletedBy: memberName,
+        deletedBy: actor.name,
         comment: reason,
-        updatedBy: memberName,
+        updatedBy: actor.name,
         updatedAt: now,
         revision: event.revision + 1,
         sheetHash: null,
@@ -898,7 +914,7 @@ export async function startLiveSession(memberName: string, clubId: number): Prom
   return getLiveActivitySnapshot(clubId);
 }
 
-export async function endLiveSession(memberName: string, clubId: number): Promise<LiveSessionEndResult> {
+export async function endLiveSession(actor: LedgerActor, clubId: number): Promise<LiveSessionEndResult> {
   const sessionDate = liveLedgerSessionDate(new Date(), await clubTimezone(clubId));
   const result = await db.transaction(async (tx) => {
     let [session] = await tx
@@ -918,6 +934,9 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
         .for("update");
     }
     if (!session) throw new Error("Start the live session before ending it.");
+    if (!canManageNight(actor, hostOf(session))) {
+      throw new LedgerPermissionError("Only the host or an admin can close this night.");
+    }
     if (session.status === "ended") {
       return { session, outcome: "already_closed" as const };
     }
@@ -952,14 +971,14 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
     // A gap would otherwise land on the leaderboard as it is, so someone must say what to do with it first.
     if (totals.balanceStatus === "unbalanced" && !parseResolution(session.balanceResolution)) {
       const gap = (Math.abs(totals.differenceCents) / 100).toFixed(2);
-      throw new Error(`This ledger is out by ${gap}. A club admin needs to choose how to balance it before it closes.`);
+      throw new Error(`This ledger is out by ${gap}. The host or an admin needs to choose how to balance it before it closes.`);
     }
     const closedAt = new Date();
     const [closedSession] = await tx
       .update(liveSessions)
       .set({
         status: "ended",
-        endedBy: memberName,
+        endedBy: actor.name,
         endedAt: closedAt,
         totalBuyInCents: totals.buyInsCents,
         totalCashOutCents: totals.cashOutsCents,
@@ -973,7 +992,7 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
 
   if (result.outcome === "discarded") {
     logger.info(
-      { sessionKey: result.discardedSessionKey, memberName },
+      { sessionKey: result.discardedSessionKey, memberName: actor.name },
       "Empty live session discarded",
     );
   }
@@ -987,4 +1006,97 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
     outcome: result.outcome,
     snapshot: await snapshotForSession(result.session),
   };
+}
+
+const ACTIVE_STATUSES = ["open", "finalizing"] as const;
+
+export type LiveSessionRole = {
+  hostName: string | null;
+  canManage: boolean;
+  status: "open" | "ended" | "none";
+};
+
+export async function liveSessionRole(actor: LedgerActor, clubId: number): Promise<LiveSessionRole> {
+  const [active] = await db
+    .select()
+    .from(liveSessions)
+    .where(and(eq(liveSessions.clubId, clubId), inArray(liveSessions.status, [...ACTIVE_STATUSES])))
+    .orderBy(asc(liveSessions.startedAt))
+    .limit(1);
+  const session = active ?? (await db
+    .select()
+    .from(liveSessions)
+    .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.status, "ended"), isNotNull(liveSessions.endedAt)))
+    .orderBy(desc(liveSessions.endedAt), desc(liveSessions.startedAt))
+    .limit(1))[0];
+  if (!session) return { hostName: null, canManage: false, status: "none" };
+  const hostName = hostOf(session);
+  return {
+    hostName,
+    canManage: canManageNight(actor, hostName),
+    status: active ? "open" : "ended",
+  };
+}
+
+/** Hands the open night to another member. The target has to already belong to the club. */
+export async function setLiveSessionHost(actor: LedgerActor, clubId: number, name: string): Promise<LiveSessionRole> {
+  const key = nameKey(name);
+  if (!key) throw new Error("Choose a member to host this night.");
+  return db.transaction(async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(liveSessions)
+      .where(and(eq(liveSessions.clubId, clubId), inArray(liveSessions.status, [...ACTIVE_STATUSES])))
+      .orderBy(asc(liveSessions.startedAt))
+      .limit(1)
+      .for("update");
+    if (!session) throw new Error("Start a night before handing it over.");
+    if (!canManageNight(actor, hostOf(session))) {
+      throw new LedgerPermissionError("Only the host or an admin can hand this night over.");
+    }
+    const [member] = await tx
+      .select({ displayName: players.displayName })
+      .from(memberships)
+      .innerJoin(players, eq(players.id, memberships.playerId))
+      .where(and(eq(memberships.clubId, clubId), eq(players.clubId, clubId), eq(players.nameKey, key)))
+      .limit(1);
+    if (!member) throw new Error("That person is not a member of this club.");
+    await tx.update(liveSessions).set({ hostName: member.displayName }).where(eq(liveSessions.sessionKey, session.sessionKey));
+    return { hostName: member.displayName, canManage: canManageNight(actor, member.displayName), status: "open" };
+  });
+}
+
+/**
+ * Puts the latest closed night back to open and removes the result it produced,
+ * so closing it again records that night once.
+ */
+export async function reopenLiveSession(actor: LedgerActor, clubId: number): Promise<LiveActivitySnapshot> {
+  const session = await db.transaction(async (tx) => {
+    const active = await tx
+      .select({ id: liveSessions.id })
+      .from(liveSessions)
+      .where(and(eq(liveSessions.clubId, clubId), inArray(liveSessions.status, [...ACTIVE_STATUSES])))
+      .for("update");
+    if (active.length > 0) throw new Error("Close the open night before reopening another.");
+
+    const [ended] = await tx
+      .select()
+      .from(liveSessions)
+      .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.status, "ended"), isNotNull(liveSessions.endedAt)))
+      .orderBy(desc(liveSessions.endedAt), desc(liveSessions.startedAt))
+      .limit(1)
+      .for("update");
+    if (!ended) throw new Error("There is no closed night to reopen.");
+    if (!canManageNight(actor, hostOf(ended))) {
+      throw new LedgerPermissionError("Only the host or an admin can reopen this night.");
+    }
+    await removeNightsForLiveSession(clubId, ended.sessionKey, tx);
+    const [reopened] = await tx
+      .update(liveSessions)
+      .set({ status: "open", endedBy: null, endedAt: null, balanceResolution: null })
+      .where(eq(liveSessions.sessionKey, ended.sessionKey))
+      .returning();
+    return reopened ?? ended;
+  });
+  return snapshotForSession(session);
 }

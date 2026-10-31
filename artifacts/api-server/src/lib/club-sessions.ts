@@ -14,6 +14,7 @@ import { buildClubDashboard, type NightInput } from "./club-dashboard";
 import { nightFingerprint, type ParsedNight } from "./import-parse";
 import { loadTournamentEvents } from "./club-tournaments";
 import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
+import { canManageNight, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Executor = Tx | typeof db;
@@ -170,8 +171,8 @@ export async function syncClosedLiveSessions(clubId: number): Promise<number> {
 }
 
 /** The nights a deleted or reset ledger session produced go with it. */
-export async function removeNightsForLiveSession(clubId: number, sessionKey: string): Promise<void> {
-  await db
+export async function removeNightsForLiveSession(clubId: number, sessionKey: string, executor: Executor = db): Promise<void> {
+  await executor
     .delete(clubSessions)
     .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.liveSessionKey, sessionKey)));
 }
@@ -370,16 +371,20 @@ export async function deleteNight(clubId: number, id: number): Promise<"deleted"
 export async function setLedgerResolution(
   clubId: number,
   resolution: BalanceResolution,
+  actor: LedgerActor,
 ): Promise<{ ok: true; direction: "balanced" | "over" | "under"; cents: number } | { ok: false; error: string }> {
   return db.transaction(async (tx) => {
     const [session] = await tx
-      .select({ key: liveSessions.sessionKey })
+      .select({ key: liveSessions.sessionKey, hostName: liveSessions.hostName, startedBy: liveSessions.startedBy })
       .from(liveSessions)
       .where(and(eq(liveSessions.clubId, clubId), inArray(liveSessions.status, ["open", "finalizing"])))
       .orderBy(desc(liveSessions.startedAt))
       .limit(1)
       .for("update");
     if (!session) return { ok: false as const, error: "There is no open ledger to balance." };
+    if (!canManageNight(actor, hostOf(session))) {
+      throw new LedgerPermissionError("Only the host or an admin can choose how this night balances.");
+    }
 
     const events = await tx
       .select({ name: liveActivityEvents.memberName, action: liveActivityEvents.action, cents: liveActivityEvents.amountCents, deletedAt: liveActivityEvents.deletedAt })
