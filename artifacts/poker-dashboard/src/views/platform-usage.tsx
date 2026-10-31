@@ -34,7 +34,7 @@ const SECTION_LABELS: Record<string, string> = {
   live: "Live",
   months: "Leaderboard",
   "head-to-head": "Head-to-head",
-  players: "Players",
+  players: "Profile",
   guidelines: "Club",
   account: "Me",
 };

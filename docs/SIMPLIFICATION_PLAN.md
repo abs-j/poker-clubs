@@ -1,7 +1,7 @@
 # Simplification plan
 
 Decisions from the design interview (31 Oct 2026). Principle: **simplify; remove or default before adding.**
-Status (31 Oct 2026): all four cuts are built (settings/invites/avatars, Compare and share cards, legacy Monash, and monthly seasons). Next: the ledger work (hosts, bank, settle-up, reopen, past nights), then the structure work.
+Status (31 Oct 2026): the cuts, the ledger, and the structure work are done. Home is the live banner or your summary and last game, plus the profit podium and anything you still owe. The ranking tab is labelled Leaderboard. See `docs/HANDOFF.md` for loose ends that are not part of this plan.
 
 ## How the site is used
 

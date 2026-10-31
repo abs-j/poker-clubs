@@ -81,7 +81,7 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
 
   return (
     <section data-testid="section-players" className="space-y-4">
-      <PageIntro eyebrow={`Player profiles / ${scope === "all" ? "all earnings" : scope === "cash" ? "cash games" : "tournaments"}`} title="Players" description="Search or select a player to see stats for the selected earnings scope and period." count={`${players.length} players in view`} />
+      <PageIntro eyebrow={`Leaderboard / ${scope === "all" ? "all earnings" : scope === "cash" ? "cash games" : "tournaments"}`} title="Profile" description="Search or select a player. Open someone else to see you vs them." count={`${players.length} players in view`} />
       <div className="soft-shadow rounded-2xl border border-border bg-card p-4 sm:p-5">
         <label className="block max-w-xl">
           <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Find a player</span>

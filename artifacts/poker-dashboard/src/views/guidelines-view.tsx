@@ -1,5 +1,7 @@
 import { useClubSettings } from "@/components/club-settings-context";
+import { ClubBuzz } from "@/components/club-buzz";
 import { ClubHome } from "@/components/club-panel";
+import type { ChartSession } from "@/lib/club-charts";
 import { PageIntro } from "./shared";
 
 /** A club's own rules: paragraphs, "# headings" and "- bullets" from plain text. */
@@ -41,11 +43,12 @@ function ClubGuidelines({ text }: { text: string | null }) {
   );
 }
 
-export function GuidelinesView() {
+export function GuidelinesView({ sessions, viewer, onOpenPlayer }: { sessions: ChartSession[]; viewer: string; onOpenPlayer: (name: string) => void }) {
   const { settings } = useClubSettings();
   return (
     <div className="space-y-4">
       <ClubGuidelines text={settings.guidelines} />
+      <ClubBuzz sessions={sessions} viewer={viewer} onOpenPlayer={onOpenPlayer} />
       <ClubHome />
     </div>
   );
