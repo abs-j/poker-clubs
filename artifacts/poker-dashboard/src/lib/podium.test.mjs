@@ -18,14 +18,14 @@ test("podium copes with fewer than three players", () => {
 });
 
 test("initials use first and last word", () => {
-  assert.equal(initialsOf("Abhay"), "AB");
-  assert.equal(initialsOf("Ben Ch"), "BC");
-  assert.equal(initialsOf("  jason   v "), "JV");
+  assert.equal(initialsOf("Ada"), "AD");
+  assert.equal(initialsOf("Finn Ch"), "FC");
+  assert.equal(initialsOf("  jules   v "), "JV");
   assert.equal(initialsOf(""), "?");
 });
 
 test("avatar colours are stable per name and ignore case", () => {
-  assert.deepEqual(avatarHues("Abhay"), avatarHues("  abhay "));
+  assert.deepEqual(avatarHues("Ada"), avatarHues("  ada "));
   const [a, b] = avatarHues("Someone");
   assert.ok(a >= 180 && b <= 360);
 });
@@ -34,8 +34,8 @@ import { automaticPresetFor } from "./podium.ts";
 
 test("automatic pictures are stable per name and spread across the set", () => {
   const presets = ["fish", "shark", "whale", "octopus", "dolphin", "crab", "turtle", "jellyfish"];
-  assert.equal(automaticPresetFor("Abhay", presets), automaticPresetFor("  abhay ", presets));
-  const names = ["Ranuka", "Hayley", "Abhay", "Jason", "Ben Ch", "Shiv", "Manas", "Alfie", "Kaustav", "Vivan", "Toby", "Raju", "Shanaa", "Sadeesha"];
+  assert.equal(automaticPresetFor("Ada", presets), automaticPresetFor("  ada ", presets));
+  const names = ["Remy", "Harper", "Ada", "Jules", "Finn Ch", "Sage", "Milo", "Arlo", "Kai", "Vera", "Theo", "Rhys", "Shea", "Sloane"];
   const used = new Set(names.map((name) => automaticPresetFor(name, presets)));
   assert.ok(used.size >= 5, `only ${used.size} different pictures for ${names.length} players`);
 });

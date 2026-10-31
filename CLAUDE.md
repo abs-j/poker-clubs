@@ -17,9 +17,8 @@ history exists only on the local branch `full-history` (it contains Monash scree
 1. **Deploy on Replit**: done. Live at https://pokerclubs.abhayjhade.com (Autoscale). Still to do: run the launch checklist in
    `docs/DEPLOY.md` end to end (restore drill, `LIVE_SITE_URL`).
 2. **Resend**: live site reports email on. Confirm real delivery (`docs/EMAIL_SETUP.md`) and `VITE_CONTACT_EMAIL`.
-3. **Before making the repo public:** replace real Monash member first names in the tests/mockup
-   (`import-parse.test.mjs`, `podium.test.mjs`, `mockup-sandbox/.../StoryFirst.tsx`). The legacy Monash code is gone.
-   Have the Terms/Privacy text (`artifacts/poker-dashboard/src/views/legal.tsx`) reviewed.
+3. **Before making the repo public:** real Monash member first names in the tests/mockup are replaced (done). The legacy
+   Monash code is gone. Have the Terms/Privacy text (`artifacts/poker-dashboard/src/views/legal.tsx`) reviewed.
 4. Nice to have: avatars out of Postgres, a public landing page, edit a recorded night, tournament CSV import/export.
 
 ## Run it

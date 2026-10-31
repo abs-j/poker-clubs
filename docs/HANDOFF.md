@@ -72,6 +72,6 @@ Split My account into Me and Club admin (Club tab gets an Admin section: People,
 so usage is visible only to the platform owner; Leaderboard tab label and Home content per the plan.
 
 ## Known loose ends
-- Real member first names remain in `artifacts/api-server/src/lib/import-parse.test.mjs`, `artifacts/poker-dashboard/src/lib/podium.test.mjs`, `artifacts/mockup-sandbox/.../StoryFirst.tsx`; replace before making the repo public.
+- Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
 - Not done: edit a recorded night (the reopen step covers it), jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres.
