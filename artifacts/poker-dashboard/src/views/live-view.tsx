@@ -5,7 +5,7 @@ import { buildLiveLedgerUrl } from "@/lib/live-ledger-links";
 import { copyTextToClipboard, formatLivePlayerSummaryRows, livePlayerNetProfit } from "@/lib/live-player-summary";
 import { ArrowDown, ArrowUp, Activity, Check, ChevronDown, CircleDollarSign, Copy, Download, MoreHorizontal, Pencil, Printer, QrCode, Plus, Trash2, X } from "lucide-react";
 import { PageIntro, formatCurrency, formatDate, signedCurrency } from "./shared";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +13,13 @@ import { clubFileSlug, clubTimeZone } from "@/lib/club-format";
 import { accountApi, type BalanceChoice } from "@/lib/account-api";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
+const LIVE_ROLE_KEY = ["live-session-role"];
+
+const personKey = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+const samePerson = (a: string, b: string) => {
+  const left = personKey(a);
+  return left.length > 0 && left === personKey(b);
+};
 
 type LiveSessionViewProps = { memberName: string; availablePlayers: string[] };
 
@@ -23,7 +30,11 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   // What to do with a gap when closing: money left on the table goes to the jackpot; money paid out beyond it comes off players.
   const [balanceMode, setBalanceMode] = useState<BalanceChoice["mode"] | null>(null);
   const [balancePlayer, setBalancePlayer] = useState("");
-  const [canBalance, setCanBalance] = useState<boolean | null>(null);
+  const [handOverOpen, setHandOverOpen] = useState(false);
+  const [hostChoice, setHostChoice] = useState("");
+  const [hostOptions, setHostOptions] = useState<string[]>([]);
+  const [handingOver, setHandingOver] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [jackpot, setJackpot] = useState<{ total: number; nights: number } | null>(null);
   const liveQuery = useGetPokerLiveActivity({
     query: {
@@ -47,6 +58,11 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const deleteMutation = useDeletePokerLiveActivity();
   const startMutation = useStartPokerLiveSession();
   const endMutation = useEndPokerLiveSession();
+  const roleQuery = useQuery({
+    queryKey: LIVE_ROLE_KEY,
+    queryFn: () => accountApi.liveSessionRole(),
+    refetchInterval: (query) => (query.state.data?.status === "open" ? 5_000 : 15_000),
+  });
   const [action, setAction] = useState<LiveActivityInputAction>("buy_in");
   const [amount, setAmount] = useState("");
   const [comment, setComment] = useState("");
@@ -71,7 +87,10 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   );
   const isSaving =
     createMutation.isPending || updateMutation.isPending || deleteMutation.isPending ||
-    startMutation.isPending || endMutation.isPending;
+    startMutation.isPending || endMutation.isPending || handingOver || reopening;
+  const canManage = roleQuery.data?.canManage === true;
+  const hostLabel = roleQuery.data?.hostName ?? (snapshot && snapshot.sessionStatus !== "not_started" ? snapshot.startedBy : null);
+  const refreshRole = () => { void queryClient.invalidateQueries({ queryKey: LIVE_ROLE_KEY }); };
   const isOpen = snapshot?.sessionStatus === "open";
   const playerOptions = [...new Set([memberName, ...availablePlayers].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
@@ -202,6 +221,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     startMutation.mutate(undefined, {
       onSuccess: (next) => {
         queryClient.setQueryData(liveQuery.queryKey, next);
+        refreshRole();
       },
       onError: (error) => setFormError(apiErrorMessage(error)),
     });
@@ -243,7 +263,48 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   };
 
   const end = () => {
-    if (snapshot) setEndPromptOpen(true);
+    if (snapshot && canManage) setEndPromptOpen(true);
+  };
+
+  const openHandOver = () => {
+    setHandOverOpen(true);
+    setFormError("");
+    accountApi.members()
+      .then((result) => {
+        const names = result.members.filter((member) => member.role).map((member) => member.name).sort((a, b) => a.localeCompare(b));
+        setHostOptions(names);
+        setHostChoice((current) => current || names.find((name) => samePerson(name, hostLabel ?? "")) || names[0] || "");
+      })
+      .catch((error) => setFormError(apiErrorMessage(error)));
+  };
+
+  const confirmHandOver = (event: FormEvent) => {
+    event.preventDefault();
+    if (!hostChoice) return;
+    setHandingOver(true);
+    setFormError("");
+    accountApi.setLiveHost(hostChoice)
+      .then((role) => {
+        queryClient.setQueryData(LIVE_ROLE_KEY, role);
+        setHandOverOpen(false);
+        setSessionNotice(`${role.hostName ?? hostChoice} is now hosting this night.`);
+      })
+      .catch((error) => setFormError(apiErrorMessage(error)))
+      .finally(() => setHandingOver(false));
+  };
+
+  const reopen = () => {
+    setReopening(true);
+    setFormError("");
+    setSessionNotice("");
+    accountApi.reopenLiveSession()
+      .then(() => Promise.all([
+        queryClient.invalidateQueries({ queryKey: liveQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: LIVE_ROLE_KEY }),
+      ]))
+      .then(() => setSessionNotice("Night reopened. Close it again when the ledger is right."))
+      .catch((error) => setFormError(apiErrorMessage(error)))
+      .finally(() => setReopening(false));
   };
 
   const confirmEnd = async () => {
@@ -270,6 +331,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     endMutation.mutate(undefined, {
       onSuccess: (result) => {
         queryClient.setQueryData(liveQuery.queryKey, result.snapshot);
+        refreshRole();
         const notice = result.outcome === "discarded"
           ? "Empty session discarded. It will not appear in ledger history."
           : result.outcome === "already_closed"
@@ -325,10 +387,6 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     if (!endPromptOpen || !needsChoice) return;
     setBalanceMode(ledgerIsOver ? "jackpot" : null);
     setBalancePlayer("");
-    let cancelled = false;
-    setCanBalance(null);
-    accountApi.me().then((me) => { if (!cancelled) setCanBalance(me.clubs.find((club) => club.slug === me.active)?.role !== "member"); }).catch(() => { if (!cancelled) setCanBalance(false); });
-    return () => { cancelled = true; };
   }, [endPromptOpen, needsChoice, ledgerIsOver]);
 
   if (liveQuery.isLoading) {
@@ -415,20 +473,37 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
               {snapshot.sessionStatus === "ended"
                 ? "Saved to the club's recorded nights."
                 : snapshot.sessionStatus === "open"
-                  ? `${snapshot.startedBy ?? "A member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}${snapshot.hasRecordedActivity ? "" : " · empty session"}`
+                  ? `${snapshot.startedBy ?? "A member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}${snapshot.hasRecordedActivity || !canManage ? "" : " · empty session"}`
                   : "Start when the game begins."}
             </span>
             <span className="hidden sm:inline">
               {snapshot.sessionStatus === "ended"
                 ? `Closed by ${snapshot.endedBy ?? "a member"}. This ledger is saved separately and is not added to historical results.`
                 : snapshot.sessionStatus === "open"
-                  ? `Started by ${snapshot.startedBy ?? "a member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}.${snapshot.hasRecordedActivity ? "" : " This session has no activity rows and can be discarded."}`
+                  ? `Started by ${snapshot.startedBy ?? "a member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}.${snapshot.hasRecordedActivity || !canManage ? "" : " This session has no activity rows and can be discarded."}`
                   : "Start a ledger when the game begins."}
             </span>
           </p>
+          {hostLabel && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-host">Host: {hostLabel}</p>}
+          {isOpen && roleQuery.isSuccess && !canManage && hostLabel && <p className="mt-1 text-[11px] leading-4 text-muted-foreground sm:text-xs" data-testid="text-live-close-locked">Only {hostLabel} or an admin can close this night.</p>}
+          {canManage && isOpen && !handOverOpen && <button type="button" onClick={openHandOver} data-testid="button-hand-over-live" className="mt-2 text-xs font-semibold text-primary">Hand over</button>}
+          {canManage && isOpen && handOverOpen && <form onSubmit={confirmHandOver} className="mt-2 flex flex-wrap items-end gap-2" data-testid="form-hand-over-live">
+            <label className="min-w-[8rem] flex-1">
+              <span className="mb-1 block text-[11px] font-semibold text-muted-foreground">New host</span>
+              <select value={hostChoice} onChange={(event) => setHostChoice(event.target.value)} data-testid="select-live-host" className="h-9 w-full rounded-lg border border-border bg-background px-2 text-xs">
+                {hostOptions.length === 0 && <option value="">Loading members…</option>}
+                {hostOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            <button type="submit" disabled={handingOver || !hostChoice} data-testid="button-confirm-hand-over" className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60">{handingOver ? "Saving…" : "Make host"}</button>
+            <button type="button" onClick={() => setHandOverOpen(false)} className="h-9 rounded-lg border border-border px-3 text-xs font-semibold">Cancel</button>
+          </form>}
         </div>
-        {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <button onClick={start} disabled={isSaving} aria-label={snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"} data-testid="button-start-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm"><Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><span className="sm:hidden">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "New session" : "Start"}</span><span className="hidden sm:inline">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"}</span></button>}
-        {snapshot.sessionStatus === "open" && <button onClick={end} disabled={isSaving} aria-label={snapshot.hasRecordedActivity ? "End session" : "Discard empty session"} data-testid="button-end-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-destructive/35 bg-destructive/10 px-2.5 text-[11px] font-semibold text-destructive disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">{snapshot.hasRecordedActivity ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}<span className="sm:hidden">{endMutation.isPending ? "Saving…" : snapshot.hasRecordedActivity ? "End" : "Discard"}</span><span className="hidden sm:inline">{endMutation.isPending ? snapshot.hasRecordedActivity ? "Ending…" : "Discarding…" : snapshot.hasRecordedActivity ? "End session" : "Discard empty session"}</span></button>}
+        <div className="flex flex-col items-end gap-2">
+          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <button onClick={start} disabled={isSaving} aria-label={snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"} data-testid="button-start-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm"><Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><span className="sm:hidden">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "New session" : "Start"}</span><span className="hidden sm:inline">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"}</span></button>}
+          {isOpen && canManage && <button onClick={end} disabled={isSaving} aria-label={snapshot.hasRecordedActivity ? "End session" : "Discard empty session"} data-testid="button-end-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-destructive/35 bg-destructive/10 px-2.5 text-[11px] font-semibold text-destructive disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">{snapshot.hasRecordedActivity ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}<span className="sm:hidden">{endMutation.isPending ? "Saving…" : snapshot.hasRecordedActivity ? "End" : "Discard"}</span><span className="hidden sm:inline">{endMutation.isPending ? snapshot.hasRecordedActivity ? "Ending…" : "Discarding…" : snapshot.hasRecordedActivity ? "End session" : "Discard empty session"}</span></button>}
+          {roleQuery.data?.status === "ended" && canManage && <button type="button" onClick={reopen} disabled={isSaving} data-testid="button-reopen-live-session" className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-border bg-background px-2.5 text-[11px] font-semibold disabled:opacity-60 sm:h-11 sm:px-5 sm:text-sm">{reopening ? "Reopening…" : "Reopen"}</button>}
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
@@ -529,7 +604,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"><span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-semibold">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></span>
           </summary>
           <div className="border-t border-border">
-            {entries.length > 0 ? <div className="divide-y divide-border/70">{entries.map((entry) => <LiveActivityRow key={entry.eventId} entry={entry} onEdit={() => beginEdit(entry)} onDelete={() => remove(entry)} disabled={isSaving || !isOpen} />)}</div> : <div className="flex min-h-40 flex-col items-center justify-center px-5 py-8 text-center sm:min-h-56"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><CircleDollarSign className="h-5 w-5" /></div><p className="mt-4 text-sm font-semibold">No activity yet</p><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{isOpen ? "Add the first buy-in to start tonight’s session ledger." : "Start the session to create the first ledger entry."}</p></div>}
+            {entries.length > 0 ? <div className="divide-y divide-border/70">{entries.map((entry) => <LiveActivityRow key={entry.eventId} entry={entry} onEdit={() => beginEdit(entry)} onDelete={() => remove(entry)} disabled={isSaving || !isOpen} canChange={isOpen && (canManage || samePerson(entry.createdBy, memberName))} />)}</div> : <div className="flex min-h-40 flex-col items-center justify-center px-5 py-8 text-center sm:min-h-56"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary"><CircleDollarSign className="h-5 w-5" /></div><p className="mt-4 text-sm font-semibold">No activity yet</p><p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">{isOpen ? "Add the first buy-in to start tonight’s session ledger." : "Start the session to create the first ledger entry."}</p></div>}
           </div>
         </details>
       </div>
@@ -597,8 +672,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
                     <p className={Math.abs(balance) < 0.01 ? "text-chart-1" : "font-semibold text-amber-700 dark:text-amber-300"}>
                       {Math.abs(balance) < 0.01 ? "The ledger is balanced." : ledgerIsOver ? `${formatCurrency(Math.abs(balance))} more went in than came out.` : `${formatCurrency(Math.abs(balance))} more came out than went in.`}
                     </p>
-                    {needsChoice && canBalance === false && <p data-testid="text-balance-admin-only" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300">A club admin needs to close this ledger and choose how to balance it. Check the entries first; you may have missed a cash-out.</p>}
-                    {needsChoice && canBalance !== false && <fieldset className="space-y-2 rounded-xl border border-border p-3 text-left" data-testid="fieldset-balance">
+                    {needsChoice && <fieldset className="space-y-2 rounded-xl border border-border p-3 text-left" data-testid="fieldset-balance">
                       <legend className="px-1 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">How should it balance?</legend>
                       {ledgerIsOver ? <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "jackpot"} onChange={() => setBalanceMode("jackpot")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-jackpot" /><span>Add {formatCurrency(gapCents / 100)} to the bad beat jackpot</span></label> : <>
                         <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "player"} onChange={() => setBalanceMode("player")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-player" /><span>Take {formatCurrency(gapCents / 100)} off one player</span></label>
@@ -618,7 +692,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep playing</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmEnd()} disabled={needsChoice && (canBalance !== true || balanceMode === null || (balanceMode === "player" && !balancePlayer))} data-testid="button-confirm-end-live-session">
+            <AlertDialogAction onClick={() => void confirmEnd()} disabled={needsChoice && (balanceMode === null || (balanceMode === "player" && !balancePlayer))} data-testid="button-confirm-end-live-session">
               {snapshot.hasRecordedActivity ? "Close ledger" : "Discard session"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -716,7 +790,7 @@ function TonightBoard({ summaries, viewer, closed }: { summaries: LivePlayerSumm
   );
 }
 
-function LiveActivityRow({ entry, onEdit, onDelete, disabled, readOnly = false }: { entry: LiveActivityEntry; onEdit: () => void; onDelete: () => void; disabled: boolean; readOnly?: boolean }) {
+function LiveActivityRow({ entry, onEdit, onDelete, disabled, readOnly = false, canChange = false }: { entry: LiveActivityEntry; onEdit: () => void; onDelete: () => void; disabled: boolean; readOnly?: boolean; canChange?: boolean }) {
   const isBuyIn = entry.action === "buy_in";
   const auditComments = entry.auditComments ?? [];
   return <div className={`flex flex-col gap-3 border-l-4 px-3 py-4 sm:flex-row sm:items-center sm:justify-between ${isBuyIn ? "border-chart-1/70 bg-chart-1/[0.035]" : "border-destructive/65 bg-destructive/[0.035]"}`}>
@@ -740,7 +814,7 @@ function LiveActivityRow({ entry, onEdit, onDelete, disabled, readOnly = false }
     </div>
     <div className="flex items-center justify-between gap-3 pl-12 sm:justify-end sm:pl-0">
       <p className={`font-mono text-sm font-bold ${isBuyIn ? "text-chart-1" : "text-destructive"}`}>{isBuyIn ? "+" : "−"}{formatCurrency(entry.amount)}</p>
-      {!readOnly && <div className="flex items-center gap-1">
+      {!readOnly && canChange && <div className="flex items-center gap-1">
         <button onClick={onEdit} disabled={disabled} aria-label={`Edit ${entry.action}`} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
         <button onClick={onDelete} disabled={disabled} aria-label={`Delete ${entry.action}`} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>}
