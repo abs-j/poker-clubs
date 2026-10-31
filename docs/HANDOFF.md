@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run with the Leaderboard label and Home content: typecheck clean, API 141 tests, dashboard 99 tests, smoke 56/56.
+State as of 31 Oct 2026. Last local run with jackpot rows and tournament CSV export: typecheck clean, API 148 tests, dashboard 99 tests, smoke 56/56.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -127,4 +127,5 @@ The simplification plan has no further steps.
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
-- Not done, and not part of the simplification plan: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres, a public landing page. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3), the platform usage page (S4), and the Leaderboard label and Home content (S5) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only.
+- Done, no schema change: the cash CSV (`GET /api/clubs/current/export.csv`, club owner or admin, same as before) includes jackpot rows. A surplus is a `Bad Beat Jackpot` row on that night (buy-in 0, cash-out the amount that went in). A payout is its own row, `Bad Beat Jackpot payout to <name>` (buy-in the amount that left, cash-out 0). Re-importing the file still records the players and skips those rows. Tournament log and results download from Club admin > Setup (`GET /api/clubs/current/tournaments/export/log.csv` and `.../results.csv`) and import back through the existing tournament CSV import.
+- Not done, and not part of the simplification plan: avatars still stored in Postgres, a public landing page. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3), the platform usage page (S4), and the Leaderboard label and Home content (S5) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only.

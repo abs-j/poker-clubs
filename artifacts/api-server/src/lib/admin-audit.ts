@@ -23,6 +23,7 @@ export type AdminAuditAction =
   | "jackpot_paid"
   | "settings_updated"
   | "results_exported"
+  | "tournaments_exported"
   | "players_merged";
 
 /** Never throws: a logging problem must not block the action being recorded. */

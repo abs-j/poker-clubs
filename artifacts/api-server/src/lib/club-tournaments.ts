@@ -45,8 +45,8 @@ export async function recordTournament(clubId: number, createdBy: string | null,
   });
 }
 
-/** Every tournament the club ran, fully worked out, oldest first. */
-export async function loadTournamentEvents(clubId: number): Promise<TournamentEvent[]> {
+/** Every tournament the club ran, as it was entered, oldest first. */
+export async function loadTournamentInputs(clubId: number): Promise<TournamentInput[]> {
   const rows = await db
     .select({
       id: clubTournaments.id,
@@ -72,7 +72,7 @@ export async function loadTournamentEvents(clubId: number): Promise<TournamentEv
     })
     .from(clubTournaments)
     .innerJoin(tournamentResults, eq(tournamentResults.tournamentId, clubTournaments.id))
-    .innerJoin(players, eq(players.id, tournamentResults.playerId))
+    .innerJoin(players, and(eq(players.id, tournamentResults.playerId), eq(players.clubId, clubId)))
     .where(eq(clubTournaments.clubId, clubId))
     .orderBy(asc(clubTournaments.eventDate), asc(clubTournaments.id), asc(tournamentResults.id));
 
@@ -103,7 +103,12 @@ export async function loadTournamentEvents(clubId: number): Promise<TournamentEv
     });
     inputs.set(row.id, input);
   }
-  return [...inputs.values()].map(buildTournamentEvent);
+  return [...inputs.values()];
+}
+
+/** Every tournament the club ran, fully worked out, oldest first. */
+export async function loadTournamentEvents(clubId: number): Promise<TournamentEvent[]> {
+  return (await loadTournamentInputs(clubId)).map(buildTournamentEvent);
 }
 
 export async function listTournaments(clubId: number) {

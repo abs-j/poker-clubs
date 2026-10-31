@@ -126,6 +126,20 @@ test("a jackpot row that balances the night is not reported as a gap", () => {
   assert.ok(!result.warnings.some((w) => w.includes("differ by")));
 });
 
+test("a jackpot payout row is skipped and does not change the night's balance", () => {
+  const text = [
+    "Date,Player,Buy-in,Cash-out",
+    "2026-10-06,Sam,20,15",
+    ",Bad Beat Jackpot,0,5",
+    "2026-10-06,Bad Beat Jackpot payout to Sam,1.50,0",
+    "2026-10-07,Bad Beat Jackpot payout to Al,2,0",
+  ].join("\n");
+  const result = parseHistory(text);
+  assert.deepEqual(result.nights, [{ date: "2026-10-06", players: [{ name: "Sam", buyIn: 20, cashOut: 15 }] }]);
+  assert.ok(!result.warnings.some((warning) => warning.includes("differ by")));
+  assert.ok(result.warnings.some((warning) => warning.includes("Bad Beat Jackpot payout to Al")));
+});
+
 test("a night that is out by more than its jackpot row still warns, by the remaining amount", () => {
   const text = "Date,Player,Buy-in,Cash-out\n2026-10-06,Sam,20,10\n,Al,10,7.75\n,Bad Beat Jackpot,0,7.25";
   const result = parseHistory(text);

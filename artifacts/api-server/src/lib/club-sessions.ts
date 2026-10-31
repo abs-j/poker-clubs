@@ -19,6 +19,8 @@ import { loadTournamentEvents } from "./club-tournaments";
 import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
 import { payoutCents, remainingJackpotCents } from "./jackpot";
 import { canManageNight, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
+import { liveLedgerSessionDate } from "./live-ledger-utils";
+import type { JackpotPayoutExport } from "./export-csv";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Executor = Tx | typeof db;
@@ -185,24 +187,25 @@ export async function removeLiveNights(clubId: number): Promise<void> {
   await db.delete(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.source, "live")));
 }
 
-async function loadNights(clubId: number): Promise<Array<NightInput & { id: number }>> {
+async function loadNights(clubId: number): Promise<Array<NightInput & { id: number; jackpot: number }>> {
   const rows = await db
     .select({
       id: clubSessions.id,
       date: clubSessions.sessionDate,
+      jackpotCents: clubSessions.jackpotCents,
       name: players.displayName,
       buyInCents: sessionResults.buyInCents,
       cashOutCents: sessionResults.cashOutCents,
     })
     .from(clubSessions)
     .innerJoin(sessionResults, eq(sessionResults.sessionId, clubSessions.id))
-    .innerJoin(players, eq(players.id, sessionResults.playerId))
+    .innerJoin(players, and(eq(players.id, sessionResults.playerId), eq(players.clubId, clubId)))
     .where(eq(clubSessions.clubId, clubId))
     .orderBy(asc(clubSessions.sessionDate), asc(clubSessions.id), asc(sessionResults.id));
 
-  const nights = new Map<number, NightInput & { id: number }>();
+  const nights = new Map<number, NightInput & { id: number; jackpot: number }>();
   for (const row of rows) {
-    const night = nights.get(row.id) ?? { id: row.id, date: row.date, players: [] };
+    const night = nights.get(row.id) ?? { id: row.id, date: row.date, players: [], jackpot: toDollars(row.jackpotCents) };
     night.players.push({ name: row.name, buyIn: toDollars(row.buyInCents), cashOut: toDollars(row.cashOutCents) });
     nights.set(row.id, night);
   }
@@ -216,10 +219,27 @@ export async function loadClubDashboard(clubId: number, title: string) {
   return buildClubDashboard({ title, nights, tournaments: events });
 }
 
-/** Every recorded night, oldest first, for the CSV export. */
-export async function loadNightsForExport(clubId: number): Promise<NightInput[]> {
+/** Every recorded night, oldest first, with the surplus that went into the jackpot. */
+export async function loadNightsForExport(clubId: number): Promise<Array<NightInput & { jackpot: number }>> {
   await syncClosedLiveSessions(clubId);
-  return (await loadNights(clubId)).map(({ date, players }) => ({ date, players }));
+  return (await loadNights(clubId)).map(({ date, players, jackpot }) => ({ date, players, jackpot }));
+}
+
+/** Payouts out of the jackpot, oldest first. The date is the club's calendar day. */
+export async function loadJackpotPayoutsForExport(clubId: number, timeZone: string): Promise<JackpotPayoutExport[]> {
+  const rows = await db
+    .select({
+      name: players.displayName,
+      cents: jackpotPayouts.cents,
+      at: jackpotPayouts.paidAt,
+    })
+    .from(jackpotPayouts)
+    .innerJoin(players, and(eq(players.id, jackpotPayouts.playerId), eq(players.clubId, clubId)))
+    .where(eq(jackpotPayouts.clubId, clubId))
+    .orderBy(asc(jackpotPayouts.paidAt), asc(jackpotPayouts.id));
+  return rows
+    .filter((row) => row.cents > 0)
+    .map((row) => ({ date: liveLedgerSessionDate(row.at, timeZone), name: row.name, amount: toDollars(row.cents) }));
 }
 
 export type ImportPreview = {
