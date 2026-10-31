@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, type AuthSession } from "../lib/auth";
 import { isClubAdmin } from "../lib/club-access";
 import { LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
+import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, listTournaments, previewTournamentImport, recordTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
@@ -155,6 +156,73 @@ router.put("/clubs/current/ledger/resolution", requireMemberSession, async (req,
 /** The club's bad beat jackpot so far: surplus from balanced nights. */
 router.get("/clubs/current/jackpot", requireMemberSession, async (_req, res): Promise<void> => {
   res.json(await clubJackpot(memberClubId(res)));
+});
+
+/** What the viewer still owes or is owed, and how settled each recent night is. */
+router.get("/clubs/current/settle-up", requireMemberSession, async (_req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  res.json(await loadSettleUp(memberClubId(res), actor.name));
+});
+
+function nightIdParam(value: string): number | null {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** Who owes and is owed on one night, and who has settled. */
+router.get("/clubs/current/nights/:id/settlement", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  const id = nightIdParam(String(req.params.id));
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const settlement = id === null ? null : await getNightSettlement(memberClubId(res), id, actor);
+  if (!settlement) {
+    res.status(404).json({ error: "That night has no settle-up." });
+    return;
+  }
+  res.json(settlement);
+});
+
+/** Ticks or unticks a player as settled: { name, settled } for one person, { all: true, settled } for everyone. */
+router.put("/clubs/current/nights/:id/settlement", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  const id = nightIdParam(String(req.params.id));
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const body = (req.body ?? {}) as { name?: unknown; all?: unknown; settled?: unknown };
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (typeof body.settled !== "boolean" || (body.all !== true && (!name || name.length > 80))) {
+    res.status(400).json({ error: "Choose who to tick off." });
+    return;
+  }
+  try {
+    const settlement = id === null
+      ? null
+      : await changeSettled(memberClubId(res), id, actor, body.all === true ? { all: true, settled: body.settled } : { name, settled: body.settled });
+    if (!settlement) {
+      res.status(404).json({ error: "That night has no settle-up." });
+      return;
+    }
+    res.json(settlement);
+  } catch (error) {
+    if (error instanceof LedgerPermissionError) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    if (error instanceof Error && error.message.includes("nothing to settle")) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 router.get("/clubs/current/sessions", requireAdminSession, async (_req, res): Promise<void> => {

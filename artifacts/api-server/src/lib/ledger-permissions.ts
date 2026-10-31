@@ -33,3 +33,8 @@ export function canManageNight(actor: LedgerActor, hostName: string): boolean {
 export function canEditEntry(actor: LedgerActor, hostName: string, createdBy: string): boolean {
   return canManageNight(actor, hostName) || samePerson(actor.name, createdBy);
 }
+
+/** Tick or untick who has settled: the host, the bank, or an admin. */
+export function canSettle(actor: LedgerActor, hostName: string, bankName: string | null | undefined): boolean {
+  return canManageNight(actor, hostName) || (!!bankName && samePerson(actor.name, bankName));
+}

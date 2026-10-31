@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getPokerDashboard, getGetPokerLiveActivityQueryKey, useGetPokerDashboard, useGetPokerLiveActivity } from "@workspace/api-client-react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HomeOverview } from "@/components/home-overview";
+import { SettleUpCard } from "@/components/settle-up";
 import { BottomTabBar, PlayersSubnav, TopTabs } from "@/components/app-nav";
 import { FilterBar } from "@/components/filter-bar";
 import { MyNightCard } from "@/components/my-night-card";
@@ -591,7 +592,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                   />
                 )}
                 <HomeOverview
-                  afterHero={<MyNightCard sessions={homeSessions} viewer={memberName} standing={myStanding} />}
+                  afterHero={<div className="space-y-4"><SettleUpCard onOpenSession={openGame} /><MyNightCard sessions={homeSessions} viewer={memberName} standing={myStanding} /></div>}
                   memberName={memberName}
                   standings={homePlayers}
                   cashPlayers={players}

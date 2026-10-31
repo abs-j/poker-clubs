@@ -164,6 +164,29 @@ export const sessionResults = pgTable(
   ],
 );
 
+/** A player who has settled up their result for a night. No row means the player still owes or is still owed. */
+export const nightSettlements = pgTable(
+  "night_settlements",
+  {
+    id: serial("id").primaryKey(),
+    clubId: integer("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    clubSessionId: integer("club_session_id")
+      .notNull()
+      .references(() => clubSessions.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    settledAt: timestamp("settled_at", { withTimezone: true }).defaultNow().notNull(),
+    settledBy: text("settled_by").notNull(),
+  },
+  (table) => [
+    uniqueIndex("night_settlements_session_player_idx").on(table.clubSessionId, table.playerId),
+    index("night_settlements_club_id_idx").on(table.clubId),
+  ],
+);
+
 /**
  * A tournament a club ran. Only what was entered is stored (places, entries, knockouts and any
  * payouts); prize pools, returns and profit are worked out when the dashboard is built.
