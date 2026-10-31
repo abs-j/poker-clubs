@@ -319,45 +319,44 @@ export function badgesFor(map: Map<string, Badge[]>, playerName: string): Badge[
 export type SeasonStanding = { name: string; net: number; games: number; wins: number };
 
 export type Season = {
-  /** e.g. "Q4 2026" */
+  /** e.g. "Oct 2026" */
   label: string;
-  /** Calendar quarter, e.g. "2026-Q4" */
+  /** Calendar month, e.g. "2026-10" */
   key: string;
   from: string;
   to: string;
   games: number;
   standings: SeasonStanding[];
-  /** The leader. Null when nobody has played in the quarter. */
+  /** The leader. Null when nobody has played in the month. */
   leader: SeasonStanding | null;
   mostWins: SeasonStanding | null;
   mostGames: SeasonStanding | null;
   /** Gap to second place, for "leads by $x" lines. */
   lead: number | null;
-  /** True once the quarter has ended (the latest game is in a later quarter). */
+  /** True once the month has ended (the latest game is in a later month). */
   closed: boolean;
 };
 
-export function quarterKey(date: string) {
-  const year = date.slice(0, 4);
-  const month = Number(date.slice(5, 7));
-  return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
+export function monthKey(date: string) {
+  return date.slice(0, 7);
 }
 
-const quarterLabel = (key: string) => `${key.slice(5)} ${key.slice(0, 4)}`;
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const monthLabelOf = (key: string) => `${SHORT_MONTHS[Number(key.slice(5, 7)) - 1] ?? key.slice(5)} ${key.slice(0, 4)}`;
 
 /**
- * The season is the calendar quarter of the latest game, so "Player of the Season" always
- * has someone to show. `quarter` picks a different one.
+ * The season is the calendar month of the latest game, so "Player of the Season" always
+ * has someone to show. `month` picks a different one.
  */
-export function buildSeason(sessions: ChartSession[], quarter?: string): Season | null {
+export function buildSeason(sessions: ChartSession[], month?: string): Season | null {
   const ordered = sortSessions(sessions);
   if (!ordered.length) return null;
-  const key = quarter ?? quarterKey(ordered[ordered.length - 1].date);
-  const inQuarter = ordered.filter((session) => quarterKey(session.date) === key);
-  if (!inQuarter.length) return null;
+  const key = month ?? monthKey(ordered[ordered.length - 1].date);
+  const inMonth = ordered.filter((session) => monthKey(session.date) === key);
+  if (!inMonth.length) return null;
 
   const wins = new Map<string, number>();
-  for (const session of inQuarter) {
+  for (const session of inMonth) {
     const real = session.players.filter((record) => isRealPlayer(record.player));
     if (!real.length) continue;
     const top = Math.max(...real.map((record) => record.net));
@@ -370,7 +369,7 @@ export function buildSeason(sessions: ChartSession[], quarter?: string): Season 
     }
   }
 
-  const standings = buildPlayerTotals(inQuarter).map((row) => ({
+  const standings = buildPlayerTotals(inMonth).map((row) => ({
     name: row.name,
     net: row.net,
     games: row.games,
@@ -381,13 +380,13 @@ export function buildSeason(sessions: ChartSession[], quarter?: string): Season 
     if (top <= 0) return null;
     return standings.find((row) => pick(row) === top) ?? null;
   };
-  const latestKey = quarterKey(ordered[ordered.length - 1].date);
+  const latestKey = monthKey(ordered[ordered.length - 1].date);
   return {
-    label: quarterLabel(key),
+    label: monthLabelOf(key),
     key,
-    from: inQuarter[0].date,
-    to: inQuarter[inQuarter.length - 1].date,
-    games: inQuarter.length,
+    from: inMonth[0].date,
+    to: inMonth[inMonth.length - 1].date,
+    games: inMonth.length,
     standings,
     leader: standings[0] ?? null,
     mostWins: best((row) => row.wins),
@@ -527,83 +526,6 @@ export function buildRivalry(sessions: ChartSession[], viewerName: string): Riva
   if (!best) return null;
   const { score: _score, ...rivalry } = best;
   return rivalry;
-}
-
-// ------------------------------------------------------------ season recap
-
-export type SeasonRecap = {
-  season: Season;
-  totalPot: number;
-  players: number;
-  bestNight: { name: string; net: number; date: string } | null;
-  viewer: {
-    name: string;
-    rank: number;
-    of: number;
-    net: number;
-    games: number;
-    wins: number;
-    bestGame: number;
-    /** Positive = winning games in a row at the end of the season so far, negative = losing. */
-    streak: number;
-    /** Rank within the season after each game the club played (null before first appearance). */
-    rankJourney: Array<number | null>;
-  } | null;
-};
-
-/** Everything the "season recap" slides need, for one member. */
-export function buildSeasonRecap(sessions: ChartSession[], viewerName: string, quarter?: string): SeasonRecap | null {
-  const season = buildSeason(sessions, quarter);
-  if (!season) return null;
-  const inQuarter = sortSessions(sessions).filter((session) => quarterKey(session.date) === season.key);
-
-  let bestNight: SeasonRecap["bestNight"] = null;
-  for (const session of inQuarter) {
-    for (const record of session.players) {
-      if (!isRealPlayer(record.player)) continue;
-      if (record.net > 0 && (!bestNight || record.net > bestNight.net)) {
-        bestNight = { name: record.player.trim(), net: record.net, date: session.date };
-      }
-    }
-  }
-
-  const key = normalizeName(viewerName);
-  const row = season.standings.find((standing) => normalizeName(standing.name) === key);
-  let viewer: SeasonRecap["viewer"] = null;
-  if (row) {
-    const { results } = perPlayerResults(inQuarter);
-    const mine = results.get(key) ?? [];
-    const nets = mine.map((entry) => entry.net);
-    const lastSign = Math.sign(nets[nets.length - 1] ?? 0);
-    let streak = 0;
-    if (lastSign !== 0) for (let i = nets.length - 1; i >= 0 && Math.sign(nets[i]) === lastSign; i--) streak += lastSign;
-
-    const rankJourney: Array<number | null> = [];
-    for (let i = 1; i <= inQuarter.length; i++) {
-      const totals = buildPlayerTotals(inQuarter.slice(0, i));
-      const index = totals.findIndex((total) => normalizeName(total.name) === key);
-      rankJourney.push(index >= 0 ? index + 1 : null);
-    }
-    viewer = {
-      name: row.name,
-      rank: season.standings.indexOf(row) + 1,
-      of: season.standings.length,
-      net: row.net,
-      games: row.games,
-      wins: row.wins,
-      bestGame: nets.length ? Math.max(...nets) : 0,
-      streak,
-      rankJourney,
-    };
-  }
-
-  return {
-    season,
-    totalPot: round2(inQuarter.reduce((sum, session) => sum + session.totalBuyIn, 0)),
-    players: season.standings.length,
-    bestNight,
-    viewer,
-  };
 }
 
 // ------------------------------------------------------------ trophy shelf

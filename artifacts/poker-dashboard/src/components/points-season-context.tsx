@@ -3,7 +3,7 @@ import { usePoints } from "@/components/points-context";
 import type { NightKind, PointsRow } from "@/lib/points";
 
 type SeasonValue = {
-  /** The season being shown: a quarter such as "2026-Q4", or "ALL". */
+  /** The season being shown: a month such as "2026-10", or "ALL". */
   season: string;
   /** False when the chosen period has no scored nights at all. */
   hasNights: boolean;

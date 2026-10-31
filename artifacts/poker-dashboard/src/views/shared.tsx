@@ -6,7 +6,6 @@ import { currencySymbol, moneyFormatter } from "@/lib/club-format";
 
 export type MonthFilter = "ALL" | string;
 
-export type QuarterFilter = "ALL" | string;
 
 export type RankMovement = {
   direction: "up" | "down" | "same" | "new";
@@ -161,4 +160,9 @@ export function slug(value: string) { return value.toLowerCase().replace(/[^a-z0
 
 export const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-export function monthLabel(value: string) { const index = Number(value) - 1; return monthNames[index] ?? value; }
+/** "2026-10" reads "Oct 2026". A bare month number ("10") still reads as the month name. */
+export function monthLabel(value: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (match) return `${monthNames[Number(match[2]) - 1]?.slice(0, 3) ?? match[2]} ${match[1]}`;
+  return monthNames[Number(value) - 1] ?? value;
+}

@@ -7,7 +7,7 @@ import {
   buildFormDots,
   buildRivalry,
   buildSeason,
-  quarterKey,
+  monthKey,
 } from "./achievements.ts";
 
 const rec = (player, net) => ({ player, buyIn: 10, cashOut: 10 + net, net, status: null });
@@ -36,10 +36,10 @@ test("form dots list the last games oldest first", () => {
   assert.deepEqual(ana, ["win", "win", "loss", "loss", "win"]);
 });
 
-test("quarters are calendar quarters", () => {
-  assert.equal(quarterKey("2026-07-03"), "2026-Q3");
-  assert.equal(quarterKey("2026-12-31"), "2026-Q4");
-  assert.equal(quarterKey("2026-01-01"), "2026-Q1");
+test("seasons are calendar months", () => {
+  assert.equal(monthKey("2026-07-03"), "2026-07");
+  assert.equal(monthKey("2026-12-31"), "2026-12");
+  assert.equal(monthKey("2027-01-01"), "2027-01");
 });
 
 test("heater needs three wins in a row to the latest game", () => {
@@ -75,9 +75,9 @@ test("giant killer is given for beating the all-time leader on the night", () =>
   assert.ok(badges.get("ben").some((badge) => badge.id === "giant-killer"));
 });
 
-test("season is the quarter of the latest game", () => {
+test("season is the month of the latest game", () => {
   const season = buildSeason(sessions);
-  assert.equal(season.label, "Q4 2026");
+  assert.equal(season.label, "Oct 2026");
   assert.equal(season.games, 3);
   assert.equal(season.leader.name, "Ben");
   assert.equal(season.leader.net, 45);
@@ -85,7 +85,7 @@ test("season is the quarter of the latest game", () => {
   assert.equal(season.mostWins.wins, 3);
   assert.equal(season.lead, 65);
   assert.equal(season.closed, false);
-  const earlier = buildSeason(sessions, "2026-Q3");
+  const earlier = buildSeason(sessions, "2026-07");
   assert.equal(earlier.closed, true);
   assert.equal(earlier.leader.name, "Ana");
 });
@@ -105,21 +105,6 @@ test("rivalry needs three shared games and prefers an even split", () => {
   assert.equal(buildRivalry(sessions.slice(0, 2), "Ana"), null);
 });
 
-import { buildSeasonRecap } from "./achievements.ts";
-
-test("season recap summarises the quarter and the viewer's journey", () => {
-  const recap = buildSeasonRecap(sessions, "ana");
-  assert.equal(recap.season.label, "Q4 2026");
-  assert.equal(recap.totalPot, 100);
-  assert.equal(recap.players, 3);
-  assert.deepEqual(recap.bestNight, { name: "Ben", net: 20, date: "2026-10-16" });
-  assert.equal(recap.viewer.rank, 2);
-  assert.equal(recap.viewer.games, 3);
-  assert.equal(recap.viewer.bestGame, 5);
-  assert.equal(recap.viewer.streak, 1);
-  assert.equal(recap.viewer.rankJourney.length, 3);
-  assert.equal(buildSeasonRecap(sessions, "Nobody").viewer, null);
-});
 
 import { buildTrophyShelf, newlyEarned, BADGE_ORDER } from "./achievements.ts";
 

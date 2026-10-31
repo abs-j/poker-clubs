@@ -9,12 +9,12 @@ import { BadgeChips, FormDots } from "@/components/form-dots";
 import { Avatar } from "@/components/avatar";
 import { useMemo, useState, type ReactNode } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ContributorBadge, EmptyPanel, MiniStat, MonthFilter, QuarterFilter, RankMovementIndicator, buildRankMovementMap, buildScopedPlayers, formatCurrency, monthLabel, normalizePlayerName, signedCurrency, slug } from "./shared";
+import { ContributorBadge, EmptyPanel, MiniStat, MonthFilter, RankMovementIndicator, buildRankMovementMap, buildScopedPlayers, formatCurrency, monthLabel, normalizePlayerName, signedCurrency, slug } from "./shared";
 
-export function PeriodLeaderboards({ players, sessions, allSessions, activePeriod, scope, viewer, onSelectPlayer, afterPodium, afterOverview }: { players: Player[]; sessions: Session[]; allSessions: Session[]; activePeriod: MonthFilter | QuarterFilter; scope: PerformanceScope; viewer: string; onSelectPlayer: (name: string) => void; /** Shown straight after the profit podium. */ afterPodium?: ReactNode; /** Shown after the profit bars, before the detailed stats table. */ afterOverview?: ReactNode }) {
+export function PeriodLeaderboards({ players, sessions, allSessions, activePeriod, scope, viewer, onSelectPlayer, afterPodium, afterOverview }: { players: Player[]; sessions: Session[]; allSessions: Session[]; activePeriod: MonthFilter; scope: PerformanceScope; viewer: string; onSelectPlayer: (name: string) => void; /** Shown straight after the profit podium. */ afterPodium?: ReactNode; /** Shown after the profit bars, before the detailed stats table. */ afterOverview?: ReactNode }) {
   const leaderboard = activePeriod === "ALL" ? players : buildScopedPlayers(players, sessions);
   const rankMovements = buildRankMovementMap(leaderboard, sessions);
-  const scopeLabel = activePeriod === "ALL" ? "All-time" : activePeriod.startsWith("Q") ? activePeriod : monthLabel(activePeriod);
+  const scopeLabel = activePeriod === "ALL" ? "All-time" : monthLabel(activePeriod);
   const earningsScopeLabel = scope === "all" ? "All earnings" : scope === "cash" ? "Cash games" : "Tournaments";
   const returnLabel = scope === "cash" ? "Cash-out" : scope === "tournaments" ? "Payout" : "Returned";
   const activityLabel = scope === "tournaments" ? "Events" : "Games";

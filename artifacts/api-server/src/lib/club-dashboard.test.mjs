@@ -10,7 +10,7 @@ const nights = [
 
 test("nights are numbered by date, whatever order they arrive in", () => {
   const dashboard = buildClubDashboard({ title: "T", nights });
-  assert.deepEqual(dashboard.sessions.map((s) => [s.sessionNumber, s.date, s.month]), [[1, "2026-01-10", "01"], [2, "2026-02-20", "02"], [3, "2026-04-03", "04"]]);
+  assert.deepEqual(dashboard.sessions.map((s) => [s.sessionNumber, s.date, s.month]), [[1, "2026-01-10", "2026-01"], [2, "2026-02-20", "2026-02"], [3, "2026-04-03", "2026-04"]]);
   assert.equal(dashboard.totals.latestGameDate, "2026-04-03");
   assert.equal(dashboard.totals.totalSessions, 3);
 });
@@ -36,11 +36,21 @@ test("standing maths", () => {
   assert.equal(sam.maxLoss, -20);
 });
 
-test("January and February are not dropped, quarters cover them", () => {
+test("every month with a night is listed, as a real month with its year", () => {
   const { months, quarters } = buildClubDashboard({ title: "T", nights });
-  assert.deepEqual(months.map((m) => m.month), ["01", "02", "04"]);
-  assert.deepEqual(quarters.map((q) => [q.quarter, q.sessionCount]), [["Q1", 2], ["Q2", 1]]);
-  assert.equal(months[1].range, "February 1 — February 28");
+  assert.deepEqual(months.map((m) => m.month), ["2026-01", "2026-02", "2026-04"]);
+  assert.deepEqual(months.map((m) => m.label), ["Jan 2026", "Feb 2026", "Apr 2026"]);
+  assert.deepEqual(quarters, []);
+  assert.equal(months[1].range, "Feb 1 — Feb 28");
+  assert.deepEqual(months.map((m) => m.sessionCount), [1, 1, 1]);
+});
+
+test("the same month of two years stays two months", () => {
+  const { months } = buildClubDashboard({ title: "T", nights: [
+    { date: "2025-10-05", players: [{ name: "A", buyIn: 10, cashOut: 20 }, { name: "B", buyIn: 10, cashOut: 0 }] },
+    { date: "2026-10-04", players: [{ name: "A", buyIn: 10, cashOut: 0 }, { name: "B", buyIn: 10, cashOut: 20 }] },
+  ] });
+  assert.deepEqual(months.map((m) => m.month), ["2025-10", "2026-10"]);
 });
 
 test("nights balance and totals add up", () => {

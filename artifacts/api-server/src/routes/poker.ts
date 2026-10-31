@@ -13,7 +13,6 @@ import {
   UpdatePokerLiveActivityResponse,
 } from "@workspace/api-zod";
 import { loadClubDashboard } from "../lib/club-sessions";
-import { YEAR_COOKIE, yearCookie } from "./club-data";
 import { memberClubId, requireMemberSession } from "../lib/auth";
 import { resolveAttributedPlayer } from "../lib/live-activity-player";
 import {
@@ -42,11 +41,7 @@ async function validateAttributedPlayer(
 
 router.get("/poker/dashboard", requireMemberSession, async (req, res): Promise<void> => {
   try {
-    const dashboard = await loadClubDashboard(
-      memberClubId(res),
-      res.locals.memberSession.clubName ?? "Your club",
-      yearCookie(req.cookies?.[YEAR_COOKIE]),
-    );
+    const dashboard = await loadClubDashboard(memberClubId(res), res.locals.memberSession.clubName ?? "Your club");
     // A club's results change the moment someone imports or closes a night, so they are never cached.
     res.set("Cache-Control", "no-store");
     res.json(GetPokerDashboardResponse.parse(dashboard));

@@ -198,7 +198,7 @@ console.log("\nAccounts and clubs");
     // Pat: +25 on the 3rd, -10 on the 10th.
     const pat = dashboard.leaderboard.find((p) => p.name === "Pat Imported");
     expect(pat && pat.profitTotal === 15 && pat.gamesPlayed === 2, `standing ${JSON.stringify(pat)}`);
-    expect(dashboard.months.some((m) => m.month === "03"), "March missing from the months");
+    expect(dashboard.months.some((m) => m.month === "2026-03" && m.label === "Mar 2026"), "March 2026 missing from the months");
     const again = await (await api("/api/clubs/current/import", { jar: owner, method: "POST", body: { text: history } })).json();
     expect(again.imported === 0 && again.duplicates === 2, `second import ${JSON.stringify(again)}`);
   });
@@ -420,19 +420,15 @@ console.log("\nAccounts and clubs");
     expect(signIn.status === 401, `signed in after deletion: ${signIn.status}`);
   });
 
-  await check("a club with several years of history shows one year at a time", async () => {
+  await check("the same month of two years is two separate months, and the old year and quarter filters are gone", async () => {
     const text = "Date,Player,Buy-in,Cash-out\n2024-10-05,Yr A,10,20\n,Yr B,10,0\n2026-10-03,Yr A,10,0\n,Yr B,10,20";
     const imported = await (await api("/api/clubs/current/import", { jar: owner, method: "POST", body: { text } })).json();
     expect(imported.imported === 2, `imported ${imported.imported}`);
-    const years = await (await api("/api/clubs/current/years", { jar: owner })).json();
-    expect(years.years.includes(2024) && years.years.includes(2026), `years ${JSON.stringify(years)}`);
-    expect(years.selected === String(years.years[years.years.length - 1]), "should default to the latest year");
-    const latest = await (await api("/api/poker/dashboard", { jar: owner })).json();
-    expect(latest.sessions.every((n) => n.date.startsWith(years.selected)), "latest year shows another year's nights");
-    const all = await api("/api/clubs/current/year", { jar: owner, method: "POST", body: { year: "all" } });
-    expect(all.ok, `year all ${all.status}`);
-    const refused = await api("/api/clubs/current/year", { jar: owner, method: "POST", body: { year: "1999" } });
-    expect(refused.status === 400, `expected 400, got ${refused.status}`);
+    const dash = await (await api("/api/poker/dashboard", { jar: owner })).json();
+    const keys = dash.months.map((m) => m.month);
+    expect(keys.includes("2024-10") && keys.includes("2026-10"), `months ${keys.join(", ")}`);
+    expect(dash.sessions.some((n) => n.date.startsWith("2024")) && dash.sessions.some((n) => n.date.startsWith("2026")), "both years should show");
+    expect((await api("/api/clubs/current/years", { jar: owner })).status === 404, "the year route should be gone");
     await api(`/api/clubs/current/import/${imported.batchId}`, { jar: owner, method: "DELETE" });
   });
 

@@ -1,7 +1,6 @@
 import { ChevronDown } from "lucide-react";
 
 export type ScopeValue = "all" | "cash" | "tournaments";
-export type BreakdownValue = "months" | "quarters";
 export type PeriodOption = { value: string; label: string; summary: string };
 
 type Choice<T extends string> = { value: T; label: string };
@@ -45,8 +44,6 @@ function Segmented<T extends string>({
 type FilterBarProps = {
   scope: ScopeValue;
   onScope: (scope: ScopeValue) => void;
-  breakdown: BreakdownValue;
-  onBreakdown: (breakdown: BreakdownValue) => void;
   period: string;
   onPeriod: (period: string) => void;
   periods: PeriodOption[];
@@ -54,8 +51,8 @@ type FilterBarProps = {
   showScope?: boolean;
 };
 
-/** One compact bar: what to count (scope), how to slice it, and which slice. */
-export function FilterBar({ scope, onScope, breakdown, onBreakdown, period, onPeriod, periods, showScope = true }: FilterBarProps) {
+/** One compact bar: what to count (scope) and which month, or all time. */
+export function FilterBar({ scope, onScope, period, onPeriod, periods, showScope = true }: FilterBarProps) {
   return (
     <section
       data-testid="section-filter-bar"
@@ -75,25 +72,15 @@ export function FilterBar({ scope, onScope, breakdown, onBreakdown, period, onPe
           ]}
         />
       )}
-      <Segmented
-        label="By"
-        value={breakdown}
-        onChange={onBreakdown}
-        testIdPrefix="button-breakdown"
-        choices={[
-          { value: "months", label: "Month" },
-          { value: "quarters", label: "Quarter" },
-        ]}
-      />
       <label className="relative flex items-center gap-2 sm:ml-auto">
         <span className="hidden text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground sm:inline">
-          {breakdown === "months" ? "Month" : "Quarter"}
+          Month
         </span>
         <select
           value={period}
           onChange={(event) => onPeriod(event.target.value)}
           data-testid="select-period-filter"
-          aria-label={breakdown === "months" ? "Month" : "Quarter"}
+          aria-label="Month"
           className="h-9 w-full appearance-none rounded-lg border border-border bg-background pl-3 pr-9 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:min-w-[220px]"
         >
           {periods.map((option) => (

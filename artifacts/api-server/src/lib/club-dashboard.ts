@@ -18,13 +18,6 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-const QUARTERS = [
-  { quarter: "Q1", range: "Jan 1 — Mar 31", months: ["01", "02", "03"] },
-  { quarter: "Q2", range: "Apr 1 — Jun 30", months: ["04", "05", "06"] },
-  { quarter: "Q3", range: "Jul 1 — Sep 30", months: ["07", "08", "09"] },
-  { quarter: "Q4", range: "Oct 1 — Dec 31", months: ["10", "11", "12"] },
-] as const;
-
 type Session = PokerDashboard["sessions"][number];
 
 function summarise(nights: Session[]) {
@@ -84,7 +77,8 @@ export function buildClubDashboard(input: { title: string; nights: NightInput[];
     return {
       sessionNumber: index + 1,
       date: night.date,
-      month: night.date.slice(5, 7),
+      // A real calendar month, "2026-10", so the same month of different years is never merged.
+      month: night.date.slice(0, 7),
       totalBuyIn,
       totalCashOut,
       totalNet: roundMoney(totalCashOut - totalBuyIn),
@@ -132,18 +126,14 @@ export function buildClubDashboard(input: { title: string; nights: NightInput[];
     .sort((left, right) => right.profitTotal - left.profitTotal || left.name.localeCompare(right.name))
     .map((standing, index) => ({ ...standing, rank: index + 1 }));
 
-  const months = MONTH_NAMES.flatMap((label, index) => {
-    const month = String(index + 1).padStart(2, "0");
+  const monthKeys = [...new Set(sessions.map((session) => session.month))].sort();
+  const months = monthKeys.map((month) => {
     const inMonth = sessions.filter((session) => session.month === month);
-    if (inMonth.length === 0) return [];
-    const year = Number(inMonth[inMonth.length - 1].date.slice(0, 4));
+    const year = Number(month.slice(0, 4));
+    const index = Number(month.slice(5, 7)) - 1;
+    const name = MONTH_NAMES[index].slice(0, 3);
     const lastDay = new Date(Date.UTC(year, index + 1, 0)).getUTCDate();
-    return [{ month, label, range: `${label} 1 — ${label} ${lastDay}`, ...summarise(inMonth) }];
-  });
-
-  const quarters = QUARTERS.flatMap(({ quarter, range, months: quarterMonths }) => {
-    const inQuarter = sessions.filter((session) => (quarterMonths as readonly string[]).includes(session.month));
-    return inQuarter.length === 0 ? [] : [{ quarter, label: quarter, range, ...summarise(inQuarter) }];
+    return { month, label: `${name} ${year}`, range: `${name} 1 — ${name} ${lastDay}`, ...summarise(inMonth) };
   });
 
   // Running profit per person; everyone who has played by a night gets a point for it.
@@ -197,7 +187,8 @@ export function buildClubDashboard(input: { title: string; nights: NightInput[];
         : { available: false, eventDate: null, totalPlayers: 0, totalInvested: 0, totalReturned: 0, totalNetProfit: 0, players: [] },
     tournaments,
     months,
-    quarters,
+    // Seasons are calendar months now; the field stays (empty) so the payload shape is unchanged.
+    quarters: [],
     sessions,
     playerProfitHistory,
   };

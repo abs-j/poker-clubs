@@ -25,7 +25,6 @@ import { PrivacyPage, TermsPage } from "./views/legal";
 import { accountApi } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
 import { ClubSettingsProvider, useClubSettings } from "@/components/club-settings-context";
-import { YearPicker } from "@/components/year-picker";
 import type { GamesMode } from "./views/games-view";
 import { browserSessionDeps, checkMemberSession, type MemberAuthSession } from "@/lib/member-session";
 import { Toaster } from "@/components/ui/toaster";
@@ -54,7 +53,7 @@ const PlayersView = lazy(() => import("./views/players-view").then((m) => ({ def
 import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
 
 import { Route, Router as WouterRouter, Switch } from "wouter";
-import { EmptyPanel, MetricCard, MonthFilter, PageIntro, QuarterFilter, buildRankMovementMap, buildScopedPlayers, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency, slug } from "./views/shared";
+import { EmptyPanel, MetricCard, MonthFilter, PageIntro, buildRankMovementMap, buildScopedPlayers, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency, slug } from "./views/shared";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false } },
@@ -77,7 +76,6 @@ type MonthlySummary = {
   positiveSessions: number;
   negativeSessions: number;
 };
-type QuarterlySummary = Omit<MonthlySummary, "month"> & { quarter: string };
 type PeriodSummary = {
   key: string;
   label: string;
@@ -95,20 +93,17 @@ type PeriodSummary = {
   negativeSessions: number;
 };
 type View = "overview" | "sessions" | "live" | "months" | "players" | "guidelines" | "account";
-type BreakdownMode = "months" | "quarters";
 
 function buildScopePeriods(
   basePeriods: PeriodSummary[],
   scope: PerformanceScope,
   tournamentSessions: Session[],
-  breakdown: BreakdownMode,
   cashSessions: Session[],
 ): PeriodSummary[] {
   if (scope === "cash") return basePeriods;
   if (tournamentSessions.length === 0) return scope === "tournaments" ? [] : basePeriods;
 
-  const keyOf = (session: Session) =>
-    breakdown === "months" ? session.month : quarterForMonth(session.month);
+  const keyOf = (session: Session) => session.month;
   const byKey = new Map<string, Session[]>();
   for (const session of tournamentSessions) {
     const key = keyOf(session);
@@ -116,7 +111,6 @@ function buildScopePeriods(
   }
 
   const eventPeriod = (key: string, events: Session[]): PeriodSummary => {
-    const year = events[0].date.slice(0, 4);
     const totalBuyIn = events.reduce((sum, event) => sum + event.totalBuyIn, 0);
     const totalCashOut = events.reduce((sum, event) => sum + event.totalCashOut, 0);
     const top = events
@@ -124,10 +118,8 @@ function buildScopePeriods(
       .sort((left, right) => right.net - left.net || left.player.localeCompare(right.player))[0];
     return {
       key,
-      label: breakdown === "months" ? monthLabel(events[0].month) : `${key} ${year}`,
-      range: breakdown === "months"
-        ? (events.length === 1 ? formatDate(events[0].date) : monthLabel(events[0].month))
-        : `${key} ${year}`,
+      label: monthLabel(events[0].month),
+      range: events.length === 1 ? formatDate(events[0].date) : monthLabel(events[0].month),
       sessionCount: events.length,
       recordCount: events.reduce((sum, event) => sum + event.playerCount, 0),
       totalBuyIn,
@@ -269,10 +261,8 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
     }
   });
   const [activeView, setActiveView] = useState<View>(() => getInitialDashboardView(window.location.search));
-  const [breakdown, setBreakdown] = useState<BreakdownMode>("quarters");
   const [performanceScope, setPerformanceScope] = useState<PerformanceScope>("all");
   const [monthFilter, setMonthFilter] = useState<MonthFilter | null>("ALL");
-  const [quarterFilter, setQuarterFilter] = useState<QuarterFilter>("ALL");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
@@ -312,7 +302,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   const players = (dashboard?.leaderboard ?? []) as Player[];
   const sessions = (dashboard?.sessions ?? []) as Session[];
   const months = (dashboard?.months ?? []) as MonthlySummary[];
-  const quarters = (dashboard?.quarters ?? []) as QuarterlySummary[];
   const history = (dashboard?.playerProfitHistory ?? []) as ProfitPoint[];
   const tournamentSnapshot = dashboard?.tournamentSnapshot as TournamentSnapshot | undefined;
   const tournaments = useMemo(
@@ -339,26 +328,13 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
     const latestSession = sessions.slice().sort((left, right) => right.sessionNumber - left.sessionNumber)[0];
     return latestSession?.month ?? months.find((month) => month.sessionCount > 0)?.month ?? "ALL";
   }, [months, sessions]);
-  const currentSeasonQuarter = useMemo<QuarterFilter>(() => {
-    const latestSession = sessions.slice().sort((left, right) => right.sessionNumber - left.sessionNumber)[0];
-    return latestSession ? quarterForMonth(latestSession.month) : quarters[quarters.length - 1]?.quarter ?? "ALL";
-  }, [quarters, sessions]);
   const activeMonthFilter = monthFilter ?? currentSeasonMonth;
-  const activeQuarterFilter = quarterFilter ?? currentSeasonQuarter;
-  const activePeriodFilter = breakdown === "months" ? activeMonthFilter : activeQuarterFilter;
+  const activePeriodFilter = activeMonthFilter;
   const selectedPeriodKey = activePeriodFilter === "ALL" ? null : activePeriodFilter;
   const periods = useMemo<PeriodSummary[]>(() => {
-    const basePeriods = breakdown === "months"
-      ? months.map(({ month, ...summary }) => ({ key: month, ...summary }))
-      : quarters.map(({ quarter, ...summary }) => ({ key: quarter, ...summary }));
-    return buildScopePeriods(
-      basePeriods,
-      performanceScope,
-      tournamentSessions,
-      breakdown,
-      sessions,
-    );
-  }, [breakdown, months, performanceScope, quarters, sessions, tournamentSessions]);
+    const basePeriods = months.map(({ month, ...summary }) => ({ key: month, ...summary }));
+    return buildScopePeriods(basePeriods, performanceScope, tournamentSessions, sessions);
+  }, [months, performanceScope, sessions, tournamentSessions]);
   const periodFilterOrder = useMemo(
     () => ["ALL", ...periods.map((period) => period.key)],
     [periods],
@@ -366,8 +342,8 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   // One filter bar drives both leaderboards: the period picks the points season and the
   // Cash / Tournaments choice limits which nights are scored.
   const pointsSeasonKey = useMemo(
-    () => seasonForPeriod(activePeriodFilter, breakdown, pointsSeasons(sessions, tournaments)),
-    [activePeriodFilter, breakdown, sessions, tournaments],
+    () => seasonForPeriod(activePeriodFilter, pointsSeasons(sessions, tournaments)),
+    [activePeriodFilter, sessions, tournaments],
   );
   const pointsKinds = useMemo<NightKind[] | undefined>(
     () => (performanceScope === "cash" ? ["cash"] : performanceScope === "tournaments" ? ["tournament"] : undefined),
@@ -384,28 +360,23 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   }, [performanceScope, sessions, tournamentSessions]);
   const scopeSessions = useMemo(
     () => selectedPeriodKey
-      ? fullScopeSessions.filter((session) =>
-        breakdown === "months"
-          ? session.month === selectedPeriodKey
-          : quarterForMonth(session.month) === selectedPeriodKey,
-      )
+      ? fullScopeSessions.filter((session) => session.month === selectedPeriodKey)
       : fullScopeSessions,
-    [breakdown, fullScopeSessions, selectedPeriodKey],
+    [fullScopeSessions, selectedPeriodKey],
   );
   // Games has its own Cash / Tournaments switch, so these ignore the shared scope filter.
   const inSelectedPeriod = (date: string, month: string) =>
-    !selectedPeriodKey ||
-    (breakdown === "months" ? month === selectedPeriodKey : quarterForMonth(month) === selectedPeriodKey);
+    !selectedPeriodKey || month === selectedPeriodKey;
   const cashGamesInView = useMemo(
     () => sessions.filter((session) => inSelectedPeriod(session.date, session.month))
       .sort((left, right) => right.date.localeCompare(left.date) || right.sessionNumber - left.sessionNumber),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessions, selectedPeriodKey, breakdown],
+    [sessions, selectedPeriodKey],
   );
   const tournamentsInView = useMemo(
-    () => tournaments.filter((event) => inSelectedPeriod(event.date, event.date.slice(5, 7))),
+    () => tournaments.filter((event) => inSelectedPeriod(event.date, event.date.slice(0, 7))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tournaments, selectedPeriodKey, breakdown],
+    [tournaments, selectedPeriodKey],
   );
   const seasonPlayers = useMemo(
     () => buildScopedPlayers(scopePlayers, scopeSessions),
@@ -442,7 +413,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   const changePerformanceScope = (scope: PerformanceScope) => {
     setPerformanceScope(scope);
     setMonthFilter("ALL");
-    setQuarterFilter("ALL");
     setVisualizerSearch("");
   };
 
@@ -542,7 +512,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 <div className="flex min-w-0 items-baseline gap-2">
                   <p data-testid="text-dashboard-title" className="min-w-0 truncate text-lg font-semibold tracking-[-0.03em] sm:text-xl">{dashboard.title || "Poker Session Log & Months"}</p>
                 </div>
-                <YearPicker />
               </div>
               <div className="hidden flex-wrap items-center gap-2 print-hidden lg:flex">
                 <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open my account" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
@@ -596,15 +565,9 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                   showScope={activeView !== "sessions"}
                   scope={performanceScope}
                   onScope={changePerformanceScope}
-                  breakdown={breakdown}
-                  onBreakdown={(next) => {
-                    setBreakdown(next);
-                    if (next === "months") setQuarterFilter("ALL"); else setMonthFilter("ALL");
-                    setVisualizerSearch("");
-                  }}
                   period={activePeriodFilter}
                   onPeriod={(value) => {
-                    if (breakdown === "months") setMonthFilter(value); else setQuarterFilter(value);
+                    setMonthFilter(value);
                     setVisualizerSearch("");
                   }}
                   periods={periodFilterOrder.map((value) => {
@@ -794,7 +757,6 @@ function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: 
 function EmptyDashboard() { return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><EmptyPanel title="No season figures yet" description="The connected sheet is ready, but there are no recorded poker sessions to display." /></div>; }
 function DashboardSkeleton() { return <div data-testid="state-dashboard-loading" className="min-h-[100dvh] bg-background p-5 text-foreground sm:p-10"><div className="mx-auto max-w-[1200px] animate-pulse space-y-5"><div className="h-8 w-56 rounded-lg bg-secondary" /><div className="h-16 w-3/4 rounded-xl bg-secondary" /><div className="grid grid-cols-2 gap-3 md:grid-cols-6">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-28 rounded-2xl bg-secondary" />)}</div><div className="h-80 rounded-2xl bg-secondary" /><div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-44 rounded-2xl bg-secondary" />)}</div></div></div>; }
 function formatSyncTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "recently"; return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
-function quarterForMonth(value: string): string { const month = Number(value); return month <= 3 ? "Q1" : month <= 6 ? "Q2" : month <= 9 ? "Q3" : "Q4"; }
 function App() {
   return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><AdminPage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
 }

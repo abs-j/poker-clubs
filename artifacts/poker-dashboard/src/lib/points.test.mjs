@@ -7,7 +7,7 @@ import {
   nightPointsFor,
   pointsExamples,
   pointsSeasons,
-  quarterOf,
+  seasonOf,
   scorePlacement,
   sizeFactor,
 } from "./points.ts";
@@ -117,14 +117,16 @@ test("tournaments use recorded places, then net profit for the rest, and count k
   assert.equal(byName.Ana.kind, "tournament");
 });
 
-test("seasons filter by calendar quarter and are listed newest first", () => {
+test("seasons are calendar months, listed newest first", () => {
   const nights = [
     night(1, "2026-08-10", { A: 10, B: 0, C: -5, D: -5 }),
     night(2, "2026-10-10", { A: 10, B: 0, C: -5, D: -5 }),
   ];
-  assert.equal(quarterOf("2026-10-10"), "2026-Q4");
-  assert.deepEqual(pointsSeasons(nights, []), ["2026-Q4", "2026-Q3"]);
-  assert.equal(buildPointsLeaderboard(nights, [], { season: "2026-Q4" })[0].nights, 1);
+  assert.equal(seasonOf("2026-10-10"), "2026-10");
+  assert.deepEqual(pointsSeasons(nights, []), ["2026-10", "2026-08"]);
+  assert.equal(buildPointsLeaderboard(nights, [], { season: "2026-10" })[0].nights, 1);
+  assert.equal(seasonLabel("2026-10"), "Oct 2026");
+  assert.equal(seasonLabel("ALL"), "All time");
   assert.equal(buildPointsLeaderboard(nights, [], { season: "ALL" })[0].nights, 2);
 });
 
@@ -143,17 +145,15 @@ test("a tournament night is found by date when only the date is known", () => {
   assert.equal(nightPointsFor(rows, "Ana", { kind: "cash", sessionNumber: 3 }), null);
 });
 
-import { firstScoredDate, seasonForPeriod } from "./points.ts";
+import { firstScoredDate, seasonForPeriod, seasonLabel } from "./points.ts";
 
-test("the leaderboard's period filter picks the matching points season", () => {
-  const seasons = ["2026-Q4", "2026-Q3"];
-  assert.equal(seasonForPeriod("ALL", "quarters", seasons), "ALL");
-  assert.equal(seasonForPeriod("Q4", "quarters", seasons), "2026-Q4");
-  assert.equal(seasonForPeriod("Q3", "quarters", seasons), "2026-Q3");
-  assert.equal(seasonForPeriod("Q1", "quarters", seasons), null);
-  assert.equal(seasonForPeriod("10", "months", seasons), "2026-Q4");
-  assert.equal(seasonForPeriod("09", "months", seasons), "2026-Q3");
-  assert.equal(seasonForPeriod("02", "months", seasons), null);
+test("the leaderboard's month filter picks the same points season", () => {
+  const seasons = ["2026-10", "2026-08"];
+  assert.equal(seasonForPeriod("ALL", seasons), "ALL");
+  assert.equal(seasonForPeriod("2026-10", seasons), "2026-10");
+  assert.equal(seasonForPeriod("2026-08", seasons), "2026-08");
+  assert.equal(seasonForPeriod("2026-09", seasons), null);
+  assert.equal(seasonForPeriod("2025-10", seasons), null);
 });
 
 test("points can be limited to cash nights or to tournaments", () => {
