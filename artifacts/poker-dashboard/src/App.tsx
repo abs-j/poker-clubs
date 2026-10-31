@@ -515,7 +515,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 </div>
               </div>
               <div className="hidden flex-wrap items-center gap-2 print-hidden lg:flex">
-                <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open my account" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
+                <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open Me" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
                 <button onClick={() => void onLogout()} data-testid="button-member-logout" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><LogOut className="h-4 w-4" />Sign out</button>
                 <button onClick={handleRefresh} disabled={refreshing} data-testid="button-refresh-dashboard" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-60"><Activity className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />{refreshing ? "Checking" : "Refresh"}</button>
                 {canInstall && <button onClick={() => void install()} data-testid="button-install-app" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><Download className="h-4 w-4" />Install app</button>}
@@ -531,7 +531,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                   <DropdownMenuContent align="end" className="w-64">
                     <DropdownMenuLabel className="truncate text-xs text-muted-foreground">Signed in as {memberName}</DropdownMenuLabel>
                     <DropdownMenuItem onSelect={() => navigate("account")} data-testid="menu-open-account">
-                      <Avatar name={memberName} size={20} />My account
+                      <Avatar name={memberName} size={20} />Me
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuSeparator />
@@ -704,7 +704,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
 }
 
 function ErrorState({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) { return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div data-testid="state-dashboard-error" className="max-w-md rounded-2xl border border-destructive/30 bg-card p-7 text-center soft-shadow"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Activity className="h-5 w-5" /></div><h1 className="mt-4 text-xl font-semibold">The club sheet is out of reach</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">The last dashboard request did not complete. Your figures have not been changed.</p><button onClick={onRetry} disabled={refreshing} data-testid="button-retry-dashboard" className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{refreshing ? "Checking source" : "Try again"}</button></div></div>; }
-function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: string; memberName: string; onNavigate: (view: "live" | "account") => void; tabBar: ReactNode }) {
+function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: string; memberName: string; onNavigate: (view: "live" | "guidelines") => void; tabBar: ReactNode }) {
   // Only admins can set a club up; everyone else just waits for the first night.
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   useEffect(() => {
@@ -729,9 +729,9 @@ function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: 
       </div>
     );
   }
-  const steps: Array<{ title: string; body: string; action: string; view: "live" | "account"; testId: string }> = [
-    { title: "Bring your club in", body: "Make an invite link or QR code. Anyone who opens it can join and pick their name.", action: "Invite people", view: "account", testId: "button-start-invite" },
-    { title: "Bring in your history", body: "Import past results from a spreadsheet, or enter a night by hand. Leaderboards, points and profiles fill in straight away.", action: "Import results", view: "account", testId: "button-start-import" },
+  const steps: Array<{ title: string; body: string; action: string; view: "live" | "guidelines"; hash?: string; testId: string }> = [
+    { title: "Bring your club in", body: "Copy your invite link or show the QR code. Anyone who opens it can join and pick their name.", action: "Invite people", view: "guidelines", hash: "section-invites", testId: "button-start-invite" },
+    { title: "Bring in your history", body: "Import past results from a spreadsheet. Leaderboards, points and profiles fill in straight away.", action: "Import results", view: "guidelines", hash: "admin-setup", testId: "button-start-import" },
     { title: "Run a night", body: "Start a live session to record buy-ins and cash-outs as people play. Close it and the night joins the leaderboard.", action: "Open the live ledger", view: "live", testId: "button-start-live" },
   ];
   return (
@@ -746,7 +746,7 @@ function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: 
               <p className="text-xs font-semibold text-muted-foreground">Step {index + 1}</p>
               <h2 className="mt-1 text-base font-semibold">{step.title}</h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">{step.body}</p>
-              <button type="button" onClick={() => onNavigate(step.view)} data-testid={step.testId} className="mt-4 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{step.action}</button>
+              <button type="button" onClick={() => { if (step.hash) window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#${step.hash}`); onNavigate(step.view); }} data-testid={step.testId} className="mt-4 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">{step.action}</button>
             </div>
           ))}
         </div>

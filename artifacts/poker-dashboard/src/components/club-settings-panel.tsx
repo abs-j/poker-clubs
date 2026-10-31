@@ -29,7 +29,7 @@ function Labeled({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Name, money, timezone, club rules and how club points are scored. For club admins. */
-export function ClubSettingsPanel() {
+export function ClubSettingsPanel({ embedded = false }: { embedded?: boolean }) {
   const { settings, presets, save } = useClubSettings();
   const [name, setName] = useState(settings.name);
   const [currency, setCurrency] = useState(settings.currency);
@@ -68,11 +68,15 @@ export function ClubSettingsPanel() {
   };
 
   return (
-    <div className="soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="panel-club-settings">
-      <p className="section-label text-primary">Settings</p>
-      <h2 className="mt-1 text-lg font-semibold tracking-tight">Club settings</h2>
+    <div className={embedded ? "" : "soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6"} data-testid="panel-club-settings">
+      {!embedded && (
+        <>
+          <p className="section-label text-primary">Settings</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight">Club settings</h2>
+        </>
+      )}
 
-      <div className="mt-4">
+      <div className={embedded ? "" : "mt-4"}>
         <Labeled label="Club name">
           <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} data-testid="input-setting-name" />
         </Labeled>

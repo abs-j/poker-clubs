@@ -250,6 +250,9 @@ export const accountApi = {
   acceptInvite: (code: string, input: { claimPlayerId?: number; name?: string }) =>
     request<{ club: { slug: string; name: string } }>(`/api/invites/${encodeURIComponent(code)}/accept`, send("POST", input)),
   members: () => request<{ members: MemberRow[] }>("/api/clubs/current/members", { cache: "no-store" }),
+  /** Member invite links any member may copy. Admin-role invites are not included. */
+  shareableInvites: () => request<{ invites: InviteRow[] }>("/api/clubs/current/invite", { cache: "no-store" }),
+  /** Admin only: every invite, including admin-role links. */
   invites: () => request<{ invites: InviteRow[] }>("/api/clubs/current/invites", { cache: "no-store" }),
   createInvite: (input: { maxUses?: number; expiresInDays?: number } = {}) =>
     request<{ invite: { id: number; code: string } }>("/api/clubs/current/invites", send("POST", input)),

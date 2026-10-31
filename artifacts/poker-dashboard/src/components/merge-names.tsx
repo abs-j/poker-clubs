@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AccountError, accountApi, type MergePreview } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
@@ -40,38 +40,15 @@ function linesFor(preview: MergePreview): string[] {
 }
 
 /** Admin tool: fold a duplicate or misspelled name into the one the club wants to keep. */
-export function MergeNames() {
+export function MergeNames({ names, mine, onMerged }: { names: string[]; mine: string; onMerged?: () => void }) {
   const queryClient = useQueryClient();
-  const [visible, setVisible] = useState(false);
-  const [names, setNames] = useState<string[]>([]);
-  const [mine, setMine] = useState("");
   const [keep, setKeep] = useState("");
   const [merge, setMerge] = useState("");
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void accountApi
-      .me()
-      .then(async (me) => {
-        const active = me.clubs.find((club) => club.slug === me.active);
-        if (!active || active.role === "member") return;
-        const roster = await accountApi.members();
-        if (cancelled) return;
-        setMine(active.playerName);
-        setNames(roster.members.map((member) => member.name).sort((a, b) => a.localeCompare(b)));
-        setVisible(true);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!visible) return null;
+  const roster = [...names].sort((a, b) => a.localeCompare(b));
 
   const clearPreview = () => {
     setPreview(null);
@@ -106,8 +83,7 @@ export function MergeNames() {
           return;
         }
         await queryClient.invalidateQueries();
-        const roster = await accountApi.members();
-        setNames(roster.members.map((member) => member.name).sort((a, b) => a.localeCompare(b)));
+        onMerged?.();
         setKeep(result.keep);
         setMerge("");
         setPreview(null);
@@ -118,15 +94,12 @@ export function MergeNames() {
   };
 
   return (
-    <section data-testid="section-club-admin" className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
-      <p className="section-label text-primary">Admin</p>
-      <div data-testid="section-admin-people" className="mt-1">
-        <h2 className="text-lg font-semibold tracking-tight">People</h2>
-        <h3 className="mt-4 text-sm font-semibold">Merge two names</h3>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          When the same person was recorded under two names, move all of the duplicate&apos;s history onto the name you keep.
-        </p>
-        {names.length < 2 ? (
+    <div data-testid="section-merge-names" className="mt-4 border-t border-border pt-4">
+      <h3 className="text-sm font-semibold">Merge two names</h3>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        When the same person was recorded under two names, move all of the duplicate&apos;s history onto the name you keep.
+      </p>
+      {roster.length < 2 ? (
           <p className="mt-3 text-sm text-muted-foreground" data-testid="text-merge-need-names">
             Add another name before merging.
           </p>
@@ -144,7 +117,7 @@ export function MergeNames() {
                 }}
               >
                 <option value="">Choose a name</option>
-                {names.map((name) => (
+                {roster.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
@@ -161,7 +134,7 @@ export function MergeNames() {
                 }}
               >
                 <option value="">Choose a name</option>
-                {names.filter((name) => name !== keep).map((name) => (
+                {roster.filter((name) => name !== keep).map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
@@ -203,7 +176,6 @@ export function MergeNames() {
             </button>
           </div>
         )}
-      </div>
-    </section>
+    </div>
   );
 }

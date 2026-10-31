@@ -151,10 +151,31 @@ console.log("\nAccounts and clubs");
   await check("members cannot use admin tools; the owner can", async () => {
     const memberInvite = await api("/api/clubs/current/invites", { jar: guest, method: "POST", body: {} });
     expect(memberInvite.status === 401, `expected 401, got ${memberInvite.status}`);
+    const memberList = await api("/api/clubs/current/invites", { jar: guest });
+    expect(memberList.status === 401, `the admin invite list should stay admin-only, got ${memberList.status}`);
     const memberVisits = await api("/api/admin/visits", { jar: guest });
     expect(memberVisits.status === 401, `expected 401, got ${memberVisits.status}`);
     const ownerVisits = await api("/api/admin/visits", { jar: owner });
     expect(ownerVisits.ok, `owner admin visits ${ownerVisits.status}`);
+  });
+
+  await check("any member can read the invite link, and only an admin can reset it", async () => {
+    const readable = await api("/api/clubs/current/invite", { jar: guest });
+    expect(readable.ok, `member read ${readable.status}`);
+    const shared = await readable.json();
+    expect(shared.invites.length > 0 && shared.invites.every((invite) => invite.role === "member" && invite.code), "member invite list was empty");
+    const made = await api("/api/clubs/current/invites", { jar: owner, method: "POST", body: { role: "admin" } });
+    expect(made.status === 201, `admin invite ${made.status}`);
+    const adminInvite = (await made.json()).invite;
+    const again = await (await api("/api/clubs/current/invite", { jar: guest })).json();
+    expect(!again.invites.some((invite) => invite.code === adminInvite.code), "an admin invite was shown to a member");
+    expect((await api(`/api/clubs/current/invites/${again.invites[0].id}`, { jar: guest, method: "DELETE" })).status === 401, "a member reset a member invite");
+    expect((await api(`/api/clubs/current/invites/${adminInvite.id}`, { jar: guest, method: "DELETE" })).status === 401, "a member revoked an admin invite");
+    expect((await api(`/api/clubs/current/invites/${adminInvite.id}`, { jar: owner, method: "DELETE" })).status === 204, "the owner could not revoke the admin invite");
+    const roster = await api("/api/clubs/current/members", { jar: guest });
+    expect(roster.ok, `member roster ${roster.status}`);
+    const guestRow = (await roster.json()).members.find((member) => member.name === "Smoke Guest");
+    expect(guestRow && guestRow.email === undefined, "a member should not see email addresses");
   });
 
   await check("resetting one club's ledger leaves the other club alone", async () => {
@@ -859,13 +880,99 @@ await check("Live ledger and Club pages load", async () => {
   await visible('[data-testid="section-live-ledger"]');
   await page.tap('[data-testid="tab-guidelines"]');
   await visible('[data-testid="section-guidelines"]');
+  await visible('[data-testid="section-members"]');
+  await visible('[data-testid="section-invites"]');
+  await visible('[data-testid="button-copy-invite"]');
+  await visible('[data-testid="button-share-invite"]');
+  await visible('[data-testid="button-invite-qr"]');
+  await visible('[data-testid="section-club-jackpot"]');
+  await visible('[data-testid="section-admin"]');
+  await visible('[data-testid="section-admin-people"]');
+  await visible('[data-testid="section-admin-setup"]');
+  await visible('[data-testid="section-admin-settings"]');
+  await visible('[data-testid="section-admin-danger"]');
+  await visible('[data-testid="section-import"]');
+  await visible('[data-testid="section-import-tournaments"]');
+  await visible('[data-testid="button-reset-invite"]');
+  await visible('[data-testid="section-delete-club"]');
+  const dangerOpen = await page.$eval('[data-testid="section-admin-danger"]', (node) => node.open);
+  expect(dangerOpen === false, "club danger should start collapsed");
 });
 
-await check("My account page loads from the menu", async () => {
+await check("Me loads from the avatar menu and has no admin tools", async () => {
   await page.tap('[data-testid="button-mobile-dashboard-menu"]');
   await visible('[data-testid="menu-open-account"]');
+  const menuLabel = await page.$eval('[data-testid="menu-open-account"]', (node) => node.textContent);
+  expect(/Me/.test(menuLabel) && !/admin/i.test(menuLabel), `menu label was ${menuLabel}`);
   await page.tap('[data-testid="menu-open-account"]');
   await visible('[data-testid="section-account"]');
+  await visible('[data-testid="form-change-password"]');
+  await visible('[data-testid="section-delete-account"]');
+  await visible('[data-testid="section-switch-club"]');
+  const leaked = await page.evaluate(() => ({
+    admin: !!document.querySelector('[data-testid="section-admin"]'),
+    reset: !!document.querySelector('[data-testid="button-reset-invite"]'),
+    settings: !!document.querySelector('[data-testid="panel-club-settings"]'),
+    setup: !!document.querySelector('[data-testid="panel-club-data"]'),
+    deleteClub: !!document.querySelector('[data-testid="section-delete-club"]'),
+    invites: !!document.querySelector('[data-testid="section-invites"]'),
+  }));
+  expect(!leaked.admin && !leaked.reset && !leaked.settings && !leaked.setup && !leaked.deleteClub && !leaked.invites, `Me still shows admin tools ${JSON.stringify(leaked)}`);
+});
+
+await check("a member sees Members and the invite, and cannot reset it or see Admin", async () => {
+  const stamp = Date.now();
+  const owner = cookieJar();
+  const member = cookieJar();
+  const origin = { origin: BASE };
+  const password = "smoke-test-pass-9";
+  const email = `ned-${stamp}@example.com`;
+  expect((await api("/api/identity/sign-up/email", { jar: owner, method: "POST", headers: origin, body: { name: "Ada Admin", email: `ada-${stamp}@example.com`, password } })).ok, "owner sign-up failed");
+  expect((await api("/api/clubs", { jar: owner, method: "POST", body: { name: `Member View ${stamp}`, playerName: "Ada Admin" } })).status === 201, "club not created");
+  const shared = await (await api("/api/clubs/current/invite", { jar: owner })).json();
+  const code = shared.invites.find((invite) => invite.usable)?.code;
+  expect(code, "the new club has no invite link");
+  expect((await api("/api/identity/sign-up/email", { jar: member, method: "POST", headers: origin, body: { name: "Ned Member", email, password } })).ok, "member sign-up failed");
+  expect((await api(`/api/invites/${code}/accept`, { jar: member, method: "POST", body: { name: "Ned Member" } })).ok, "member could not join");
+
+  const context = await browser.createBrowserContext();
+  const phone = await context.newPage();
+  await phone.setViewport(PHONE);
+  phone.on("pageerror", (error) => pageErrors.push(error.message));
+  const wait = (selector) => phone.waitForSelector(selector, { timeout: 15000 });
+  await phone.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+  await wait('[data-testid="input-email"]');
+  await phone.type('[data-testid="input-email"]', email);
+  await phone.type('[data-testid="input-password"]', password);
+  await phone.tap('[data-testid="button-account-submit"]');
+  await wait('[data-testid="tab-guidelines"]');
+  await phone.tap('[data-testid="tab-guidelines"]');
+  await wait('[data-testid="section-members"]');
+  await wait('[data-testid="button-copy-invite"]');
+  await wait('[data-testid="button-invite-qr"]');
+  const club = await phone.evaluate(() => ({
+    reset: !!document.querySelector('[data-testid="button-reset-invite"]'),
+    admin: !!document.querySelector('[data-testid="section-admin"]'),
+    copy: !!document.querySelector('[data-testid="button-copy-invite"]'),
+    share: !!document.querySelector('[data-testid="button-share-invite"]'),
+    members: !!document.querySelector('[data-testid="section-members"]'),
+    settings: !!document.querySelector('[data-testid="panel-club-settings"]'),
+    setup: !!document.querySelector('[data-testid="panel-club-data"]'),
+  }));
+  expect(club.copy && club.share && club.members, "a member cannot see Members or the invite");
+  expect(!club.reset && !club.admin && !club.settings && !club.setup, `a member sees admin tools ${JSON.stringify(club)}`);
+  await phone.tap('[data-testid="button-mobile-dashboard-menu"]');
+  await wait('[data-testid="menu-open-account"]');
+  await phone.tap('[data-testid="menu-open-account"]');
+  await wait('[data-testid="section-account"]');
+  await wait('[data-testid="section-delete-account"]');
+  const mine = await phone.evaluate(() => ({
+    admin: !!document.querySelector('[data-testid="section-admin"]'),
+    reset: !!document.querySelector('[data-testid="button-reset-invite"]'),
+    settings: !!document.querySelector('[data-testid="panel-club-settings"]'),
+  }));
+  expect(!mine.admin && !mine.reset && !mine.settings, `Me shows admin items ${JSON.stringify(mine)}`);
+  await context.close();
 });
 
 await check("the admin page opens for the club owner and keeps the danger zone closed", async () => {
@@ -1082,12 +1189,18 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     await phone.screenshot({ path: `${OUT}/live-jackpot-tournament.png`, fullPage: true });
 
     await phone.evaluate(() => window.scrollTo(0, 0));
-    await press('[data-testid="button-mobile-dashboard-menu"]');
-    await wait('[data-testid="menu-open-account"]');
-    await press('[data-testid="menu-open-account"]');
+    await press('[data-testid="tab-guidelines"]');
+    await wait('[data-testid="section-admin-setup"]');
+    await wait('[data-testid="section-import"]');
     await wait('[data-testid="section-import-tournaments"]');
     const moved = await phone.$('[data-testid="section-record-tournament"]');
     expect(moved === null, "the tournament form should stay off the admin Setup page");
+    await press('[data-testid="button-mobile-dashboard-menu"]');
+    await wait('[data-testid="menu-open-account"]');
+    await press('[data-testid="menu-open-account"]');
+    await wait('[data-testid="section-account"]');
+    const onMe = await phone.$('[data-testid="section-import-tournaments"]');
+    expect(onMe === null, "tournament CSV import should live in Club admin Setup, not on Me");
   } catch (error) {
     await phone.screenshot({ path: `${OUT}/live-jackpot-tournament-failed.png`, fullPage: true }).catch(() => undefined);
     const where = await phone.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "");
@@ -1165,6 +1278,9 @@ await check("an admin can preview and merge two names; a member cannot, and anot
     await wait('[data-testid="section-home-overview"]');
     await press('[data-testid="tab-guidelines"]');
     await wait('[data-testid="section-admin-people"]');
+    const peopleOpen = await phone.$eval('[data-testid="section-admin-people"]', (node) => node.open);
+    if (!peopleOpen) await press('[data-testid="section-admin-people"] summary');
+    await wait('[data-testid="select-merge-keep"]');
     await phone.select('[data-testid="select-merge-keep"]', "Ann");
     await phone.select('[data-testid="select-merge-into"]', "Ann Typo");
     await press('[data-testid="button-merge-preview"]');

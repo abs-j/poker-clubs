@@ -29,7 +29,7 @@ function describe(error: unknown): string {
 }
 
 /** Bringing past results in, and tidying what has been recorded. A new tournament is started from the Live tab. */
-export function ClubDataPanel() {
+export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
   const [nights, setNights] = useState<NightRow[]>([]);
   const [tournaments, setTournaments] = useState<TournamentRow[]>([]);
   const loadNights = useCallback(() => {
@@ -39,9 +39,9 @@ export function ClubDataPanel() {
   useEffect(loadNights, [loadNights]);
 
   return (
-    <div className="soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="panel-club-data">
-      <p className="section-label text-primary">Results</p>
-      <h2 className="mt-1 text-lg font-semibold tracking-tight">Club history</h2>
+    <div className={embedded ? "" : "soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6"} data-testid="panel-club-data">
+      {!embedded && <p className="section-label text-primary">Results</p>}
+      <h2 className={`${embedded ? "" : "mt-1 "}text-lg font-semibold tracking-tight`}>Club history</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Nights you close in the live ledger are recorded automatically. To catch up a night you missed, start it on the Live tab with its date. Bring in older results here.
       </p>
