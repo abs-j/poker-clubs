@@ -14,7 +14,8 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 
 ## Where work stopped
 
-L1 is merged (PR #14). `live_sessions.host_name` is additive and nullable; production still needs `pnpm --filter @workspace/db run push` when that build is published. Nothing from L2 is started. Continue with L2 below.
+L2 is merged (bank and settle-up). L1 (hosts) is merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements`. L3 is next.
 
 ## How to work
 
@@ -53,9 +54,16 @@ does. One PR per step, CI must be green, then merge.
 Done in PR #14. Host is `host_name`, or `started_by` when that is null. Reopening deletes the recorded night and clears the saved balance choice, so closing again records the night once and asks for the choice again if the ledger is still out. The balance choice is allowed for the host as well as an admin (`PUT /clubs/current/ledger/resolution` returns 403, not 401, when the caller cannot manage the night).
 
 ### L2. Bank and settle-up
-`live_sessions.bank_name`; new table `night_settlements (club_session_id, player_id, settled_at, settled_by)` or a column on `session_results`.
-Endpoints: set bank (host/admin), tick/untick settled (host/bank/admin). UI: bank picker on the ledger; after close, a per-player Settled list;
-Home card "you owe / are owed" from unsettled nights. Add a "settled" state to the Games night card.
+Done. Schema: `live_sessions.bank_name` (text, nullable), `live_sessions.settle_up` (boolean, default false; set true for every night started from now on), and table
+`night_settlements (club_id, club_session_id, player_id, settled_at, settled_by)` with a unique index on `(club_session_id, player_id)` and cascade delete, so reopening a night (which deletes its recorded night) clears its ticks.
+`settle_up` exists so nights recorded before this shipped, imports and hand-entered nights are history: nobody is asked to settle them. Only tracked nights appear on Home and Games.
+A player's net is cash-out minus buy-in after the balance choice (what `session_results` holds); a player who broke even has nothing to settle. No row in `night_settlements` means unsettled.
+Endpoints (small ones, not the dashboard payload):
+- `PUT /api/poker/live-session/bank` `{ name | null }`: host or admin; works on the open night or the latest closed one; the name must be on the roster or in tonight's ledger. `GET /api/poker/live-session/role` now also returns `bankName` and `nightId` (the recorded night of the latest closed session).
+- `GET /api/clubs/current/settle-up`: the viewer's unsettled nights split into `owe` and `owed` (with totals and the bank), plus `nights` with `state` (`none`, `open`, `partial`, `settled`) and `sessionNumber` for the Games cards.
+- `GET` and `PUT /api/clubs/current/nights/:id/settlement`: the per-player list; `PUT` takes `{ name, settled }` or `{ all: true, settled }`. Host, bank or admin (`canSettle` in `ledger-permissions.ts`); 403 otherwise, 404 for a night in another club or an untracked night.
+UI: bank picker in the Live header, the Settle up list under the close summary, a "Settle up" card on Home (hidden when nothing is open), a "N to settle" or "Settled" label and the list on the Games cash card (`components/settle-up.tsx`).
+Pure logic is in `lib/settle-up.ts` on both sides, with tests; smoke covers the API rules and the Home, Live and Games screens.
 
 ### L3. Past nights and notes inside the ledger
 Start-night takes a date (server: allow a past date; `liveLedgerSessionDate` and `getLatestSessionForDate` in `lib/live-activity.ts` assume today).

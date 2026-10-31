@@ -309,6 +309,66 @@ console.log("\nAccounts and clubs");
     expect(await nights() === before + 1, "closing again recorded a second copy of the night");
   });
 
+  await check("a bank holds the cash, and settling up is ticked off by the host, the bank or an admin", async () => {
+    const add = (jar, action, amount) => api("/api/poker/live-activity", { jar, method: "POST", body: { action, amount } });
+    const settlement = (jar, id) => api(`/api/clubs/current/nights/${id}/settlement`, { jar });
+    const tick = (jar, id, body) => api(`/api/clubs/current/nights/${id}/settlement`, { jar, method: "PUT", body });
+    const mineFor = async (jar) => (await (await api("/api/clubs/current/settle-up", { jar })).json()).mine;
+
+    expect((await api("/api/poker/live-session/start", { jar: owner, method: "POST" })).ok, "could not start");
+    expect((await api("/api/poker/live-session/bank", { jar: guest, method: "PUT", body: { name: "Smoke Guest" } })).status === 403, "a member who is not the host set the bank");
+    expect((await api("/api/poker/live-session/bank", { jar: owner, method: "PUT", body: { name: "Nobody Here" } })).status === 400, "a stranger was accepted as the bank");
+    const banked = await api("/api/poker/live-session/bank", { jar: owner, method: "PUT", body: { name: "smoke guest" } });
+    expect(banked.ok && (await banked.json()).bankName === "Smoke Guest", "the host could not choose the bank");
+
+    expect((await add(owner, "buy_in", 20)).ok, "owner buy-in failed");
+    expect((await add(guest, "buy_in", 10)).ok, "guest buy-in failed");
+    expect((await add(owner, "cash_out", 12)).ok, "owner cash-out failed");
+    expect((await add(guest, "cash_out", 18)).ok, "guest cash-out failed");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close");
+
+    const role = await (await api("/api/poker/live-session/role", { jar: owner })).json();
+    expect(role.status === "ended" && role.bankName === "Smoke Guest" && Number.isInteger(role.nightId), `role ${JSON.stringify(role)}`);
+    const night = role.nightId;
+
+    const before = await (await settlement(guest, night)).json();
+    const pat = before.lines.find((line) => line.name === "Pat Imported");
+    const gus = before.lines.find((line) => line.name === "Smoke Guest");
+    expect(pat?.netCents === -800 && gus?.netCents === 800 && !pat.settled && !gus.settled, `lines ${JSON.stringify(before.lines)}`);
+    expect(before.canSettle === true && before.state === "open", "the bank should be able to tick people off");
+    let mine = await mineFor(owner);
+    expect(mine.oweCents === 800 && mine.owe.some((entry) => entry.nightId === night && entry.bank === "Smoke Guest"), `owner owes ${JSON.stringify(mine)}`);
+    expect((await mineFor(guest)).owedCents === 800, "the winner should be owed 8.00");
+
+    expect((await settlement(rival, night)).status === 404, "another club read this night's settle-up");
+    expect((await tick(rival, night, { name: "Pat Imported", settled: true })).status === 404, "another club ticked this night");
+    expect((await tick(owner, night, { name: "Nobody Here", settled: true })).status === 400, "a stranger was ticked");
+    expect((await tick(owner, night, { name: "Pat Imported" })).status === 400, "a tick without a state was accepted");
+
+    const ticked = await tick(guest, night, { name: "pat imported", settled: true });
+    expect(ticked.ok, `bank tick ${ticked.status}`);
+    expect((await ticked.json()).state === "partial", "one tick of two should be partial");
+    expect((await mineFor(owner)).oweCents === 0, "a settled player still owes");
+    const summary = await (await api("/api/clubs/current/settle-up", { jar: owner })).json();
+    expect(summary.nights.find((entry) => entry.nightId === night)?.state === "partial", "the Games list should show the night as partly settled");
+
+    expect((await tick(owner, night, { all: true, settled: true })).ok, "the host could not mark everyone settled");
+    expect((await (await settlement(owner, night)).json()).state === "settled", "the night should be settled");
+    expect((await tick(owner, night, { name: "Pat Imported", settled: false })).ok, "the host could not untick");
+    expect((await (await settlement(owner, night)).json()).state === "partial", "unticking should reopen the night");
+
+    expect((await api("/api/poker/live-session/bank", { jar: guest, method: "PUT", body: { name: null } })).status === 403, "the bank cleared the bank without being host");
+    const cleared = await api("/api/poker/live-session/bank", { jar: owner, method: "PUT", body: { name: null } });
+    expect(cleared.ok && (await cleared.json()).bankName === null, "the host could not clear the bank");
+    expect((await tick(guest, night, { name: "Pat Imported", settled: true })).status === 403, "someone who is neither host, bank nor admin ticked");
+
+    expect((await api("/api/poker/live-session/reopen", { jar: owner, method: "POST" })).ok, "could not reopen");
+    expect((await settlement(owner, night)).status === 404, "a reopened night kept its settle-up");
+    expect((await mineFor(owner)).oweCents === 0, "a reopened night still shows as owed");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close again");
+    expect((await mineFor(owner)).oweCents === 800, "closing again should ask for settling again");
+  });
+
   await check("an imported batch can be undone; members cannot import", async () => {
     const refused = await api("/api/clubs/current/import", { jar: guest, method: "POST", body: { text: history } });
     expect(refused.status === 401, `expected 401, got ${refused.status}`);
@@ -766,6 +826,63 @@ await check("the admin page opens for the club owner and keeps the danger zone c
   expect(state.dangerOpen === false, "the danger zone should start collapsed");
   expect(state.h1 === 1, `expected one h1, found ${state.h1}`);
   await adminPage.screenshot({ path: `${OUT}/admin.png` });
+});
+
+await check("settle-up shows on Home, in Live and on the Games card, and ticking updates all three", async () => {
+  const sam = cookieJar();
+  const origin = { origin: BASE };
+  const email = `settle-${Date.now()}@example.com`;
+  const secret = "smoke-test-pass-9";
+  expect((await api("/api/identity/sign-up/email", { jar: sam, method: "POST", headers: origin, body: { name: "Sam Settle", email, password: secret } })).ok, "sign-up failed");
+  expect((await api("/api/clubs", { jar: sam, method: "POST", body: { name: "Settle Club", playerName: "Sam Settle" } })).status === 201, "club not created");
+  expect((await api("/api/poker/live-session/start", { jar: sam, method: "POST" })).ok, "could not start");
+  expect((await api("/api/poker/live-activity", { jar: sam, method: "POST", body: { action: "buy_in", amount: 10 } })).ok, "buy-in failed");
+  expect((await api("/api/poker/live-activity", { jar: sam, method: "POST", body: { action: "buy_in", amount: 10, attributedPlayer: "Ivy" } })).ok, "second buy-in failed");
+  expect((await api("/api/poker/live-activity", { jar: sam, method: "POST", body: { action: "cash_out", amount: 5 } })).ok, "cash-out failed");
+  expect((await api("/api/poker/live-activity", { jar: sam, method: "POST", body: { action: "cash_out", amount: 15, attributedPlayer: "Ivy" } })).ok, "second cash-out failed");
+  expect((await api("/api/poker/live-session/bank", { jar: sam, method: "PUT", body: { name: "Ivy" } })).ok, "bank not set");
+  expect((await api("/api/poker/live-session/end", { jar: sam, method: "POST" })).ok, "could not close");
+
+  const context = await browser.createBrowserContext();
+  const phone = await context.newPage();
+  await phone.setViewport(PHONE);
+  phone.on("pageerror", (error) => pageErrors.push(error.message));
+  phone.on("response", (response) => { if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`); });
+  const wait = (selector) => phone.waitForSelector(selector, { timeout: 15000 });
+  const text = (selector) => phone.$eval(selector, (node) => node.innerText);
+  await phone.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+  await wait('[data-testid="input-email"]');
+  await phone.type('[data-testid="input-email"]', email);
+  await phone.type('[data-testid="input-password"]', secret);
+  await phone.tap('[data-testid="button-account-submit"]');
+
+  await wait('[data-testid="card-settle-up"]');
+  expect(/You owe\s*\$5\.00/.test(await text('[data-testid="text-settle-owe"]')), "Home should say you owe $5.00");
+  await phone.screenshot({ path: `${OUT}/settle-home.png` });
+
+  await phone.tap('[data-testid="tab-live"]');
+  await wait('[data-testid="section-settle-list"]');
+  expect(/Bank: Ivy/.test(await text('[data-testid="text-settle-bank"]')), "the settle list should name the bank");
+  await phone.screenshot({ path: `${OUT}/settle-live.png`, fullPage: true });
+  const ticks = await phone.$$eval('[data-testid^="checkbox-settled-"]', (nodes) => nodes.map((node) => node.getAttribute("data-testid")));
+  expect(ticks.length === 2, `expected two ticks, found ${ticks.length}`);
+  const mine = await phone.evaluateHandle(() => [...document.querySelectorAll('[data-testid^="row-settle-"]')].find((row) => /Sam Settle/.test(row.innerText)));
+  await (await mine.asElement().$('button[role="checkbox"]')).tap();
+  await phone.waitForFunction(() => /Settled/.test([...document.querySelectorAll('[data-testid^="row-settle-"]')].find((row) => /Sam Settle/.test(row.innerText))?.innerText ?? ""), { timeout: 15000 });
+  const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(sideways <= 1, `the Live page scrolls sideways on a phone (${sideways}px)`);
+
+  await phone.tap('[data-testid="tab-sessions"]');
+  await wait('[data-testid="badge-settle-1"]');
+  await phone.waitForFunction(() => /1 to settle/.test(document.querySelector('[data-testid="badge-settle-1"]')?.innerText ?? ""), { timeout: 15000 });
+
+  await phone.tap('[data-testid="tab-live"]');
+  await wait('[data-testid="button-settle-all"]');
+  await phone.tap('[data-testid="button-settle-all"]');
+  await phone.waitForFunction(() => /Everyone has settled/.test(document.body.innerText), { timeout: 15000 });
+  await phone.tap('[data-testid="tab-sessions"]');
+  await phone.waitForFunction(() => /Settled/.test(document.querySelector('[data-testid="badge-settle-1"]')?.innerText ?? ""), { timeout: 15000 });
+  await context.close();
 });
 
 await check("terms and privacy are readable without signing in, and sign-up asks for agreement", async () => {

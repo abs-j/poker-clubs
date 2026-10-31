@@ -135,8 +135,36 @@ export type BalanceChoice = { mode: "jackpot" } | { mode: "player"; name: string
 
 export type LiveSessionRole = {
   hostName: string | null;
+  bankName: string | null;
   canManage: boolean;
   status: "open" | "ended" | "none";
+  /** The recorded night of the latest closed session, once it exists. */
+  nightId: number | null;
+};
+
+export type SettleLine = {
+  playerId: number;
+  name: string;
+  /** Cash-out minus buy-in, in cents. Negative means the player pays in. */
+  netCents: number;
+  settled: boolean;
+  settledAt: string | null;
+  settledBy: string | null;
+};
+export type SettleState = "none" | "open" | "partial" | "settled";
+export type NightSettlement = {
+  nightId: number;
+  date: string;
+  hostName: string;
+  bankName: string | null;
+  canSettle: boolean;
+  state: SettleState;
+  lines: SettleLine[];
+};
+export type MineSettleEntry = { nightId: number; sessionNumber: number | null; date: string; cents: number; bank: string | null };
+export type SettleUpSummary = {
+  mine: { owe: MineSettleEntry[]; owed: MineSettleEntry[]; oweCents: number; owedCents: number };
+  nights: Array<{ nightId: number; sessionNumber: number | null; date: string; state: SettleState; unsettled: number }>;
 };
 
 export const accountApi = {
@@ -145,6 +173,14 @@ export const accountApi = {
   /** Who is hosting the open night, or the latest closed one, and whether the viewer can run it. */
   liveSessionRole: () => request<LiveSessionRole>("/api/poker/live-session/role", { cache: "no-store" }),
   setLiveHost: (name: string) => request<LiveSessionRole>("/api/poker/live-session/host", send("POST", { name })),
+  /** Host or admin: who holds the cash for the open (or just closed) night; null clears it. */
+  setLiveBank: (name: string | null) => request<LiveSessionRole>("/api/poker/live-session/bank", send("PUT", { name })),
+  /** What you still owe or are owed, and how settled each night is. */
+  settleUp: () => request<SettleUpSummary>("/api/clubs/current/settle-up", { cache: "no-store" }),
+  nightSettlement: (nightId: number) => request<NightSettlement>(`/api/clubs/current/nights/${nightId}/settlement`, { cache: "no-store" }),
+  /** Host, bank or admin: tick or untick one player, or everyone. */
+  setSettled: (nightId: number, change: { name: string; settled: boolean } | { all: true; settled: boolean }) =>
+    request<NightSettlement>(`/api/clubs/current/nights/${nightId}/settlement`, send("PUT", change)),
   reopenLiveSession: () => request<unknown>("/api/poker/live-session/reopen", send("POST")),
   /** What the club has put into its bad beat jackpot, in dollars. */
   jackpot: () => request<{ total: number; nights: number }>("/api/clubs/current/jackpot", { cache: "no-store" }),

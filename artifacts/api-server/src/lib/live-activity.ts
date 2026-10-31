@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { parseResolution } from "./night-balance";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
+  clubSessions,
   db,
   liveActivityEventComments,
   liveActivityEvents,
@@ -901,6 +902,7 @@ export async function startLiveSession(memberName: string, clubId: number): Prom
         sessionDate,
         status: "open",
         startedBy: memberName,
+        settleUp: true,
       });
     } else if (existing.status === "finalizing") {
       // Recover sessions left mid-close by the older sheet-finalization flow.
@@ -1012,30 +1014,96 @@ const ACTIVE_STATUSES = ["open", "finalizing"] as const;
 
 export type LiveSessionRole = {
   hostName: string | null;
+  bankName: string | null;
   canManage: boolean;
   status: "open" | "ended" | "none";
+  /** The recorded night of the latest closed session, once it has been recorded. Used for settle-up. */
+  nightId: number | null;
 };
 
-export async function liveSessionRole(actor: LedgerActor, clubId: number): Promise<LiveSessionRole> {
+/** The open night, or failing that the latest closed one. */
+async function currentSession(clubId: number) {
   const [active] = await db
     .select()
     .from(liveSessions)
     .where(and(eq(liveSessions.clubId, clubId), inArray(liveSessions.status, [...ACTIVE_STATUSES])))
     .orderBy(asc(liveSessions.startedAt))
     .limit(1);
-  const session = active ?? (await db
+  if (active) return { session: active, status: "open" as const };
+  const [ended] = await db
     .select()
     .from(liveSessions)
     .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.status, "ended"), isNotNull(liveSessions.endedAt)))
     .orderBy(desc(liveSessions.endedAt), desc(liveSessions.startedAt))
-    .limit(1))[0];
-  if (!session) return { hostName: null, canManage: false, status: "none" };
+    .limit(1);
+  return ended ? { session: ended, status: "ended" as const } : null;
+}
+
+export async function liveSessionRole(actor: LedgerActor, clubId: number): Promise<LiveSessionRole> {
+  const current = await currentSession(clubId);
+  if (!current) return { hostName: null, bankName: null, canManage: false, status: "none", nightId: null };
+  const { session, status } = current;
   const hostName = hostOf(session);
+  let nightId: number | null = null;
+  if (status === "ended" && session.settleUp) {
+    const [night] = await db
+      .select({ id: clubSessions.id })
+      .from(clubSessions)
+      .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.liveSessionKey, session.sessionKey)))
+      .limit(1);
+    nightId = night?.id ?? null;
+  }
   return {
     hostName,
+    bankName: session.bankName ?? null,
     canManage: canManageNight(actor, hostName),
-    status: active ? "open" : "ended",
+    status,
+    nightId,
   };
+}
+
+/**
+ * Chooses who holds the cash for the night (or clears it). Works on the open night, and on the latest
+ * closed one so a host who forgot can still say who the bank was. The host or an admin; the bank is a player on the club's roster.
+ */
+export async function setLiveSessionBank(actor: LedgerActor, clubId: number, name: string | null): Promise<LiveSessionRole> {
+  const current = await currentSession(clubId);
+  if (!current) throw new Error("Start a night before choosing a bank.");
+  if (!canManageNight(actor, hostOf(current.session))) {
+    throw new LedgerPermissionError("Only the host or an admin can choose the bank.");
+  }
+  let bankName: string | null = null;
+  if (name !== null) {
+    const key = nameKey(name);
+    const [player] = key
+      ? await db
+          .select({ displayName: players.displayName })
+          .from(players)
+          .where(and(eq(players.clubId, clubId), eq(players.nameKey, key)))
+          .limit(1)
+      : [];
+    // Someone typed into tonight's ledger who has not been recorded yet counts too.
+    const [entered] = key && !player
+      ? await db
+          .select({ name: liveActivityEvents.memberName })
+          .from(liveActivityEvents)
+          .where(and(
+            eq(liveActivityEvents.clubId, clubId),
+            eq(liveActivityEvents.sessionKey, current.session.sessionKey),
+            isNull(liveActivityEvents.deletedAt),
+            sql`lower(regexp_replace(btrim(${liveActivityEvents.memberName}), '\s+', ' ', 'g')) = ${key}`,
+          ))
+          .limit(1)
+      : [];
+    const chosen = player?.displayName ?? entered?.name.trim().replace(/\s+/g, " ");
+    if (!chosen) throw new Error("That person is not on this club's roster or in tonight's ledger.");
+    bankName = chosen;
+  }
+  await db
+    .update(liveSessions)
+    .set({ bankName })
+    .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.sessionKey, current.session.sessionKey)));
+  return liveSessionRole(actor, clubId);
 }
 
 /** Hands the open night to another member. The target has to already belong to the club. */
@@ -1062,7 +1130,7 @@ export async function setLiveSessionHost(actor: LedgerActor, clubId: number, nam
       .limit(1);
     if (!member) throw new Error("That person is not a member of this club.");
     await tx.update(liveSessions).set({ hostName: member.displayName }).where(eq(liveSessions.sessionKey, session.sessionKey));
-    return { hostName: member.displayName, canManage: canManageNight(actor, member.displayName), status: "open" };
+    return { hostName: member.displayName, bankName: session.bankName ?? null, canManage: canManageNight(actor, member.displayName), status: "open", nightId: null };
   });
 }
 

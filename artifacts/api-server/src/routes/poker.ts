@@ -26,6 +26,7 @@ import {
   endLiveSession,
   liveSessionRole,
   reopenLiveSession,
+  setLiveSessionBank,
   setLiveSessionHost,
   startLiveSession,
   updateLiveActivityEvent,
@@ -257,6 +258,29 @@ router.post("/poker/live-session/host", requireMemberSession, async (req, res): 
     req.log.error({ err: error }, "Unable to hand over the live session");
     const message = error instanceof Error ? error.message : "Unable to hand this night over.";
     const status = refused(error) ?? (message.includes("not a member") || message.includes("Choose a member") || message.includes("Start a night") ? 400 : 502);
+    res.status(status).json({ error: message });
+  }
+});
+
+router.put("/poker/live-session/bank", requireMemberSession, async (req, res): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const raw = req.body?.name;
+  const name = raw === null ? null : typeof raw === "string" ? raw.trim() : undefined;
+  if (name === undefined || (name !== null && (name.length === 0 || name.length > 80))) {
+    res.status(400).json({ error: "Choose who is holding the cash, or clear the bank." });
+    return;
+  }
+  try {
+    res.json(await setLiveSessionBank(actor, memberClubId(res), name));
+  } catch (error) {
+    req.log.error({ err: error }, "Unable to set the bank");
+    const message = error instanceof Error ? error.message : "Unable to set the bank.";
+    const status = refused(error) ?? (message.includes("not on this club") || message.includes("Start a night") ? 400 : 502);
     res.status(status).json({ error: message });
   }
 });

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { type PerformanceScope, type DashboardSession as Session } from "@/lib/earnings-analytics";
 import { ArrowDown, ChevronDown, Trophy } from "lucide-react";
 import { plural } from "@/lib/utils";
+import { SettleBadge, SettleForSession } from "@/components/settle-up";
 import { EmptyPanel, PageIntro, formatCurrency, formatDate, monthLabel, signedCurrency, slug } from "./shared";
 
 type SessionsViewProps = {
@@ -120,7 +121,7 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { ses
         </div>
       </div>
       <div className="flex items-center justify-between border-t border-border/70 bg-secondary/20 px-4 py-3 text-xs">
-        <span className="text-muted-foreground">{isTournament ? "Tournament" : `Game #${session.sessionNumber}`}</span>
+        <span className="flex items-center gap-2 text-muted-foreground">{isTournament ? "Tournament" : `Game #${session.sessionNumber}`}{!isTournament && <SettleBadge sessionNumber={session.sessionNumber} />}</span>
         <span className="inline-flex items-center gap-1 font-semibold text-muted-foreground">Player results<ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} /></span>
       </div>
     </button>
@@ -140,6 +141,7 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { ses
             </div>
           ))}
         </div>
+        {!isTournament && <SettleForSession sessionNumber={session.sessionNumber} />}
       </div>
     )}
   </article>;

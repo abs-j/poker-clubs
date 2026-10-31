@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -52,6 +53,10 @@ export const liveSessions = pgTable(
     startedBy: text("started_by").notNull(),
     /** Who runs this night. Null means the person who started it is still the host. */
     hostName: text("host_name"),
+    /** The player who holds the cash for the night, so everyone settles with one person. Null means no bank. */
+    bankName: text("bank_name"),
+    /** Whether the night's players are asked to settle up. Off for nights recorded before settle-up existed. */
+    settleUp: boolean("settle_up").notNull().default(false),
     startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
     endedBy: text("ended_by"),
     endedAt: timestamp("ended_at", { withTimezone: true }),

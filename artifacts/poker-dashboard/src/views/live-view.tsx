@@ -11,6 +11,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { clubFileSlug, clubTimeZone } from "@/lib/club-format";
 import { accountApi, type BalanceChoice } from "@/lib/account-api";
+import { SettleList, useRefreshSettleUp } from "@/components/settle-up";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
 const LIVE_ROLE_KEY = ["live-session-role"];
@@ -35,6 +36,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const [hostOptions, setHostOptions] = useState<string[]>([]);
   const [handingOver, setHandingOver] = useState(false);
   const [reopening, setReopening] = useState(false);
+  const [savingBank, setSavingBank] = useState(false);
   const [jackpot, setJackpot] = useState<{ total: number; nights: number } | null>(null);
   const liveQuery = useGetPokerLiveActivity({
     query: {
@@ -90,9 +92,25 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     startMutation.isPending || endMutation.isPending || handingOver || reopening;
   const canManage = roleQuery.data?.canManage === true;
   const hostLabel = roleQuery.data?.hostName ?? (snapshot && snapshot.sessionStatus !== "not_started" ? snapshot.startedBy : null);
-  const refreshRole = () => { void queryClient.invalidateQueries({ queryKey: LIVE_ROLE_KEY }); };
+  const refreshSettleUp = useRefreshSettleUp();
+  const refreshRole = () => {
+    void queryClient.invalidateQueries({ queryKey: LIVE_ROLE_KEY });
+    refreshSettleUp();
+  };
+  const bankLabel = roleQuery.data?.bankName ?? null;
+  const rosterQuery = useQuery({
+    queryKey: ["club-members"],
+    queryFn: () => accountApi.members(),
+    enabled: canManage && snapshot !== undefined && snapshot.sessionStatus !== "not_started",
+  });
   const isOpen = snapshot?.sessionStatus === "open";
   const playerOptions = [...new Set([memberName, ...availablePlayers].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const bankOptions = [...new Set([
+    ...playerOptions,
+    ...(rosterQuery.data?.members.map((member) => member.name) ?? []),
+    ...(snapshot?.playerSummaries.map((row) => row.playerName) ?? []),
+    ...(bankLabel ? [bankLabel] : []),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   const setSnapshot = (next: NonNullable<typeof snapshot>) => {
     queryClient.setQueryData(liveQuery.queryKey, next);
@@ -302,9 +320,21 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
         queryClient.invalidateQueries({ queryKey: liveQuery.queryKey }),
         queryClient.invalidateQueries({ queryKey: LIVE_ROLE_KEY }),
       ]))
-      .then(() => setSessionNotice("Night reopened. Close it again when the ledger is right."))
+      .then(() => { refreshSettleUp(); setSessionNotice("Night reopened. Close it again when the ledger is right."); })
       .catch((error) => setFormError(apiErrorMessage(error)))
       .finally(() => setReopening(false));
+  };
+
+  const changeBank = (name: string) => {
+    setSavingBank(true);
+    setFormError("");
+    accountApi.setLiveBank(name || null)
+      .then((role) => {
+        queryClient.setQueryData(LIVE_ROLE_KEY, role);
+        refreshSettleUp();
+      })
+      .catch((error) => setFormError(apiErrorMessage(error)))
+      .finally(() => setSavingBank(false));
   };
 
   const confirmEnd = async () => {
@@ -498,6 +528,15 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             <button type="submit" disabled={handingOver || !hostChoice} data-testid="button-confirm-hand-over" className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60">{handingOver ? "Saving…" : "Make host"}</button>
             <button type="button" onClick={() => setHandOverOpen(false)} className="h-9 rounded-lg border border-border px-3 text-xs font-semibold">Cancel</button>
           </form>}
+          {snapshot.sessionStatus !== "not_started" && roleQuery.isSuccess && (canManage
+            ? <label className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground sm:text-xs">
+              <span className="shrink-0">Bank</span>
+              <select value={bankLabel ?? ""} onChange={(event) => changeBank(event.target.value)} disabled={savingBank} data-testid="select-live-bank" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground disabled:opacity-60">
+                <option value="">No bank</option>
+                {bankOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            : bankLabel && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-bank">Bank: {bankLabel}</p>)}
         </div>
         <div className="flex flex-col items-end gap-2">
           {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <button onClick={start} disabled={isSaving} aria-label={snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"} data-testid="button-start-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm"><Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><span className="sm:hidden">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "New session" : "Start"}</span><span className="hidden sm:inline">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"}</span></button>}
@@ -633,6 +672,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           </div>
           <p className="mt-2 text-xs text-muted-foreground">Closed {formatActivityTime(snapshot.closeSummary.closedAt)}. "Saved to ledger history and counted as a game on the leaderboard."</p>
         </div>}
+        {roleQuery.data?.status === "ended" && roleQuery.data.nightId !== null && <SettleList nightId={roleQuery.data.nightId} />}
       </div>
 
       {jackpot && jackpot.total > 0 && <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
