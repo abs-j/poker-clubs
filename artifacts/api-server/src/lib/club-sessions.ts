@@ -12,7 +12,6 @@ import {
 } from "@workspace/db";
 import { buildClubDashboard, type NightInput } from "./club-dashboard";
 import { nightFingerprint, type ParsedNight } from "./import-parse";
-import { pickYear, yearsOf } from "./years";
 import { loadTournamentEvents } from "./club-tournaments";
 import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
 
@@ -205,36 +204,11 @@ async function loadNights(clubId: number): Promise<Array<NightInput & { id: numb
   return [...nights.values()];
 }
 
-/** The years a club has nights in and which one the dashboard shows for the requested value. */
-export async function clubYears(clubId: number, requested: string | undefined) {
+/** The dashboard for a club: every recorded night and tournament it has. */
+export async function loadClubDashboard(clubId: number, title: string) {
   await syncClosedLiveSessions(clubId);
-  const [nightYears, tournamentYears] = await Promise.all([
-    db
-      .selectDistinct({ date: sql<string>`left(${clubSessions.sessionDate}, 4)` })
-      .from(clubSessions)
-      .where(eq(clubSessions.clubId, clubId)),
-    db
-      .selectDistinct({ date: sql<string>`left(${clubTournaments.eventDate}, 4)` })
-      .from(clubTournaments)
-      .where(eq(clubTournaments.clubId, clubId)),
-  ]);
-  const years = yearsOf([...nightYears, ...tournamentYears].map((row) => row.date));
-  return { years, selected: pickYear(years, requested) };
-}
-
-/**
- * The dashboard for a club that keeps its own results. A club with several years of history
- * sees one year at a time; "all" shows every night without month and quarter slices, which
- * would otherwise mix the same month of different years.
- */
-export async function loadClubDashboard(clubId: number, title: string, requestedYear?: string) {
-  const { years, selected } = await clubYears(clubId, requestedYear);
-  const nights = await loadNights(clubId);
-  const shown = selected === "all" ? nights : nights.filter((night) => night.date.startsWith(selected));
-  const events = await loadTournamentEvents(clubId);
-  const shownEvents = selected === "all" ? events : events.filter((event) => event.date.startsWith(selected));
-  const dashboard = buildClubDashboard({ title, nights: shown, tournaments: shownEvents });
-  return selected === "all" && years.length > 1 ? { ...dashboard, months: [], quarters: [] } : dashboard;
+  const [nights, events] = await Promise.all([loadNights(clubId), loadTournamentEvents(clubId)]);
+  return buildClubDashboard({ title, nights, tournaments: events });
 }
 
 /** Every recorded night, oldest first, for the CSV export. */

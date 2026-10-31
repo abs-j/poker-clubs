@@ -137,13 +137,13 @@ function rankByNet<T extends { net: number }>(rows: T[]): Array<T & { rank: numb
   });
 }
 
-export function quarterOf(date: string): string {
-  const month = Number(date.slice(5, 7));
-  return `${date.slice(0, 4)}-Q${Math.floor((month - 1) / 3) + 1}`;
+/** The season a night belongs to: its calendar month, "2026-10". */
+export function seasonOf(date: string): string {
+  return date.slice(0, 7);
 }
 
 export type PointsOptions = {
-  /** "ALL" or a calendar quarter such as "2026-Q4". */
+  /** "ALL" or a calendar month such as "2026-10". */
   season?: string;
   /** Count only these kinds of night (e.g. cash only). Default: both. */
   kinds?: NightKind[];
@@ -233,7 +233,7 @@ export function buildPointsLeaderboard(
   const kinds = options.kinds;
   const entries = scoreNights(cashNights, tournaments, rules).filter(
     (entry) =>
-      (season === "ALL" || quarterOf(entry.night.date) === season) &&
+      (season === "ALL" || seasonOf(entry.night.date) === season) &&
       (!kinds || kinds.includes(entry.night.kind)),
   );
 
@@ -276,12 +276,17 @@ export function buildPointsLeaderboard(
 
 /** Seasons that have at least one scored night, newest first. */
 export function pointsSeasons(cashNights: PointsCashNight[], tournaments: TournamentEvent[], rules: PointsRules = POINTS_RULES): string[] {
-  const keys = new Set(scoreNights(cashNights, tournaments, rules).map((entry) => quarterOf(entry.night.date)));
+  const keys = new Set(scoreNights(cashNights, tournaments, rules).map((entry) => seasonOf(entry.night.date)));
   return [...keys].sort().reverse();
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "Oct 2026", or "All time". */
 export function seasonLabel(season: string): string {
-  return season === "ALL" ? "All time" : `${season.slice(5)} ${season.slice(0, 4)}`;
+  if (season === "ALL") return "All time";
+  const month = SHORT_MONTHS[Number(season.slice(5, 7)) - 1];
+  return month ? `${month} ${season.slice(0, 4)}` : season;
 }
 
 export function pointsFor(rows: PointsRow[], playerName: string): PointsRow | null {
@@ -325,7 +330,7 @@ export function pointsExamples(rules: PointsRules = POINTS_RULES) {
 }
 
 export type PointsAfterNight = {
-  /** Calendar quarter the night belongs to, e.g. "2026-Q4". */
+  /** Calendar month the night belongs to, e.g. "2026-10". */
   season: string;
   /** The table as it stood once this night was counted, best first. */
   rows: Array<{ name: string; points: number; earned: number; rank: number }>;
@@ -343,7 +348,7 @@ export function pointsAfterNight(
   night: { date: string; sessionNumber?: number; tournamentId?: string },
   rules: PointsRules = POINTS_RULES,
 ): PointsAfterNight {
-  const season = quarterOf(night.date);
+  const season = seasonOf(night.date);
   const upTo = (date: string) => date <= night.date;
   const rows = buildPointsLeaderboard(
     cashNights.filter((entry) => upTo(entry.date)),
@@ -366,22 +371,12 @@ export function pointsAfterNight(
 }
 
 /**
- * Turns the leaderboard's own period filter into the points season it implies, so one filter
- * bar drives both tables. A month maps to its calendar quarter. Returns "ALL" for all time, and
- * null when that quarter has no scored night (so the page can say so instead of guessing).
+ * The points season a period filter implies: the same month, or "ALL" for all time. Returns null
+ * when that month has no scored night (so the page can say so instead of guessing).
  */
-export function seasonForPeriod(
-  period: string,
-  breakdown: "months" | "quarters",
-  seasons: string[],
-): string | null {
+export function seasonForPeriod(period: string, seasons: string[]): string | null {
   if (period === "ALL") return "ALL";
-  const quarter =
-    breakdown === "quarters"
-      ? Number(period.replace(/\D/g, ""))
-      : Math.floor((Number(period) - 1) / 3) + 1;
-  if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) return null;
-  return seasons.find((key) => key.endsWith(`-Q${quarter}`)) ?? null;
+  return seasons.includes(period) ? period : null;
 }
 
 /** The first night that scored, for "scored nights start on…" notes. */

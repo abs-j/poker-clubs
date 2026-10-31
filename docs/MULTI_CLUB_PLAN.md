@@ -181,3 +181,4 @@ export, no platform super-admin, no in-app way to edit a recorded night (delete 
   and applied when the night is recorded (`lib/night-balance.ts`). Needs `pnpm --filter @workspace/db run push`. Not yet:
   paying the jackpot out, jackpot in the CSV export, balancing hand-entered or imported nights.
 - Legacy Monash mode removed (31 Oct): access codes, admin password, Google Sheet reader and mirror, public snapshot page and the default club are gone; everything runs on accounts and the database. The admin page is now for signed-in club owners and admins only.
+- Seasons are calendar months (31 Oct): sessions and months carry `YYYY-MM` keys, points seasons and the season card are monthly, the Year picker, Quarter filter and year cookie/routes are removed. All time and Month are the only filters.

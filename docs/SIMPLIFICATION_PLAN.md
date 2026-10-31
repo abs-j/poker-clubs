@@ -1,7 +1,7 @@
 # Simplification plan
 
 Decisions from the design interview (31 Oct 2026). Principle: **simplify; remove or default before adding.**
-Nothing here is built yet except the collapsible Members list.
+Status (31 Oct 2026): all four cuts are built (settings/invites/avatars, Compare and share cards, legacy Monash, and monthly seasons). Next: the ledger work (hosts, bank, settle-up, reopen, past nights), then the structure work.
 
 ## How the site is used
 
@@ -51,4 +51,4 @@ Hosts, bank, settle-up (per-player Settled ticks; Home shows what you owe or are
 2. **Ledger**: hosts and permissions, past nights and import-style entry inside the ledger, bank and settle-up, reopen, jackpot payout, tournaments from "New night".
 3. **Structure**: split My account into Me and Club admin, platform admin page, merge names, move the Games edit tools, retire `/admin`.
 
-Open point: with Year and Quarter gone, month standings must list real months ("Oct 2026"), not month numbers. This needs the dashboard's month grouping reworked, which is part of step 1.
+Done: months are real calendar months ("2026-10", shown "Oct 2026") everywhere, seasons are months, and the Year/Quarter filters and year cookie are gone. The dashboard payload still carries an empty `quarters` field so its shape is unchanged.

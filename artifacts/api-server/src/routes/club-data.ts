@@ -6,7 +6,7 @@ import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubJackpot, clubYears, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, setLedgerResolution, undoImport } from "../lib/club-sessions";
+import { clubJackpot, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, setLedgerResolution, undoImport } from "../lib/club-sessions";
 import { parseResolution } from "../lib/night-balance";
 import { nightsToCsv } from "../lib/export-csv";
 import { getClubSettings } from "../lib/club-settings";
@@ -21,8 +21,6 @@ import {
 
 const router: IRouter = Router();
 
-export const YEAR_COOKIE = "poker_year";
-export const yearCookie = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 router.use("/clubs/current", (_req, res, next) => {
   res.set("Cache-Control", "no-store");
@@ -281,23 +279,6 @@ router.delete("/clubs/current/tournaments/:id", requireAdminSession, async (req,
   res.status(204).end();
 });
 
-/** Which years the club has, and which one the dashboard is showing. */
-router.get("/clubs/current/years", requireMemberSession, async (req, res): Promise<void> => {
-  res.json(await clubYears(memberClubId(res), yearCookie(req.cookies?.[YEAR_COOKIE])));
-});
-
-router.post("/clubs/current/year", requireMemberSession, async (req, res): Promise<void> => {
-  const { years } = await clubYears(memberClubId(res), undefined);
-  const requested = String(req.body?.year ?? "");
-  if (requested !== "all" && !years.includes(Number(requested))) {
-    res.status(400).json({ error: "Choose a year the club has played in, or all time." });
-    return;
-  }
-  res.cookie(YEAR_COOKIE, requested, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 24 * 60 * 60 * 1000, path: "/" });
-  res.json({ selected: requested });
-});
-
-/** Downloads the club's results as CSV, in the layout the importer reads. */
 router.get("/clubs/current/export.csv", requireAdminSession, async (req, res): Promise<void> => {
   const clubId = adminClubId(res);
   const [nights, settings] = await Promise.all([loadNightsForExport(clubId), getClubSettings(clubId)]);

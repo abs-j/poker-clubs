@@ -44,7 +44,7 @@ test("tournament events keep the dated event and each player's net separate", ()
 
   assert.equal(session.eventType, "tournament");
   assert.equal(session.sessionNumber, 43);
-  assert.equal(session.month, "10");
+  assert.equal(session.month, "2026-10");
   assert.equal(session.totalBuyIn, 30);
   assert.equal(session.totalCashOut, 40);
   assert.equal(session.totalNet, 10);
