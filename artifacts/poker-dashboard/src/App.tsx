@@ -23,6 +23,7 @@ import { useMemberAvatars } from "@/lib/avatars";
 import { JoinPage, ResetPasswordPage, WelcomeFlow } from "./views/welcome";
 import { PrivacyPage, TermsPage } from "./views/legal";
 import { accountApi } from "@/lib/account-api";
+import { plural } from "@/lib/utils";
 import { ClubSettingsProvider, useClubSettings } from "@/components/club-settings-context";
 import { YearPicker } from "@/components/year-picker";
 import type { GamesMode } from "./views/games-view";
@@ -683,7 +684,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open overview"><CalendarDays className="h-5 w-5" /></button>
                 <div className="flex min-w-0 items-baseline gap-2">
                   <p data-testid="text-dashboard-title" className="min-w-0 truncate text-lg font-semibold tracking-[-0.03em] sm:text-xl">{dashboard.title || "Poker Session Log & Months"}</p>
-                  <a href="https://abhayjhade.com" target="_blank" rel="noreferrer" data-testid="link-creator-top" className="hidden shrink-0 text-[11px] font-medium text-muted-foreground transition-colors hover:text-primary hover:underline sm:inline">By Abhay Jhade</a>
                 </div>
                 <YearPicker />
               </div>
@@ -761,8 +761,8 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                   periods={periodFilterOrder.map((value) => {
                     const period = periods.find((item) => item.key === value);
                     return value === "ALL"
-                      ? { value, label: "All time", summary: `${allScopeSessionCount} games · ${compactCurrency(allScopeBuyIns)}` }
-                      : { value, label: period?.label ?? value, summary: period ? `${period.sessionCount} games · ${compactCurrency(period.totalBuyIn)}` : "No games" };
+                      ? { value, label: "All time", summary: `${plural(allScopeSessionCount, "game")} · ${compactCurrency(allScopeBuyIns)}` }
+                      : { value, label: period?.label ?? value, summary: period ? `${plural(period.sessionCount, "game")} · ${compactCurrency(period.totalBuyIn)}` : "No games" };
                   })}
                 />
               )}
@@ -881,7 +881,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
           <footer className="mt-8 grid gap-4 border-t border-border py-7 text-xs text-muted-foreground sm:grid-cols-[1fr_auto_auto] sm:items-end">
              <div className="space-y-1"><p className="font-mono text-[11px] uppercase tracking-[0.14em] text-foreground">{sessions.length} cash games{tournamentSessions.length ? ` · ${tournamentSessions.length} ${tournamentSessions.length === 1 ? "tournament" : "tournaments"}` : ""} · {dashboard.totals.totalRecords} player results</p><p data-testid="text-footer-latest">{dashboard.totals.latestSession ? `Latest game #${dashboard.totals.latestSession}` : "Season in progress"}</p></div>
             <span className="font-mono text-[11px] uppercase tracking-[0.14em]">{dashboard.spreadsheetUrl ? "Numbers sourced from the club sheet" : "Numbers from the nights this club has recorded"}</span>
-            <a href="https://abhayjhade.com" target="_blank" rel="noreferrer" data-testid="link-portfolio" className="inline-flex min-h-[44px] items-center gap-1.5 font-medium text-primary hover:underline">More work by Abhay <span aria-hidden="true">→</span></a>
           </footer>
         </div>
       </main>
@@ -895,6 +894,30 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
 
 function ErrorState({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) { return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div data-testid="state-dashboard-error" className="max-w-md rounded-2xl border border-destructive/30 bg-card p-7 text-center soft-shadow"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Activity className="h-5 w-5" /></div><h1 className="mt-4 text-xl font-semibold">The club sheet is out of reach</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">The last dashboard request did not complete. Your figures have not been changed.</p><button onClick={onRetry} disabled={refreshing} data-testid="button-retry-dashboard" className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{refreshing ? "Checking source" : "Try again"}</button></div></div>; }
 function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: string; memberName: string; onNavigate: (view: "live" | "account") => void; tabBar: ReactNode }) {
+  // Only admins can set a club up; everyone else just waits for the first night.
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    accountApi.me().then((me) => { if (!cancelled) setIsAdmin(me.clubs.find((club) => club.slug === me.active)?.role !== "member"); }).catch(() => { if (!cancelled) setIsAdmin(false); });
+    return () => { cancelled = true; };
+  }, []);
+  if (isAdmin === false) {
+    return (
+      <div className="min-h-[100dvh] bg-background text-foreground">
+        <main className="mx-auto max-w-2xl px-4 pb-28 pt-8 sm:px-7">
+          <p className="section-label text-primary">Welcome</p>
+          <h1 data-testid="text-new-club-title" className="mt-1 text-2xl font-semibold tracking-tight">{clubName}</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Hi {memberName}, you're in. Nothing has been recorded yet.</p>
+          <div className="soft-shadow mt-6 rounded-2xl border border-border bg-card p-5" data-testid="box-member-waiting">
+            <h2 className="text-base font-semibold">Waiting for the first night</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">Standings, games and your results appear here as soon as a club admin records or imports a night. Check the Live tab on game night.</p>
+            <button type="button" onClick={() => onNavigate("live")} data-testid="button-start-live" className="mt-4 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">Open the live ledger</button>
+          </div>
+        </main>
+        {tabBar}
+      </div>
+    );
+  }
   const steps: Array<{ title: string; body: string; action: string; view: "live" | "account"; testId: string }> = [
     { title: "Bring your club in", body: "Make an invite link or QR code. Anyone who opens it can join and pick their name.", action: "Invite people", view: "account", testId: "button-start-invite" },
     { title: "Bring in your history", body: "Import past results from a spreadsheet, or enter a night by hand. Leaderboards, points and profiles fill in straight away.", action: "Import results", view: "account", testId: "button-start-import" },

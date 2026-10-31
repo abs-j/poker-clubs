@@ -25,7 +25,7 @@ export const SECTIONS: Section[] = [
   { id: "overview", label: "Home", icon: House, views: ["overview"] },
   { id: "sessions", label: "Games", icon: CalendarDays, views: ["sessions"] },
   { id: "live", label: "Live", icon: CircleDollarSign, views: ["live"] },
-  { id: "months", label: "Players", icon: Users, views: ["months", "players", "head-to-head"] },
+  { id: "months", label: "Leaderboard", icon: Users, views: ["months", "players", "head-to-head"] },
   { id: "guidelines", label: "Club", icon: BookOpen, views: ["guidelines"] },
 ];
 

@@ -4,6 +4,7 @@ import { ArrowDown, ChevronDown, Image as ImageIcon, Trophy } from "lucide-react
 import { RecapStudio } from "@/components/recap-studio";
 import { usePoints } from "@/components/points-context";
 import { buildCashRecap } from "@/lib/recaps";
+import { plural } from "@/lib/utils";
 import { quarterOf, seasonLabel } from "@/lib/points";
 import { EmptyPanel, PageIntro, formatCurrency, formatDate, monthLabel, signedCurrency, slug } from "./shared";
 
@@ -119,7 +120,7 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { ses
         </div>
         <div className="shrink-0 text-right">
           <p className="font-mono text-sm font-semibold">{formatCurrency(session.totalBuyIn)}</p>
-          <p className="text-[11px] text-muted-foreground">{session.playerCount} players · {isTournament ? "invested" : "pot"}</p>
+          <p className="text-[11px] text-muted-foreground">{plural(session.playerCount, "player")} · {isTournament ? "invested" : "pot"}</p>
         </div>
       </div>
       {isTournament && <div data-testid={`session-tournament-summary-${session.sessionNumber}`} className="flex items-center justify-between gap-3 border-b border-border/70 bg-secondary/15 px-4 py-2.5 text-xs">

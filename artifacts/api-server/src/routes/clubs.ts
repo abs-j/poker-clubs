@@ -1,6 +1,6 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { and, asc, count, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
-import { clubs, db, invites, memberships, players, sessionResults, userAccounts, users } from "@workspace/db";
+import { clubs, db, invites, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
 import { isOriginalClub } from "../lib/club-settings";
 import { adminClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
@@ -134,6 +134,8 @@ router.post("/clubs", requireUser, async (req, res): Promise<void> => {
       .values({ clubId: created.id, displayName: playerName, nameKey: nameKey(playerName), userId: user.id })
       .returning();
     await tx.insert(memberships).values({ clubId: created.id, userId: user.id, playerId: player.id, role: "owner" });
+    // A link is ready to share straight away, so the first step after creating a club is one tap.
+    await tx.insert(invites).values({ clubId: created.id, code: newInviteCode(), role: "member", createdBy: user.id });
     return created;
   });
   setActiveClubCookie(res, club.slug);
@@ -569,9 +571,10 @@ router.post("/clubs/current/claim", requireMemberSession, async (req, res): Prom
       if (!mine) throw new JoinError("You are not a member of this club.", 403);
       if (mine.playerId === targetId) return null;
 
-      const [{ total }] = await tx.select({ total: count() }).from(sessionResults).where(eq(sessionResults.playerId, mine.playerId));
-      if (total > 0) {
-        throw new JoinError("Your current name already has results, so it can't be swapped. Ask the club owner to merge them.", 409);
+      const [{ cash }] = await tx.select({ cash: count() }).from(sessionResults).where(eq(sessionResults.playerId, mine.playerId));
+      const [{ tournaments }] = await tx.select({ tournaments: count() }).from(tournamentResults).where(eq(tournamentResults.playerId, mine.playerId));
+      if (cash + tournaments > 0) {
+        throw new JoinError("Your current name already has results, so it can't be swapped. Ask a club admin to remove it from the roster first.", 409);
       }
       const [target] = await tx
         .update(players)

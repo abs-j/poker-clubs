@@ -132,7 +132,7 @@ router.delete("/clubs/current/sessions/:id", requireAdminSession, async (req, re
     return;
   }
   if (outcome === "live") {
-    res.status(409).json({ error: "This night came from the live ledger. Delete it from the ledger history in Admin." });
+    res.status(409).json({ error: "This night came from the live ledger. Delete it from Ledger history on the Admin page (/admin)." });
     return;
   }
   await recordAdminAction("night_deleted", `Deleted recorded night #${id}.`, req);
@@ -255,7 +255,7 @@ router.delete("/clubs/current/tournaments/:id", requireAdminSession, async (req,
     res.status(404).json({ error: "That tournament no longer exists." });
     return;
   }
-  await recordAdminAction("night_deleted", `Deleted tournament #${id}.`, req);
+  await recordAdminAction("tournament_deleted", `Deleted tournament #${id}.`, req);
   res.status(204).end();
 });
 

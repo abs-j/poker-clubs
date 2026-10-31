@@ -83,6 +83,7 @@ const AUDIT_LABELS: Record<string, string> = {
   history_imported: "History imported",
   history_import_undone: "Import undone",
   night_deleted: "Night deleted",
+  tournament_deleted: "Tournament deleted",
   night_recorded: "Night recorded",
   settings_updated: "Settings changed",
   results_exported: "Results downloaded",
@@ -214,7 +215,7 @@ function HealthStrip({ refreshKey, activeMembers }: { refreshKey: number; active
           data.tournaments.flagged.length > 0
             ? `Sheet flagged: ${data.tournaments.flagged.join(", ")}`
             : data.tournaments.count === 0
-              ? "Check the Tournament Log tab"
+              ? "Record one under Club settings, Record a tournament"
               : "All data checks passed"
         }
         tone={data.tournaments.flagged.length > 0 || data.tournaments.count === 0 ? "warn" : "good"}
@@ -686,7 +687,7 @@ function AdminDashboard({
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       <div className="bg-amber-500/15 px-4 py-1.5 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-800 dark:text-amber-200">
-        Restricted · committee only
+        Restricted · club admins only
       </div>
       <main className="mx-auto max-w-[1200px] px-4 py-5 sm:px-7 lg:px-10 lg:py-8">
         <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">

@@ -14,9 +14,9 @@ history exists only on the local branch `full-history` (it contains Monash scree
 
 ## Next, in order
 
-1. **Deploy on Replit** as its own Repl and domain, following `docs/DEPLOY.md` (secrets, `pnpm --filter @workspace/db run push`,
-   publish, launch checklist). This has not been done or tested on Replit yet.
-2. **Set up Resend** (`docs/EMAIL_SETUP.md`): domain, `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL`, `VITE_CONTACT_EMAIL`.
+1. **Deploy on Replit**: done. Live at https://pokerclubs.abhayjhade.com (Autoscale). Still to do: run the launch checklist in
+   `docs/DEPLOY.md` end to end (restore drill, `LIVE_SITE_URL`).
+2. **Resend**: live site reports email on. Confirm real delivery (`docs/EMAIL_SETUP.md`) and `VITE_CONTACT_EMAIL`.
 3. **Before making the repo public:** replace real Monash member first names in the tests/mockup
    (`import-parse.test.mjs`, `podium.test.mjs`, `recaps.test.mjs`, `share-card.test.mjs`, `mockup-sandbox/.../StoryFirst.tsx`),
    and remove the legacy Monash sheet code (`poker-sheet.ts`, the sheet mirror in `live-activity.ts`, `SPREADSHEET_ID`).
@@ -41,7 +41,7 @@ End-to-end: `scripts/smoke/smoke.mjs` (run it from a folder with `puppeteer-core
 site running with the legacy access-code env set, because its first half checks the Monash legacy mode:
 `SMOKE_BASE_URL=http://localhost:5173 SMOKE_MEMBER_CODE=<code> SMOKE_ADMIN_PASSWORD=<pw> CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs`.
 CI (`.github/workflows/ci.yml`) does this on every push; it passed on the first push.
-Last full local run: 52/52 smoke checks, 108 API tests, 110 dashboard tests.
+Last local run (31 Oct 2026): 118 API tests, 115 dashboard tests, typecheck clean. Smoke last run at 52/52 earlier.
 
 ## Things that bit before
 

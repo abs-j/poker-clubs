@@ -166,3 +166,13 @@ Known gaps:
 
 Not done, and fine for an MVP: avatars still live in Postgres, no public marketing page beyond the sign-in screen, no tournament CSV
 export, no platform super-admin, no in-app way to edit a recorded night (delete and re-enter), per-instance rate-limit memory.
+
+## Since MVP (Oct 2026)
+
+- Night notes: paste "Ann - $10 -> $48" lines, or choose a screenshot of notes (Claude vision, optional `ANTHROPIC_API_KEY`, admin only, 20 reads per club per day).
+- Tournament CSV import (Tournament Log and Tournament Results tabs) and one picker for both files.
+- Deployed on Replit (Autoscale) at pokerclubs.abhayjhade.com.
+- Launch audit (31 Oct): credentialed CORS restricted to trusted origins, API security headers, claim-a-name no longer fails when the
+  current name only has tournament results, a share-ready invite is created with every new club, member empty state, Monash wording
+  removed from generic screens. Larger UX work (admin area separate from "My account", retiring `/admin`) is still open.
+
