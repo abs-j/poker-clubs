@@ -153,51 +153,12 @@ export interface AdminLiveLedgerReset {
   freshSessionStartedAt: string;
 }
 
-export interface AdminLiveLedgerSessionDeleteInput {
-  /** @pattern ^[0-9a-f]{64}$ */
-  backupId: string;
-  /**
-     * @minLength 1
-     * @maxLength 80
-     */
-  confirmation: string;
-}
-
-export type AdminLiveLedgerSessionDeletionEnvironment = typeof AdminLiveLedgerSessionDeletionEnvironment[keyof typeof AdminLiveLedgerSessionDeletionEnvironment];
-
-
-export const AdminLiveLedgerSessionDeletionEnvironment = {
-  development: 'development',
-  production: 'production',
-} as const;
-
-export interface AdminLiveLedgerSessionDeletion {
-  environment: AdminLiveLedgerSessionDeletionEnvironment;
-  sessionKey: string;
-  sessionDate: string;
-  /** @minimum 0 */
-  deletedEvents: number;
-  /** @minimum 0 */
-  deletedComments: number;
-  /** @minimum 0 */
-  clearedSheetRows: number;
-}
-
 export interface HealthStatus {
   status: string;
 }
 
-export type ErrorCode = typeof ErrorCode[keyof typeof ErrorCode];
-
-
-export const ErrorCode = {
-  SOURCE_TAB_MISSING: 'SOURCE_TAB_MISSING',
-} as const;
-
 export interface Error {
   error: string;
-  code?: ErrorCode;
-  sourceTab?: string;
 }
 
 export type LiveActivityInputAction = typeof LiveActivityInputAction[keyof typeof LiveActivityInputAction];
@@ -625,33 +586,6 @@ export interface QuarterlySummary {
   topWinnerProfit: number;
   positiveSessions: number;
   negativeSessions: number;
-}
-
-export interface PublicMonthActivity {
-  month: string;
-  label: string;
-  range: string;
-  sessionCount: number;
-  gameCount: number;
-}
-
-export interface PublicMonthlyActivity {
-  month: string;
-  label: string;
-  gameCount: number;
-}
-
-export interface PublicPokerSummary {
-  title: string;
-  /** @nullable */
-  latestGameDate: string | null;
-  totalSessions: number;
-  totalPlayers: number;
-  totalGames: number;
-  lastUpdated: string;
-  isStale: boolean;
-  months: PublicMonthActivity[];
-  monthlyGames: PublicMonthlyActivity[];
 }
 
 export interface PokerDashboard {

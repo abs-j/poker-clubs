@@ -5,7 +5,7 @@ import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/
 import { liveSessionRole } from "../lib/live-activity";
 import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
-import { commitTournamentImport, deleteTournament, getTournament, listTournaments, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
+import { commitTournamentImport, deleteTournament, getTournament, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
@@ -499,10 +499,6 @@ router.post("/clubs/current/tournaments/import", requireAdminSession, async (req
   }
 });
 
-router.get("/clubs/current/tournaments", requireAdminSession, async (_req, res): Promise<void> => {
-  res.json({ tournaments: await listTournaments(adminClubId(res)) });
-});
-
 router.get("/clubs/current/tournaments/:id", async (req, res): Promise<void> => {
   if (!(await requireClubAdmin(req, res))) return;
   const id = nightId(req.params.id);
@@ -559,24 +555,6 @@ router.get("/clubs/current/export.csv", requireAdminSession, async (req, res): P
   res.set("Content-Disposition", `attachment; filename="${settings.slug}-results.csv"`);
   await recordAdminAction("results_exported", `Downloaded the results CSV (${nights.length} nights).`, req);
   res.send(nightsToCsv(nights));
-});
-
-/** Records one night by hand: { date: "YYYY-MM-DD", players: [{ name, buyIn, cashOut }] }. */
-router.post("/clubs/current/sessions", requireAdminSession, async (req, res): Promise<void> => {
-  const night = readNightBody(req.body ?? {});
-  if ("error" in night) {
-    res.status(400).json({ error: night.error });
-    return;
-  }
-  const session = res.locals.adminSession as { memberName?: string | null };
-  const result = await commitImport(adminClubId(res), session.memberName ?? null, [night], "manual");
-  if (result.imported === 0) {
-    res.status(409).json({ error: "That exact night is already recorded." });
-    return;
-  }
-  const buy = night.players.reduce((sum, p) => sum + p.buyIn, 0);
-  const cash = night.players.reduce((sum, p) => sum + p.cashOut, 0);
-  res.status(201).json({ ...result, balanced: Math.abs(buy - cash) <= 0.5, difference: Math.round((cash - buy) * 100) / 100 });
 });
 
 export default router;

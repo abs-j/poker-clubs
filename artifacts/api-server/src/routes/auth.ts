@@ -3,10 +3,8 @@ import { recordAccountVisit } from "../lib/auth";
 import {
   ACTIVE_CLUB_COOKIE,
   identityUser,
-  isClubAdmin,
   membershipsFor,
   pickActiveClub,
-  resolveClubContext,
 } from "../lib/club-access";
 import { isPlatformAdminEmail } from "../lib/platform-admin";
 
@@ -39,16 +37,6 @@ router.get("/auth/member/session", async (req, res): Promise<void> => {
     platformAdmin,
     club: { id: context.clubId, slug: context.clubSlug, name: context.clubName, role: context.role },
   });
-});
-
-router.get("/auth/admin/session", async (req, res): Promise<void> => {
-  // Club owners and admins. This does not grant the platform usage page.
-  const context = await resolveClubContext(req);
-  if (context && isClubAdmin(context.role)) {
-    res.json({ authenticated: true, expiresAt: null, clubRole: context.role });
-    return;
-  }
-  res.json({ authenticated: false });
 });
 
 export default router;

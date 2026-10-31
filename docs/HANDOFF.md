@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run with the platform usage page: typecheck clean, API 141 tests, dashboard 99 tests, smoke 55/55.
+State as of 31 Oct 2026. Last local run after the dead-code cleanup: typecheck clean, API 131 tests, dashboard 99 tests, smoke 55/55. Schema unchanged.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -71,7 +71,7 @@ Done. No schema change.
 - `getLatestSessionForDate` matches a night dated that day or closed that day, so a night for a past date is found and closed as the latest session. `endLiveSession` uses the same condition.
 - `POST /api/poker/live-session/notes` `{ players: [{ name, buyInCents, cashOutCents }] }` adds buy-in and cash-out entries to the open night, created by the caller (host or admin only), with the comment "From notes". The Live tab shows it as "Fill from notes" (`components/ledger-notes.tsx`, using `lib/night-notes.ts`).
 - `POST /clubs/current/sessions/notes-image` (screenshot reading) now needs a member session and is allowed only for the host or an admin of the open night (403 otherwise).
-- The "Record a night" form is gone from `components/club-data-panel.tsx`; `POST /clubs/current/sessions` still exists but the site no longer calls it. CSV, paste and Sheet history import stay in admin Setup.
+- The "Record a night" form and the uncalled `POST /clubs/current/sessions` route are gone. Editing a recorded night is still `PATCH /clubs/current/sessions/:id`. CSV, paste and Sheet history import stay in admin Setup.
 
 ### L4. Jackpot payout, tournaments from "New night"
 Done. Schema: table `jackpot_payouts (club_id, player_id, cents, paid_at, paid_by)` with cascade delete from the club and restrict on the player, so a payout is not dropped when someone claims a different name. `clubJackpot()` subtracts those cents from the surplus. The pot cannot be overdrawn.
@@ -119,5 +119,7 @@ Next structure step: **the Leaderboard tab label and Home content** from `docs/S
 
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
-- Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
+- Unused tables and columns stay in `lib/db` on purpose. There is no migration and nothing was dropped, renamed, or altered: `auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`.
+- The called dashboard route still returns an empty `quarters` field so that payload shape stays the same. Ledger backup and reset still return `sheetRows` / `clearedSheetRows` (always empty; there is no spreadsheet). `/api/healthz` is unchanged.
+- Removed as unused, with no schema change: shadcn components nothing imported and the packages only they used; `.recap-*` and `.season-leader` CSS; the sheet row helpers (`liveLedgerSheetRowRangesForSession`, `normalizeGoogleSheetsDate`, `parseMelbourneTimestamp`, `formatLiveLedgerTimestamp`, `lib/live-ledger-deletion.ts`); the recap helper `pointsAfterNight`; uncalled routes `GET /api/auth/admin/session`, `GET` and `DELETE /api/admin/live-ledger/sessions`, `POST /api/clubs/current/sessions`, and `GET /api/clubs/current/tournaments`. Every route the site, smoke, or tests still call is unchanged, including ledger backup and reset. `@opentelemetry/api` stays on the API: the production bundle leaves those imports external, and Better Auth and Drizzle load them at startup.
 - Not done: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3) and the platform usage page (S4) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only. Still ahead: the Leaderboard tab label and Home content from the plan.

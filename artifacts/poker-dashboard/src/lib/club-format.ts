@@ -1,5 +1,5 @@
 // How the current club writes its name, money and times. Plain module state rather
-// than React state so the share-card and recap helpers (which are not components) can read it.
+// than React state so format helpers outside components can read it.
 // The settings provider sets it once the club's settings have loaded.
 
 export type ClubFormat = { name: string; currency: string; timeZone: string };

@@ -3,9 +3,7 @@ import type { TournamentEvent } from "@/lib/earnings-analytics";
 import {
   buildPointsLeaderboard,
   firstScoredDate,
-  pointsAfterNight,
   pointsSeasons,
-  type PointsAfterNight,
   type NightKind,
   type PointsCashNight,
   type PointsRow,
@@ -26,8 +24,6 @@ type PointsValue = {
   /** First night that scored, e.g. for "scored nights start on". */
   firstNight: string | null;
   tournaments: TournamentEvent[];
-  /** The season table as it stood after one night, for recaps. */
-  afterNight: (night: { date: string; sessionNumber?: number; tournamentId?: string }) => PointsAfterNight;
 };
 
 const EMPTY: PointsValue = {
@@ -38,7 +34,6 @@ const EMPTY: PointsValue = {
   rowsWith: () => [],
   firstNight: null,
   tournaments: [],
-  afterNight: (night) => ({ season: night.date.slice(0, 4), rows: [], earnedTonight: [] }),
 };
 const PointsContext = createContext<PointsValue>(EMPTY);
 
@@ -78,7 +73,6 @@ export function PointsProvider({
       },
       firstNight: firstScoredDate(cashNights, tournaments, rules),
       tournaments,
-      afterNight: (night) => pointsAfterNight(cashNights, tournaments, night, rules),
     };
   }, [cashNights, tournaments, rules]);
   return <PointsContext.Provider value={value}>{children}</PointsContext.Provider>;
