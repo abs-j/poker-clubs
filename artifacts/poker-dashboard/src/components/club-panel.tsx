@@ -545,7 +545,7 @@ export function ClubHome() {
               </ul>
             )}
           </AdminBlock>
-          <AdminBlock id="admin-setup" testId="section-admin-setup" title="Setup" detail="One-time history import and tournament CSV import.">
+          <AdminBlock id="admin-setup" testId="section-admin-setup" title="Setup" detail="One-time history import, and CSV export of cash nights and tournaments.">
             <ClubDataPanel embedded />
           </AdminBlock>
           <AdminBlock id="admin-settings" testId="section-admin-settings" title="Settings" detail="Name, rules, points, currency and timezone.">

@@ -156,6 +156,9 @@ function findHeader(rows: string[][]): { index: number; columns: Columns } | nul
 // Lines that live in the same columns as players but are not people: totals, adjustments,
 // a jackpot pot, hidden balance rows. They are skipped, and the import says which it skipped.
 const NOT_A_PLAYER = /^(?:(?:grand\s+)?(?:sub\s*)?totals?|adj(?:ustments?)?|balance\b.*|bad beat jackpot|jackpot)$/i;
+// A payout row from this app's cash export. Not a person, and not part of a night's balance
+// (that is the plain "Bad Beat Jackpot" row, whose cash-out is the surplus that went in).
+const JACKPOT_PAYOUT = /^bad beat jackpot payout to .+$/i;
 
 export function parseHistory(text: string, options: { dateOrder?: DateOrder } = {}): ParseResult {
   const order = options.dateOrder ?? "dmy";
@@ -216,8 +219,8 @@ export function parseHistory(text: string, options: { dateOrder?: DateOrder } = 
       rowsSkipped += 1;
       continue;
     }
-    if (NOT_A_PLAYER.test(name)) {
-      if (current && /jackpot/i.test(name)) {
+    if (NOT_A_PLAYER.test(name) || JACKPOT_PAYOUT.test(name)) {
+      if (current && NOT_A_PLAYER.test(name) && /jackpot/i.test(name)) {
         // The pot's own row is what balances the night, so remember it for the balance check below.
         const pot = (parseMoney(cell(columns.cashOut)) ?? 0) - (parseMoney(cell(columns.buyIn)) ?? 0);
         jackpotNet.set(current, (jackpotNet.get(current) ?? 0) + pot);

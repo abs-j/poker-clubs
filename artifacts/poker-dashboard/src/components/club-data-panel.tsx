@@ -35,11 +35,19 @@ export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
         Nights you close in the live ledger are recorded automatically. To catch up a night you missed, start it on the Live tab with its date. Bring older results in here. Edit or delete a recorded night from the Games tab.
       </p>
       <p className="mt-3 text-xs text-muted-foreground">
-        Your results are yours:{" "}
+        Your results are yours.{" "}
         <a href="/api/clubs/current/export.csv" download className="font-semibold text-primary underline" data-testid="link-export-csv">
-          download them as a CSV
+          Download cash nights
         </a>{" "}
-        any time (cash nights; it can be imported back). Tournaments aren&apos;t in the file yet.
+        (players, jackpot in and payouts out; it can be imported back). Tournaments download as the{" "}
+        <a href="/api/clubs/current/tournaments/export/log.csv" download className="font-semibold text-primary underline" data-testid="link-export-tournament-log">
+          log
+        </a>{" "}
+        and{" "}
+        <a href="/api/clubs/current/tournaments/export/results.csv" download className="font-semibold text-primary underline" data-testid="link-export-tournament-results">
+          results
+        </a>{" "}
+        sheets, which import back in the form below.
       </p>
       <ImportSection onDone={() => undefined} />
       <ImportTournaments onDone={() => undefined} />
