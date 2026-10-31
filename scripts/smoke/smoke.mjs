@@ -1048,12 +1048,35 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     await wait('[data-testid="menu-new-night-tournament"]');
     await phone.$eval('[data-testid="menu-new-night-tournament"]', (node) => node.click());
     await wait('[data-testid="section-record-tournament"]');
-    await phone.type('[data-testid="input-tournament-title"]', "Friday Freezeout");
-    await phone.type('[data-testid="input-tournament-buyin"]', "10");
-    await phone.type('[data-testid="input-tournament-name-0"]', "Ada Payout");
-    await phone.type('[data-testid="input-tournament-name-1"]', "Bo Payout");
-    await press('[data-testid="button-tournament-save"]');
-    await phone.waitForFunction(() => /Tournament recorded/.test(document.querySelector('[data-testid="status-tournament-saved"]')?.innerText ?? ""), { timeout: 15000 });
+    // Keystrokes into a field below the fold can miss the React input in headless Chrome.
+    // Set the value the same way the date field is set, then click Save directly.
+    const fill = (selector, value) => phone.$eval(selector, (node, next) => {
+      node.scrollIntoView({ block: "center" });
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(node, next);
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+    }, value);
+    await fill('[data-testid="input-tournament-title"]', "Friday Freezeout");
+    await fill('[data-testid="input-tournament-buyin"]', "10");
+    await fill('[data-testid="input-tournament-name-0"]', "Ada Payout");
+    await fill('[data-testid="input-tournament-name-1"]', "Bo Payout");
+    const saveState = await phone.$eval('[data-testid="button-tournament-save"]', (node) => {
+      node.scrollIntoView({ block: "center" });
+      if (node.disabled) {
+        const read = (sel) => document.querySelector(sel)?.value ?? "";
+        return `save stayed disabled (title "${read('[data-testid="input-tournament-title"]')}", buy-in "${read('[data-testid="input-tournament-buyin"]')}", names "${read('[data-testid="input-tournament-name-0"]')}" / "${read('[data-testid="input-tournament-name-1"]')}")`;
+      }
+      node.click();
+      return "";
+    });
+    expect(saveState === "", saveState);
+    await phone.waitForFunction(() => {
+      const saved = document.querySelector('[data-testid="status-tournament-saved"]')?.innerText ?? "";
+      const failed = document.querySelector('[data-testid="status-tournament-error"]')?.innerText ?? "";
+      return /Tournament recorded/.test(saved) || failed.length > 0;
+    }, { timeout: 15000 });
+    const tournamentError = await phone.$eval('[data-testid="status-tournament-error"]', (node) => node.innerText).catch(() => "");
+    expect(tournamentError === "", `tournament save failed: ${tournamentError}`);
     const wide = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(wide <= 1, `the tournament form scrolls sideways on a phone (${wide}px)`);
     await phone.screenshot({ path: `${OUT}/live-jackpot-tournament.png`, fullPage: true });
