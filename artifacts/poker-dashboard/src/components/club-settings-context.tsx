@@ -10,7 +10,6 @@ export type ClubSettings = {
   name: string;
   currency: string;
   timezone: string;
-  hashtag: string | null;
   guidelines: string | null;
   isOriginal: boolean;
   points: { preset: PresetChoice; rules: PointsRules };
@@ -23,7 +22,6 @@ const FALLBACK: ClubSettings = {
   name: "Poker Club",
   currency: "AUD",
   timezone: "Australia/Melbourne",
-  hashtag: null,
   guidelines: null,
   isOriginal: false,
   points: { preset: "standard", rules: POINTS_RULES },
@@ -39,7 +37,7 @@ export function ClubSettingsProvider({ children, fallback }: { children: ReactNo
   const [state, setState] = useState<{ settings: ClubSettings; presets: PresetInfo[] } | null>(null);
 
   const apply = useCallback((settings: ClubSettings, presets: PresetInfo[]) => {
-    setClubFormat({ name: settings.name, hashtag: settings.hashtag, currency: settings.currency, timeZone: settings.timezone });
+    setClubFormat({ name: settings.name, currency: settings.currency, timeZone: settings.timezone });
     if (typeof document !== "undefined") document.title = settings.name;
     setState({ settings, presets });
   }, []);

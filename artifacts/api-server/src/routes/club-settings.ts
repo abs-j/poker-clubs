@@ -4,12 +4,11 @@ import { recordAdminAction } from "../lib/admin-audit";
 import {
   cleanCurrency,
   cleanGuidelines,
-  cleanHashtag,
   cleanName,
   cleanTimezone,
 } from "../lib/club-settings-parse";
 import { getClubSettings, presetList, updateClubSettings, type SettingsPatch } from "../lib/club-settings";
-import { PRESETS, validateRules } from "../lib/points-rules";
+import { PRESETS } from "../lib/points-rules";
 
 const router: IRouter = Router();
 
@@ -47,24 +46,14 @@ router.put("/clubs/current/settings", requireAdminSession, async (req, res): Pro
     if (!timezone) return void fail("Choose a valid timezone.");
     patch.timezone = timezone;
   }
-  if ("hashtag" in body) {
-    const hashtag = cleanHashtag(body.hashtag);
-    if (hashtag === undefined) return void fail("A hashtag can use letters, numbers and underscores, up to 40 characters.");
-    patch.hashtag = hashtag;
-  }
   if ("guidelines" in body) {
     const guidelines = cleanGuidelines(body.guidelines);
     if (guidelines === undefined) return void fail("Keep the club rules under 8,000 characters.");
     patch.guidelines = guidelines;
   }
   if ("points" in body) {
-    const points = (body.points ?? {}) as { preset?: unknown; rules?: unknown };
-    if (points.preset === "custom") {
-      const checked = validateRules(points.rules);
-      if ("error" in checked) return void fail(checked.error);
-      patch.pointsPreset = "custom";
-      patch.pointsRules = checked.rules;
-    } else if (typeof points.preset === "string" && points.preset in PRESETS) {
+    const points = (body.points ?? {}) as { preset?: unknown };
+    if (typeof points.preset === "string" && points.preset in PRESETS) {
       patch.pointsPreset = points.preset;
       patch.pointsRules = null;
     } else {

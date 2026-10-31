@@ -1,9 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
-import { db, memberAvatars, players } from "@workspace/db";
-import { adminClubId, memberClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
+import { db, memberAvatars } from "@workspace/db";
+import { memberClubId, requireMemberSession } from "../lib/auth";
 import { normalizeMemberKey, parseAvatarInput } from "../lib/avatar-image";
-import { recordAdminAction } from "../lib/admin-audit";
 
 const router: IRouter = Router();
 
@@ -91,95 +90,6 @@ router.delete("/poker/avatars/me", requireMemberSession, async (_req, res): Prom
     return;
   }
   await db.delete(memberAvatars).where(and(eq(memberAvatars.clubId, clubId), eq(memberAvatars.memberKey, normalizeMemberKey(memberName))));
-  res.status(204).end();
-});
-
-// Admins can see which members have a custom picture and remove any that should not be there.
-router.get("/admin/avatars", requireAdminSession, async (_req, res): Promise<void> => {
-  const clubId = adminClubId(res);
-  const rows = await db
-    .select({
-      key: memberAvatars.memberKey,
-      name: memberAvatars.memberName,
-      kind: memberAvatars.kind,
-      preset: memberAvatars.preset,
-      version: memberAvatars.version,
-      updatedAt: memberAvatars.updatedAt,
-    })
-    .from(memberAvatars)
-    .where(eq(memberAvatars.clubId, clubId))
-    .orderBy(memberAvatars.memberName);
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ avatars: rows });
-});
-
-router.get("/admin/avatars/image/:key", requireAdminSession, async (req, res): Promise<void> => {
-  const clubId = adminClubId(res);
-  const key = normalizeMemberKey(String(req.params.key ?? ""));
-  const [row] = await db
-    .select({ image: memberAvatars.imageBase64, contentType: memberAvatars.contentType })
-    .from(memberAvatars)
-    .where(and(eq(memberAvatars.clubId, clubId), eq(memberAvatars.memberKey, key)))
-    .limit(1);
-  if (!row?.image || !row.contentType) {
-    res.status(404).json({ error: "No picture." });
-    return;
-  }
-  res.setHeader("Content-Type", row.contentType);
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Cache-Control", "no-store");
-  res.send(Buffer.from(row.image, "base64"));
-});
-
-router.put("/admin/avatars/:key", requireAdminSession, async (req, res): Promise<void> => {
-  const clubId = adminClubId(res);
-  const memberKey = normalizeMemberKey(String(req.params.key ?? ""));
-  const [known] = await db
-    .select({ name: players.displayName })
-    .from(players)
-    .where(and(eq(players.clubId, clubId), eq(players.nameKey, memberKey)))
-    .limit(1);
-  const memberName = known?.name;
-  if (!memberName) {
-    res.status(404).json({ error: "Member not found." });
-    return;
-  }
-
-  const parsed = parseAvatarInput(req.body);
-  if (!parsed.ok) {
-    res.status(400).json({ error: parsed.error });
-    return;
-  }
-
-  const values =
-    parsed.kind === "preset"
-      ? { kind: "preset", preset: parsed.preset, imageBase64: null, contentType: null }
-      : { kind: "upload", preset: null, imageBase64: parsed.imageBase64, contentType: parsed.contentType };
-  const [existing] = await db
-    .select({ version: memberAvatars.version })
-    .from(memberAvatars)
-    .where(and(eq(memberAvatars.clubId, clubId), eq(memberAvatars.memberKey, memberKey)))
-    .limit(1);
-  const version = (existing?.version ?? 0) + 1;
-  const now = new Date();
-
-  await db
-    .insert(memberAvatars)
-    .values({ clubId, memberKey, memberName, ...values, version, updatedAt: now })
-    .onConflictDoUpdate({
-      target: [memberAvatars.clubId, memberAvatars.memberKey],
-      set: { memberName, ...values, version, updatedAt: now },
-    });
-
-  await recordAdminAction("avatar_updated", `Updated the profile picture for "${memberName}".`, req);
-  res.json({ key: memberKey, name: memberName, kind: parsed.kind, preset: values.preset, version });
-});
-
-router.delete("/admin/avatars/:key", requireAdminSession, async (req, res): Promise<void> => {
-  const clubId = adminClubId(res);
-  const key = normalizeMemberKey(String(req.params.key ?? ""));
-  await db.delete(memberAvatars).where(and(eq(memberAvatars.clubId, clubId), eq(memberAvatars.memberKey, key)));
-  await recordAdminAction("avatar_removed", `Removed the profile picture for "${key}".`, req);
   res.status(204).end();
 });
 

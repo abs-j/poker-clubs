@@ -1,9 +1,9 @@
 # Email setup (Resend)
 
-The app sends three emails: **confirm your email** (on sign-up), **reset your password**, and
-**invite by email** (club admins). All of it goes through [Resend](https://resend.com). Without a key the
-app still works; password reset and emailed invites are simply switched off (the "Forgot your password?"
-link and the invite-by-email box don't appear).
+The app sends two emails: **confirm your email** (on sign-up) and **reset your password**. Invites are
+shared as a link or QR code, not by email. All of it goes through [Resend](https://resend.com). Without a key the
+app still works; password reset is simply switched off (the "Forgot your password?"
+link doesn't appear).
 
 ## One-time setup
 
@@ -33,10 +33,10 @@ This is what the smoke test uses.
 
 ## Safety notes
 
-- Reset, confirm and invite emails are sent after the request has answered, so a slow or failing provider never
+- Reset and confirm emails are sent after the request has answered, so a slow or failing provider never
   changes what a visitor sees, and asking to reset an address with no account looks identical to one with an account.
 - Links in emails only ever point at `APP_URL` (or a configured trusted origin); a request can't make the app email
   a link to another site.
-- A club can email at most 20 invites a day, and only admins can send them. Sign-in, sign-up, reset and confirm
+- Sign-in, sign-up, reset and confirm
   requests are rate limited in production.
 - Reset links work once, for one hour, and signing in elsewhere is revoked when a password is reset.

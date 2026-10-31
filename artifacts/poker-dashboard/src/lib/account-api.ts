@@ -108,6 +108,29 @@ const send = (method: string, body?: unknown): RequestInit => ({
   body: JSON.stringify(body ?? {}),
 });
 
+/** The browser's timezone and a currency to match, so a new club needs no setup for either. */
+export function detectedDefaults(): { timezone?: string; currency?: string } {
+  let timezone: string | undefined;
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    timezone = undefined;
+  }
+  if (!timezone) return {};
+  const area = timezone.split("/")[0];
+  const currency =
+    timezone.startsWith("Australia/") ? "AUD"
+    : timezone === "Pacific/Auckland" ? "NZD"
+    : timezone === "Europe/London" ? "GBP"
+    : timezone === "Asia/Singapore" ? "SGD"
+    : timezone === "Asia/Kolkata" || timezone === "Asia/Calcutta" ? "INR"
+    : /^America\/(Toronto|Vancouver|Edmonton|Winnipeg|Halifax|Regina|St_Johns)$/.test(timezone) ? "CAD"
+    : area === "America" ? "USD"
+    : area === "Europe" ? "EUR"
+    : undefined;
+  return currency ? { timezone, currency } : { timezone };
+}
+
 export type BalanceChoice = { mode: "jackpot" } | { mode: "player"; name: string } | { mode: "split" } | { mode: "none" };
 
 export const accountApi = {
@@ -128,7 +151,6 @@ export const accountApi = {
     request<unknown>("/api/identity/reset-password", send("POST", { token, newPassword })),
   resendVerification: (email: string) =>
     request<unknown>("/api/identity/send-verification-email", send("POST", { email, callbackURL: `${window.location.origin}/dashboard` })),
-  emailInvite: (email: string) => request<{ sent: boolean }>("/api/clubs/current/invites/email", send("POST", { email })),
   signIn: (input: { email: string; password: string }) =>
     request<unknown>("/api/identity/sign-in/email", send("POST", input)),
   google: async (callbackURL: string) => {
@@ -137,7 +159,7 @@ export const accountApi = {
   },
   signOut: () => request<unknown>("/api/identity/sign-out", send("POST")).catch(() => undefined),
   createClub: (input: { name: string; playerName?: string }) =>
-    request<{ club: { slug: string; name: string } }>("/api/clubs", send("POST", input)),
+    request<{ club: { slug: string; name: string } }>("/api/clubs", send("POST", { ...detectedDefaults(), ...input })),
   switchClub: (slug: string) => request<{ active: string }>("/api/clubs/active", send("POST", { slug })),
   previewInvite: (code: string) => request<InvitePreview>(`/api/invites/${encodeURIComponent(code)}`),
   acceptInvite: (code: string, input: { claimPlayerId?: number; name?: string }) =>

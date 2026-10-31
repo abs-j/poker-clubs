@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cleanCurrency, cleanGuidelines, cleanHashtag, cleanName, cleanTimezone } from "./club-settings-parse.ts";
+import { cleanCurrency, cleanGuidelines, cleanName, cleanTimezone } from "./club-settings-parse.ts";
 
 test("club names are tidied and bounded", () => {
   assert.equal(cleanName("  Friday   Night Poker "), "Friday Night Poker");
@@ -21,13 +21,6 @@ test("timezones must be real", () => {
   assert.equal(cleanTimezone("Australia/Melbourne"), "Australia/Melbourne");
   assert.equal(cleanTimezone("Mars/Olympus"), null);
   assert.equal(cleanTimezone(""), null);
-});
-
-test("hashtags drop the # and allow letters, digits and underscores", () => {
-  assert.equal(cleanHashtag("#MyClub_1"), "MyClub_1");
-  assert.equal(cleanHashtag(""), null);
-  assert.equal(cleanHashtag("has space"), undefined);
-  assert.equal(cleanHashtag("a"), undefined);
 });
 
 test("guidelines are plain text with a length cap; blank clears them", () => {

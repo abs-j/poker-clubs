@@ -423,22 +423,6 @@ console.log("\nAccounts and clubs");
     expect((await inbox()).length === before, "an email was sent for an address with no account");
   });
 
-  await check("an admin can email an invite; members and bad addresses are refused", async () => {
-    const friend = `friend-${stamp}@example.com`;
-    const bad = await api("/api/clubs/current/invites/email", { jar: owner, method: "POST", body: { email: "not-an-email" } });
-    expect(bad.status === 400, `bad address should be refused, got ${bad.status}`);
-    const refused = await api("/api/clubs/current/invites/email", { jar: guest, method: "POST", body: { email: friend } });
-    expect(refused.status === 401, `members should be refused, got ${refused.status}`);
-    const sent = await api("/api/clubs/current/invites/email", { jar: owner, method: "POST", body: { email: friend } });
-    expect(sent.status === 201, `send ${sent.status}`);
-    const mail = (await inbox()).filter((m) => m.to === friend).at(-1);
-    const link = mail && firstLink(mail.text, /https?:\/\/\S+\/join\/[A-Z0-9]+/);
-    expect(link, "no invite link in the email");
-    const code = link.split("/join/")[1];
-    const preview = await api(`/api/invites/${code}`);
-    expect(preview.ok, `the emailed link's code should be a valid invite, got ${preview.status}`);
-  });
-
   await check("a signed-in person can change their password", async () => {
     const address = `pw-${stamp}@example.com`;
     const jar = cookieJar();
@@ -574,17 +558,15 @@ console.log("\nAccounts and clubs");
     expect(before.presets.length === 3 && before.settings.points.preset === "standard", "unexpected defaults");
     const bad = await api("/api/clubs/current/settings", { jar: owner, method: "PUT", body: { currency: "XX" } });
     expect(bad.status === 400, `bad currency should be refused, got ${bad.status}`);
-    const rules = JSON.parse(JSON.stringify(before.settings.points.rules));
-    rules.podium.third = rules.podium.second + 5;
-    const badRules = await api("/api/clubs/current/settings", { jar: owner, method: "PUT", body: { points: { preset: "custom", rules } } });
-    expect(badRules.status === 400, `bad rules should be refused, got ${badRules.status}`);
+    const custom = await api("/api/clubs/current/settings", { jar: owner, method: "PUT", body: { points: { preset: "custom", rules: before.settings.points.rules } } });
+    expect(custom.status === 400, `custom points should be refused, got ${custom.status}`);
     const saved = await api("/api/clubs/current/settings", {
       jar: owner, method: "PUT",
-      body: { name: "Renamed Smoke Club", currency: "gbp", timezone: "America/Los_Angeles", hashtag: "#smokeclub", guidelines: "# Rules\nBe kind.", points: { preset: "competitive" } },
+      body: { name: "Renamed Smoke Club", currency: "gbp", timezone: "America/Los_Angeles", guidelines: "# Rules\nBe kind.", points: { preset: "competitive" } },
     });
     expect(saved.ok, `save ${saved.status}`);
     const after = (await saved.json()).settings;
-    expect(after.currency === "GBP" && after.timezone === "America/Los_Angeles" && after.hashtag === "smokeclub", "settings were not stored");
+    expect(after.currency === "GBP" && after.timezone === "America/Los_Angeles", "settings were not stored");
     expect(after.points.preset === "competitive" && after.points.rules.win.flat === 25, "preset was not applied");
     const dashboard = await (await api("/api/poker/dashboard", { jar: owner })).json();
     expect(dashboard.title === "Renamed Smoke Club", `dashboard title is ${dashboard.title}`);
