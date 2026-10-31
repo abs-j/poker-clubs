@@ -1,5 +1,6 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
-import { and, asc, count, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { cleanTimezone } from "../lib/club-settings-parse";
+import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { clubs, db, invites, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
 import { isOriginalClub } from "../lib/club-settings";
@@ -18,9 +19,7 @@ import {
   type IdentityUser,
 } from "../lib/club-access";
 import { googleSignInEnabled } from "../lib/identity";
-import { trustedOrigin } from "../lib/origins";
-import { emailMode, sendEmail } from "../lib/email";
-import { inviteMessage } from "../lib/email-templates";
+import { emailMode } from "../lib/email";
 
 const router: IRouter = Router();
 
@@ -116,6 +115,8 @@ router.post("/clubs", requireUser, async (req, res): Promise<void> => {
   const currency = typeof req.body?.currency === "string" && /^[A-Za-z]{3}$/.test(req.body.currency)
     ? req.body.currency.toUpperCase()
     : "AUD";
+  // The browser's timezone, so "tonight" is right from the first night. Anything invalid falls back to the column default.
+  const timezone = cleanTimezone(req.body?.timezone) ?? undefined;
 
   const [owned] = await db
     .select({ total: count() })
@@ -128,7 +129,7 @@ router.post("/clubs", requireUser, async (req, res): Promise<void> => {
 
   const slug = await uniqueClubSlug(name);
   const club = await db.transaction(async (tx) => {
-    const [created] = await tx.insert(clubs).values({ slug, name, currency }).returning();
+    const [created] = await tx.insert(clubs).values({ slug, name, currency, ...(timezone ? { timezone } : {}) }).returning();
     const [player] = await tx
       .insert(players)
       .values({ clubId: created.id, displayName: playerName, nameKey: nameKey(playerName), userId: user.id })
@@ -368,68 +369,6 @@ router.post("/clubs/current/invites", requireAdminSession, async (req, res): Pro
     })
     .returning();
   res.status(201).json({ invite: { id: invite.id, code: invite.code, role: invite.role } });
-});
-
-const MAX_EMAILED_INVITES_PER_DAY = 20;
-const INVITE_EMAIL_DAYS = 14;
-const EMAIL_SHAPE = /^[^\s@<>"',;]{1,64}@[^\s@<>"',;]{1,190}\.[A-Za-z]{2,}$/;
-
-/** The address people reach the app at, for links in email. Only an origin this app is served from is ever used. */
-function publicOrigin(req: Request): string {
-  const origin = req.get("origin");
-  if (trustedOrigin(origin)) return origin;
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, "");
-  return `${req.protocol}://${req.get("host")}`;
-}
-
-/** Emails a one-use invite. The recipient is never told apart from a stranger: no account lookup happens here. */
-router.post("/clubs/current/invites/email", requireAdminSession, async (req, res): Promise<void> => {
-  const clubId = adminClubId(res);
-  const session = res.locals.adminSession as { userId?: string; memberName?: string | null };
-  if (emailMode() === "off") {
-    res.status(400).json({ error: "Email isn't set up on this server, so share the invite link instead." });
-    return;
-  }
-  const to = typeof req.body?.email === "string" ? req.body.email.trim() : "";
-  if (!EMAIL_SHAPE.test(to)) {
-    res.status(400).json({ error: "Enter a valid email address." });
-    return;
-  }
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [recent] = await db
-    .select({ total: count() })
-    .from(invites)
-    .where(and(eq(invites.clubId, clubId), isNotNull(invites.emailedTo), gt(invites.createdAt, since)));
-  if ((recent?.total ?? 0) >= MAX_EMAILED_INVITES_PER_DAY) {
-    res.status(429).json({ error: `This club has emailed ${MAX_EMAILED_INVITES_PER_DAY} invites today. Share the link instead, or try again tomorrow.` });
-    return;
-  }
-
-  const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, clubId)).limit(1);
-  const [invite] = await db
-    .insert(invites)
-    .values({
-      clubId,
-      code: newInviteCode(),
-      role: "member",
-      createdBy: session.userId ?? null,
-      emailedTo: to,
-      maxUses: 1,
-      expiresAt: new Date(Date.now() + INVITE_EMAIL_DAYS * 24 * 60 * 60 * 1000),
-    })
-    .returning();
-  try {
-    await sendEmail(
-      inviteMessage({ to, clubName: club?.name ?? "the club", inviterName: session.memberName ?? "A club admin", url: `${publicOrigin(req)}/join/${invite.code}` }),
-    );
-  } catch (error) {
-    // No email went out, so the invite shouldn't linger as if it had.
-    await db.delete(invites).where(eq(invites.id, invite.id));
-    req.log.error({ err: error }, "Could not send an invite email");
-    res.status(502).json({ error: "Couldn't send that email. Try again, or share the invite link." });
-    return;
-  }
-  res.status(201).json({ sent: true });
 });
 
 router.delete("/clubs/current/invites/:id", requireAdminSession, async (req, res): Promise<void> => {

@@ -27,14 +27,6 @@ export function cleanTimezone(value: unknown): string | null {
   }
 }
 
-/** A short tag without the "#". Empty clears it. Returns undefined when the value isn't acceptable. */
-export function cleanHashtag(value: unknown): string | null | undefined {
-  if (value === null || value === "") return null;
-  if (typeof value !== "string") return undefined;
-  const tag = value.trim().replace(/^#+/, "");
-  return /^[A-Za-z0-9_]{2,40}$/.test(tag) ? tag : undefined;
-}
-
 export const MAX_GUIDELINES = 8000;
 
 /** Plain text, up to 8,000 characters. Empty clears it. Returns undefined when too long. */

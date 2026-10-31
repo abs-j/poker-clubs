@@ -45,13 +45,3 @@ export function resetPasswordMessage(input: { to: string; name: string; url: str
   });
   return { to: input.to, subject: `Reset your ${appName()} password`, html, text };
 }
-
-export function inviteMessage(input: { to: string; clubName: string; inviterName: string; url: string }): EmailMessage {
-  const { html, text } = layout({
-    heading: `Join ${input.clubName}`,
-    paragraphs: [`${input.inviterName} invited you to ${input.clubName} on ${appName()}, where the club keeps its poker results, leaderboards and club points.`],
-    button: { label: "Join the club", url: input.url },
-    footer: "This invite is for you only and expires in 14 days. If you don't know this club, you can ignore this email.",
-  });
-  return { to: input.to, subject: `${input.inviterName} invited you to ${input.clubName}`, html, text };
-}

@@ -9,7 +9,7 @@ Set these in the Repl (Tools → Secrets) before the first publish.
 | `DATABASE_URL` | yes | Replit's Postgres connection string. |
 | `SESSION_SECRET` | yes | A long random string. Keep it; changing it signs everyone out. |
 | `APP_URL` | yes | The public address, e.g. `https://pokerclubs.example`. Sign-in redirects and email links are built from it, and it is the only address the sign-in API trusts in production. |
-| `RESEND_API_KEY`, `EMAIL_FROM` | recommended | Turns on password reset, email confirmation and emailed invites. See [EMAIL_SETUP.md](EMAIL_SETUP.md). |
+| `RESEND_API_KEY`, `EMAIL_FROM` | recommended | Turns on password reset and email confirmation. See [EMAIL_SETUP.md](EMAIL_SETUP.md). |
 | `ANTHROPIC_API_KEY` | optional | Turns on "choose a screenshot" when recording a night: the picture is sent to Claude (`claude-haiku-5-5`) to read the player lines, a few cents per day of use at most. Admin only, 20 reads per club per day. Without it the option answers that it isn't switched on and pasting text still works. The Privacy page already mentions it. |
 | `APP_NAME` | optional | Name used in emails. Also set `VITE_APP_NAME` for the site itself. |
 | `VITE_CONTACT_EMAIL` | recommended | Shown on the Terms and Privacy pages as the contact address. |
