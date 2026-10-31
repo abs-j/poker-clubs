@@ -3,7 +3,7 @@ import { cleanTimezone } from "../lib/club-settings-parse";
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { clubs, db, invites, jackpotPayouts, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
-import { adminClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
+import { adminClubId, memberClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
 import {
   identityUser,
   membershipsFor,
@@ -308,6 +308,32 @@ router.post("/clubs/current/players", requireAdminSession, async (req, res): Pro
     return;
   }
   res.status(201).json({ player: created });
+});
+
+/**
+ * The club's member invite links. Any member can copy and share these.
+ * Creating, revoking and resetting stay on the admin routes below.
+ * Admin-role invites are not included: those codes would make the holder an admin.
+ */
+router.get("/clubs/current/invite", requireMemberSession, async (_req, res): Promise<void> => {
+  const clubId = memberClubId(res);
+  const rows = await db
+    .select()
+    .from(invites)
+    .where(and(eq(invites.clubId, clubId), eq(invites.role, "member"), isNull(invites.revokedAt)))
+    .orderBy(desc(invites.createdAt));
+  res.json({
+    invites: rows.map((invite) => ({
+      id: invite.id,
+      code: invite.code,
+      role: "member" as const,
+      uses: invite.uses,
+      maxUses: invite.maxUses,
+      expiresAt: invite.expiresAt?.toISOString() ?? null,
+      usable: inviteUsable(invite),
+      createdAt: invite.createdAt.toISOString(),
+    })),
+  });
 });
 
 router.get("/clubs/current/invites", requireAdminSession, async (_req, res): Promise<void> => {

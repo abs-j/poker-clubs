@@ -90,16 +90,26 @@ function DeleteAccount({ user }: { user: AccountUser }) {
   );
 }
 
-/** Password and account removal for a signed-in account. */
-export function AccountSecurity({ user }: { user: AccountUser }) {
-  return (
-    <div className="soft-shadow mt-4 space-y-6 rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="panel-account-security">
-      <div>
+/** Password change, or account deletion behind a confirmation. */
+export function AccountSecurity({ user, part }: { user: AccountUser; part: "password" | "danger" }) {
+  if (part === "password") {
+    if (!user.hasPassword) return null;
+    return (
+      <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="panel-account-security">
         <p className="section-label text-primary">Account</p>
         <h2 className="mt-1 text-lg font-semibold tracking-tight">{user.email}</h2>
+        <div className="mt-4">
+          <ChangePassword />
+        </div>
       </div>
-      {user.hasPassword && <ChangePassword />}
-      <DeleteAccount user={user} />
+    );
+  }
+  return (
+    <div className="soft-shadow rounded-2xl border border-destructive/30 bg-card p-5 sm:p-6" data-testid="section-account-danger">
+      <p className="section-label text-destructive">Danger</p>
+      <div className="mt-3">
+        <DeleteAccount user={user} />
+      </div>
     </div>
   );
 }

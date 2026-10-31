@@ -1,4 +1,5 @@
 import { useClubSettings } from "@/components/club-settings-context";
+import { ClubHome } from "@/components/club-panel";
 import { PageIntro } from "./shared";
 
 /** A club's own rules: paragraphs, "# headings" and "- bullets" from plain text. */
@@ -10,7 +11,7 @@ function ClubGuidelines({ text }: { text: string | null }) {
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         {blocks.length === 0 ? (
           <p data-testid="text-guidelines-empty" className="text-sm leading-6 text-muted-foreground">
-            This club hasn&apos;t written its rules yet. Club admins can add them from the account menu, under Club settings.
+            This club hasn&apos;t written its rules yet. Club admins can add them under Admin, in Settings.
           </p>
         ) : (
           <div className="space-y-4" data-testid="text-club-guidelines">
@@ -42,5 +43,10 @@ function ClubGuidelines({ text }: { text: string | null }) {
 
 export function GuidelinesView() {
   const { settings } = useClubSettings();
-  return <ClubGuidelines text={settings.guidelines} />;
+  return (
+    <div className="space-y-4">
+      <ClubGuidelines text={settings.guidelines} />
+      <ClubHome />
+    </div>
+  );
 }
