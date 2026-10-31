@@ -10,7 +10,7 @@ import memberUsageRouter from "./member-usage";
 import avatarsRouter from "./avatars";
 import pokerRouter from "./poker";
 import adminRouter from "./admin";
-import adminInsightsRouter from "./admin-insights";
+import platformUsageRouter from "./platform-usage";
 
 const router: IRouter = Router();
 
@@ -25,6 +25,6 @@ router.use(memberUsageRouter);
 router.use(avatarsRouter);
 router.use(pokerRouter);
 router.use(adminRouter);
-router.use(adminInsightsRouter);
+router.use(platformUsageRouter);
 
 export default router;

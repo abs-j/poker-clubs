@@ -101,6 +101,8 @@ jobs:
     env:
       DATABASE_URL: postgres://poker:poker@localhost:5432/poker_ci
       SESSION_SECRET: ci-only-session-secret-not-used-anywhere-else
+      # Smoke signs up this address and checks the view-only usage page. Unset means nobody.
+      PLATFORM_ADMIN_EMAILS: smoke-platform@example.com
 
     steps:
       - uses: actions/checkout@v4

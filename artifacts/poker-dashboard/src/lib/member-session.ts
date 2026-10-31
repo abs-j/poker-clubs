@@ -1,7 +1,7 @@
 // Asking the server who is signed in. A slow or unreachable server is not the same as being
 // signed out, so those cases are retried and reported separately.
 
-export type MemberAuthSession = { authenticated: boolean; memberName?: string };
+export type MemberAuthSession = { authenticated: boolean; memberName?: string; platformAdmin?: boolean };
 
 export type SessionCheckDeps = {
   fetchSession: () => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;

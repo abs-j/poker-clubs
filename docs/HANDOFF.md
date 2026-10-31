@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run with Games-tab edit and delete on top of S2: typecheck clean, API 138 tests, dashboard 99 tests, smoke 54/54.
+State as of 31 Oct 2026. Last local run with the platform usage page: typecheck clean, API 141 tests, dashboard 99 tests, smoke 55/55.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -15,7 +15,7 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 ## Where work stopped
 
 L4 is done (jackpot payout, and tournaments started from the Live tab's New night menu). L3 (past nights and notes, no schema change), L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, and Games-tab edit and delete do not change the schema, so publishing them does not need a database push. Admin edit and delete on the Games tab is done. The next structure step is the platform admin page.
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, Games-tab edit and delete, and the platform usage page do not change the schema, so publishing them does not need a database push. The platform usage page is done. The next structure step is the Leaderboard tab label and Home content from the plan.
 
 ## How to work
 
@@ -25,7 +25,7 @@ fnm use 24; pnpm install
 pnpm run typecheck
 pnpm --filter @workspace/api-server test
 pnpm --filter @workspace/poker-dashboard test
-SMOKE_BASE_URL=http://localhost:5173 CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs   # run from a folder with puppeteer-core; needs an empty/throwaway DB
+PLATFORM_ADMIN_EMAILS=smoke-platform@example.com SMOKE_BASE_URL=http://localhost:5173 CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs   # run from a folder with puppeteer-core; needs an empty/throwaway DB. The API process needs the same PLATFORM_ADMIN_EMAILS.
 ```
 
 Rules that bite: every query is scoped by `club_id` (take it from `memberClubId(res)` / `adminClubId(res)`); no migration files, so add new
@@ -46,7 +46,7 @@ does. One PR per step, CI must be green, then merge.
   the separate "Record a night" form goes away. One-time history import (CSV/paste/Google Sheet link) moves to the admin Setup area.
 - **Jackpot payout**: host or admin records a payout to a player; the running total goes down and the payout shows in history.
 - Tournaments are recorded from the Live tab's "New night" menu (host or admin); the tournament CSV import stays in admin Setup.
-- Member usage tracking stays, visible only to the platform admin (later, in the structure work).
+- Member usage tracking stays, visible only to the platform admin.
 
 ## Steps (one PR each, in this order)
 
@@ -106,9 +106,18 @@ Done. No schema change, so no database push.
 - On the Games cards, an admin sees Edit and Delete. Reopen stays the existing host-or-admin flow (`POST /api/poker/live-session/reopen`) and is offered on the latest closed live night. Older live nights can be deleted, not reopened from the card.
 - API tests are in `game-edits.test.mjs` (permissions, club scoping, cash totals, jackpot and settle-up, tournaments). Smoke covers the phone Games tab: edit a cash night, the irreversible delete for a night and a tournament, the night list gone from Setup, reopen landing on Live, plus a member seeing no edit or delete and another club getting 404. Last local run: typecheck clean, API 138, dashboard 99, smoke 54/54.
 
-Next structure step: **the platform admin page** (an email allow-list, view-only usage across clubs) replacing `/admin`, and the Privacy note that usage is for the platform owner only. Do not start the Leaderboard label or Home changes in that step.
+### S4. Platform usage page
+Done. No schema change, so no database push.
+- The site owner is an account whose email is in `PLATFORM_ADMIN_EMAILS` (comma-separated). Unset, empty, or only spaces means nobody. The check is case-insensitive and is read on each request.
+- `GET /api/platform/usage` is the only way to read usage. Signed out is 401. Anyone else is 403. It returns every club's sign-ins, time on site and sections opened. It does not return email addresses, and it has no write method.
+- The old club-admin usage routes (`/api/admin/visits`, `/api/admin/members`, `/api/admin/audit`, `/api/admin/health`) are gone (404). Ledger backup and reset stay as club-admin APIs and are not on this page.
+- `/admin` is that page. A link labelled "Site usage" shows in the header, the avatar menu, and on the empty-club welcome, only when `platformAdmin` is true on `GET /api/auth/member/session`. Anyone else gets a not-found page and no link.
+- The Privacy page (and the matching Terms sentence) says usage is visible only to the platform owner. Club admins still see member emails.
+- Set `PLATFORM_ADMIN_EMAILS` in Replit Secrets. Smoke uses `smoke-platform@example.com` for that check, so the API process and the smoke process need the same value.
+
+Next structure step: **the Leaderboard tab label and Home content** from `docs/SIMPLIFICATION_PLAN.md`. Do not start those in the platform-usage PR.
 
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
-- Not done: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin), merging two names (S2) and Games-tab edit and delete (S3) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only. Still ahead: the platform admin page replacing `/admin`, and the Privacy note that usage is for the platform owner only.
+- Not done: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3) and the platform usage page (S4) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only. Still ahead: the Leaderboard tab label and Home content from the plan.

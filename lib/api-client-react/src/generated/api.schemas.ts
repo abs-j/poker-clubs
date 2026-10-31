@@ -671,47 +671,6 @@ export interface PokerDashboard {
   sessions: PokerSession[];
 }
 
-export interface AdminMemberVisitCount {
-  memberName: string;
-  visits: number;
-}
-
-export interface AdminVisit {
-  id: number;
-  memberName: string;
-  visitedAt: string;
-}
-
-export type AdminMemberUsageSectionSection = typeof AdminMemberUsageSectionSection[keyof typeof AdminMemberUsageSectionSection];
-
-
-export const AdminMemberUsageSectionSection = {
-  overview: 'overview',
-  sessions: 'sessions',
-  live: 'live',
-  months: 'months',
-  'head-to-head': 'head-to-head',
-  players: 'players',
-  guidelines: 'guidelines',
-  account: 'account',
-} as const;
-
-export interface AdminMemberUsageSection {
-  memberName: string;
-  section: AdminMemberUsageSectionSection;
-  pageViews: number;
-  activeSeconds: number;
-  lastActiveAt: string;
-}
-
-export interface AdminVisitsResponse {
-  totalVisits: number;
-  uniqueMembers: number;
-  memberCounts: AdminMemberVisitCount[];
-  visits: AdminVisit[];
-  usage: AdminMemberUsageSection[];
-}
-
 export type MemberUsageInputSection = typeof MemberUsageInputSection[keyof typeof MemberUsageInputSection];
 
 

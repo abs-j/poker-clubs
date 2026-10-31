@@ -9,31 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * @summary Get member sign-in and usage summaries
- */
-export const GetAdminVisitsResponse = zod.object({
-  "totalVisits": zod.number(),
-  "uniqueMembers": zod.number(),
-  "memberCounts": zod.array(zod.object({
-  "memberName": zod.string(),
-  "visits": zod.number()
-})),
-  "visits": zod.array(zod.object({
-  "id": zod.number(),
-  "memberName": zod.string(),
-  "visitedAt": zod.coerce.date()
-})),
-  "usage": zod.array(zod.object({
-  "memberName": zod.string(),
-  "section": zod.enum(['overview', 'sessions', 'live', 'months', 'head-to-head', 'players', 'guidelines', 'account']),
-  "pageViews": zod.number(),
-  "activeSeconds": zod.number(),
-  "lastActiveAt": zod.coerce.date()
-}))
-})
-
-
-/**
  * @summary Record a member dashboard view or visible time
  */
 export const recordMemberUsageBodyActiveSecondsMin = 0;

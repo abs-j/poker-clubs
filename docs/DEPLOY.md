@@ -16,6 +16,7 @@ Set these in the Repl (Tools → Secrets) before the first publish.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional | Adds "Continue with Google". |
 | `REQUIRE_EMAIL_VERIFICATION` | optional | `true` blocks sign-in until the email is confirmed. |
 | `TRUSTED_ORIGINS` | optional | Extra addresses the site is served from (e.g. a `www.` alias). |
+| `PLATFORM_ADMIN_EMAILS` | optional | Comma-separated account emails of the site owner. Those accounts can open the view-only usage page. Leave it unset and nobody can. |
 
 
 ## 2. Create the tables (once, and after any schema change)

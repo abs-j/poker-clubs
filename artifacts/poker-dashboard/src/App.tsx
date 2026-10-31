@@ -44,7 +44,7 @@ import NotFound from "@/pages/not-found";
 const LiveSessionView = lazy(() => import("./views/live-view").then((m) => ({ default: m.LiveSessionView })));
 const CumulativeProfitCard = lazy(() => import("./views/trends-section").then((m) => ({ default: m.CumulativeProfitCard })));
 const PublicGamesGrowthChart = lazy(() => import("@/components/public-games-growth-chart"));
-const AdminPage = lazy(() => import("./views/admin-view").then((m) => ({ default: m.AdminPage })));
+const PlatformUsagePage = lazy(() => import("./views/platform-usage").then((m) => ({ default: m.PlatformUsagePage })));
 const AccountView = lazy(() => import("./views/account-view").then((m) => ({ default: m.AccountView })));
 const GuidelinesView = lazy(() => import("./views/guidelines-view").then((m) => ({ default: m.GuidelinesView })));
 const GamesView = lazy(() => import("./views/games-view").then((m) => ({ default: m.GamesView })));
@@ -235,7 +235,7 @@ function Home() {
   if (!memberSession) return <WelcomeFlow onAuthenticated={setMemberSession} />;
   return (
     <ClubSettingsProvider fallback={<DashboardSkeleton />}>
-      <DashboardHome memberName={memberSession.memberName ?? "Member"} onLogout={handleLogout} />
+      <DashboardHome memberName={memberSession.memberName ?? "Member"} platformAdmin={memberSession.platformAdmin === true} onLogout={handleLogout} />
     </ClubSettingsProvider>
   );
 }
@@ -248,7 +248,7 @@ function SessionExpiredState({ onSignIn }: { onSignIn: () => void }) {
   return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div className="max-w-md rounded-2xl border border-border bg-card p-7 text-center soft-shadow"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><LockKeyhole className="h-5 w-5" /></div><h1 className="mt-4 text-xl font-semibold">Your session has expired</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Sign in again to continue viewing the club dashboard.</p><button onClick={onSignIn} data-testid="button-session-sign-in" className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground">Sign in again</button></div></div>;
 }
 
-function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout: () => Promise<void> }) {
+function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: string; platformAdmin: boolean; onLogout: () => Promise<void> }) {
   const { settings: clubSettings } = useClubSettings();
   const { canInstall, oneTap, platform, install, helpOpen, setHelpOpen } = useInstallPrompt();
   const dashboardQuery = useGetPokerDashboard();
@@ -481,6 +481,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
       <NewClubStart
         clubName={dashboard.title}
         memberName={memberName}
+        platformAdmin={platformAdmin}
         onNavigate={navigate}
         tabBar={<BottomTabBar active={activeView} onNavigate={navigate} liveOpen={liveOpen} />}
       />
@@ -515,6 +516,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 </div>
               </div>
               <div className="hidden flex-wrap items-center gap-2 print-hidden lg:flex">
+                {platformAdmin && <a href="/admin" data-testid="link-platform-usage" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><Activity className="h-4 w-4" />Site usage</a>}
                 <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open Me" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
                 <button onClick={() => void onLogout()} data-testid="button-member-logout" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><LogOut className="h-4 w-4" />Sign out</button>
                 <button onClick={handleRefresh} disabled={refreshing} data-testid="button-refresh-dashboard" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-60"><Activity className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />{refreshing ? "Checking" : "Refresh"}</button>
@@ -533,6 +535,11 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                     <DropdownMenuItem onSelect={() => navigate("account")} data-testid="menu-open-account">
                       <Avatar name={memberName} size={20} />Me
                     </DropdownMenuItem>
+                    {platformAdmin && (
+                      <DropdownMenuItem onSelect={() => { window.location.assign("/admin"); }} data-testid="menu-platform-usage">
+                        <Activity className="h-4 w-4" />Site usage
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => void handleRefresh()} disabled={refreshing} data-testid="menu-refresh-dashboard">
@@ -704,7 +711,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
 }
 
 function ErrorState({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) { return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div data-testid="state-dashboard-error" className="max-w-md rounded-2xl border border-destructive/30 bg-card p-7 text-center soft-shadow"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Activity className="h-5 w-5" /></div><h1 className="mt-4 text-xl font-semibold">The club sheet is out of reach</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">The last dashboard request did not complete. Your figures have not been changed.</p><button onClick={onRetry} disabled={refreshing} data-testid="button-retry-dashboard" className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{refreshing ? "Checking source" : "Try again"}</button></div></div>; }
-function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: string; memberName: string; onNavigate: (view: "live" | "guidelines") => void; tabBar: ReactNode }) {
+function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar }: { clubName: string; memberName: string; platformAdmin: boolean; onNavigate: (view: "live" | "guidelines") => void; tabBar: ReactNode }) {
   // Only admins can set a club up; everyone else just waits for the first night.
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   useEffect(() => {
@@ -719,6 +726,7 @@ function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: 
           <p className="section-label text-primary">Welcome</p>
           <h1 data-testid="text-new-club-title" className="mt-1 text-2xl font-semibold tracking-tight">{clubName}</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Hi {memberName}, you're in. Nothing has been recorded yet.</p>
+          {platformAdmin && <a href="/admin" data-testid="link-platform-usage" className="mt-4 inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm font-semibold">Site usage</a>}
           <div className="soft-shadow mt-6 rounded-2xl border border-border bg-card p-5" data-testid="box-member-waiting">
             <h2 className="text-base font-semibold">Waiting for the first night</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">Standings, games and your results appear here as soon as a club admin records or imports a night. Check the Live tab on game night.</p>
@@ -740,6 +748,7 @@ function NewClubStart({ clubName, memberName, onNavigate, tabBar }: { clubName: 
         <p className="section-label text-primary">Welcome</p>
         <h1 data-testid="text-new-club-title" className="mt-1 text-2xl font-semibold tracking-tight">{clubName}</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">Hi {memberName}. Your club is set up and empty. Here is how to get going.</p>
+        {platformAdmin && <a href="/admin" data-testid="link-platform-usage" className="mt-4 inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm font-semibold">Site usage</a>}
         <div className="mt-6 space-y-3">
           {steps.map((step, index) => (
             <div key={step.title} className="soft-shadow rounded-2xl border border-border bg-card p-5">
@@ -759,7 +768,7 @@ function EmptyDashboard() { return <div className="flex min-h-[100dvh] items-cen
 function DashboardSkeleton() { return <div data-testid="state-dashboard-loading" className="min-h-[100dvh] bg-background p-5 text-foreground sm:p-10"><div className="mx-auto max-w-[1200px] animate-pulse space-y-5"><div className="h-8 w-56 rounded-lg bg-secondary" /><div className="h-16 w-3/4 rounded-xl bg-secondary" /><div className="grid grid-cols-2 gap-3 md:grid-cols-6">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-28 rounded-2xl bg-secondary" />)}</div><div className="h-80 rounded-2xl bg-secondary" /><div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-44 rounded-2xl bg-secondary" />)}</div></div></div>; }
 function formatSyncTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "recently"; return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><AdminPage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><PlatformUsagePage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
 }
 
 export default App;
