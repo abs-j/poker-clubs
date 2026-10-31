@@ -4,6 +4,7 @@ import {
   clubSessions,
   clubTournaments,
   db,
+  jackpotPayouts,
   liveActivityEvents,
   liveSessions,
   normalizeNameKey,
@@ -13,6 +14,7 @@ import {
 import { buildClubDashboard, type NightInput } from "./club-dashboard";
 import { nightFingerprint, type ParsedNight } from "./import-parse";
 import { loadTournamentEvents } from "./club-tournaments";
+import { jackpotFromCents, parsePayoutAmount, validateJackpotPayout, type JackpotSummary } from "./jackpot";
 import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
 import { canManageNight, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
 
@@ -338,17 +340,95 @@ export async function listClubNights(clubId: number) {
   }));
 }
 
-/** Everything the club has put into its bad beat jackpot so far, in dollars, and how many nights added to it. */
-export async function clubJackpot(clubId: number): Promise<{ total: number; nights: number }> {
+/** Everything the club has put into its bad beat jackpot so far, minus payouts, with the payout history. */
+export async function clubJackpot(clubId: number): Promise<JackpotSummary> {
   await syncClosedLiveSessions(clubId);
-  const [row] = await db
-    .select({
-      total: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
-      nights: sql<number>`count(*) filter (where ${clubSessions.jackpotCents} > 0)`.mapWith(Number),
-    })
-    .from(clubSessions)
-    .where(eq(clubSessions.clubId, clubId));
-  return { total: toDollars(row?.total ?? 0), nights: row?.nights ?? 0 };
+  const [[contrib], [paid], payoutRows] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
+        nights: sql<number>`count(*) filter (where ${clubSessions.jackpotCents} > 0)`.mapWith(Number),
+      })
+      .from(clubSessions)
+      .where(eq(clubSessions.clubId, clubId)),
+    db
+      .select({
+        total: sql<number>`coalesce(sum(${jackpotPayouts.amountCents}), 0)`.mapWith(Number),
+      })
+      .from(jackpotPayouts)
+      .where(eq(jackpotPayouts.clubId, clubId)),
+    db
+      .select({
+        id: jackpotPayouts.id,
+        player: players.displayName,
+        amountCents: jackpotPayouts.amountCents,
+        paidAt: jackpotPayouts.paidAt,
+        paidBy: jackpotPayouts.paidBy,
+      })
+      .from(jackpotPayouts)
+      .innerJoin(players, eq(players.id, jackpotPayouts.playerId))
+      .where(eq(jackpotPayouts.clubId, clubId))
+      .orderBy(desc(jackpotPayouts.paidAt), desc(jackpotPayouts.id)),
+  ]);
+  return jackpotFromCents(
+    contrib?.total ?? 0,
+    paid?.total ?? 0,
+    contrib?.nights ?? 0,
+    payoutRows.map((row) => ({
+      id: row.id,
+      player: row.player,
+      amount: toDollars(row.amountCents),
+      at: row.paidAt.toISOString(),
+      by: row.paidBy,
+    })),
+  );
+}
+
+/**
+ * Pays some of the jackpot to a player. The caller must already have checked host/admin permission.
+ * Returns the updated pot, or a reason the payout was refused.
+ */
+export async function payJackpot(
+  clubId: number,
+  paidBy: string,
+  input: { name: unknown; amount: unknown },
+): Promise<{ ok: true; jackpot: JackpotSummary } | { ok: false; error: string }> {
+  const name = typeof input.name === "string" ? tidy(input.name) : "";
+  if (!name || name.length > 80) return { ok: false, error: "Choose who receives the payout." };
+  const amountCents = parsePayoutAmount(input.amount);
+  if (amountCents === null) return { ok: false, error: "Enter a valid payout amount." };
+
+  const outcome = await db.transaction(async (tx) => {
+    const [contrib] = await tx
+      .select({
+        total: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
+      })
+      .from(clubSessions)
+      .where(eq(clubSessions.clubId, clubId));
+    const [paid] = await tx
+      .select({
+        total: sql<number>`coalesce(sum(${jackpotPayouts.amountCents}), 0)`.mapWith(Number),
+      })
+      .from(jackpotPayouts)
+      .where(eq(jackpotPayouts.clubId, clubId));
+    const available = (contrib?.total ?? 0) - (paid?.total ?? 0);
+    const reason = validateJackpotPayout(amountCents, available);
+    if (reason) return { ok: false as const, error: reason };
+
+    const ids = await ensurePlayers(tx, clubId, [name]);
+    const playerId = ids.get(normalizeNameKey(name));
+    if (!playerId) return { ok: false as const, error: "Choose who receives the payout." };
+
+    await tx.insert(jackpotPayouts).values({
+      clubId,
+      playerId,
+      amountCents,
+      paidBy: tidy(paidBy) || "Unknown",
+    });
+    return { ok: true as const };
+  });
+  if (!outcome.ok) return outcome;
+  return { ok: true, jackpot: await clubJackpot(clubId) };
 }
 
 /** Deletes a hand-entered or imported night. Nights from the live ledger are removed there instead. */

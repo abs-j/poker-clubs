@@ -15,6 +15,7 @@ import { nameKey } from "./club-access";
 import { removeNightsForLiveSession, syncClosedLiveSessions } from "./club-sessions";
 import {
   canEditEntry,
+  canManageExtras,
   canManageNight,
   hostOf,
   LedgerPermissionError,
@@ -1107,10 +1108,19 @@ export type LiveSessionRole = {
   hostName: string | null;
   bankName: string | null;
   canManage: boolean;
+  /** Host of the open/latest ended night, or a club admin (including when no night exists). */
+  canPayJackpot: boolean;
+  /** Same rule as canPayJackpot: record a tournament from Live's New night menu. */
+  canRecordTournament: boolean;
   status: "open" | "ended" | "none";
   /** The recorded night of the latest closed session, once it has been recorded. Used for settle-up. */
   nightId: number | null;
 };
+
+function extrasFlags(actor: LedgerActor, status: LiveSessionRole["status"], hostName: string | null) {
+  const allowed = canManageExtras(actor, status, hostName);
+  return { canPayJackpot: allowed, canRecordTournament: allowed };
+}
 
 /** The open night, or failing that the latest closed one. */
 async function currentSession(clubId: number) {
@@ -1132,7 +1142,9 @@ async function currentSession(clubId: number) {
 
 export async function liveSessionRole(actor: LedgerActor, clubId: number): Promise<LiveSessionRole> {
   const current = await currentSession(clubId);
-  if (!current) return { hostName: null, bankName: null, canManage: false, status: "none", nightId: null };
+  if (!current) {
+    return { hostName: null, bankName: null, canManage: false, ...extrasFlags(actor, "none", null), status: "none", nightId: null };
+  }
   const { session, status } = current;
   const hostName = hostOf(session);
   let nightId: number | null = null;
@@ -1148,6 +1160,7 @@ export async function liveSessionRole(actor: LedgerActor, clubId: number): Promi
     hostName,
     bankName: session.bankName ?? null,
     canManage: canManageNight(actor, hostName),
+    ...extrasFlags(actor, status, hostName),
     status,
     nightId,
   };
@@ -1221,7 +1234,14 @@ export async function setLiveSessionHost(actor: LedgerActor, clubId: number, nam
       .limit(1);
     if (!member) throw new Error("That person is not a member of this club.");
     await tx.update(liveSessions).set({ hostName: member.displayName }).where(eq(liveSessions.sessionKey, session.sessionKey));
-    return { hostName: member.displayName, bankName: session.bankName ?? null, canManage: canManageNight(actor, member.displayName), status: "open", nightId: null };
+    return {
+      hostName: member.displayName,
+      bankName: session.bankName ?? null,
+      canManage: canManageNight(actor, member.displayName),
+      ...extrasFlags(actor, "open", member.displayName),
+      status: "open",
+      nightId: null,
+    };
   });
 }
 

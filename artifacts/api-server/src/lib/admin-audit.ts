@@ -18,6 +18,7 @@ export type AdminAuditAction =
   | "night_handed_over"
   | "tournament_deleted"
   | "night_recorded"
+  | "jackpot_paid"
   | "settings_updated"
   | "results_exported";
 

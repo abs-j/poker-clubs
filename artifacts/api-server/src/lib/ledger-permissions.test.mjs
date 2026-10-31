@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canEditEntry, canManageNight, hostOf } from "./ledger-permissions.ts";
+import { canEditEntry, canManageExtras, canManageNight, hostOf } from "./ledger-permissions.ts";
 
 const admin = { name: "Ada", isAdmin: true };
 const host = { name: "Bo", isAdmin: false };
@@ -29,4 +29,13 @@ test("an entry can be changed by its author, the host, or an admin", () => {
   assert.equal(canEditEntry(admin, "Bo", "Cy"), true);
   assert.equal(canEditEntry(other, "Bo", "Cy"), false);
   assert.equal(canEditEntry(other, "Dee", "Cy"), true);
+});
+
+test("jackpot payouts and tournaments: admin always, otherwise the host of an open or ended night", () => {
+  assert.equal(canManageExtras(admin, "none", null), true);
+  assert.equal(canManageExtras(host, "none", null), false);
+  assert.equal(canManageExtras(host, "open", "Bo"), true);
+  assert.equal(canManageExtras({ name: " bo ", isAdmin: false }, "ended", "Bo"), true);
+  assert.equal(canManageExtras(other, "open", "Bo"), false);
+  assert.equal(canManageExtras(other, "ended", "Bo"), false);
 });

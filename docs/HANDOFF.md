@@ -14,8 +14,8 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 
 ## Where work stopped
 
-L3 is merged (past nights and notes in the ledger, no schema change). L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements`. L4 is next.
+L4 is done (jackpot payout + tournaments from Live's New night). L3–L1 are merged before it. Next is the structure work below. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` and `night_settlements` (L2), and the new table `jackpot_payouts` (L4).
 
 ## How to work
 
@@ -74,8 +74,12 @@ Done. No schema change.
 - The "Record a night" form is gone from `components/club-data-panel.tsx`; `POST /clubs/current/sessions` still exists but the site no longer calls it. CSV, paste and Sheet history import stay in admin Setup.
 
 ### L4. Jackpot payout, tournaments from "New night"
-Payout: table or column recording `(club_id, player_id, cents, at, by)`; `clubJackpot()` in `lib/club-sessions.ts` subtracts payouts; UI on the jackpot card in `live-view.tsx`.
-"New night" menu on the Live tab with Cash night and Tournament; the tournament form currently lives in `components/club-data-panel.tsx`.
+Done. Schema: table `jackpot_payouts (club_id, player_id, amount_cents, paid_at, paid_by)` with an index on `club_id` and cascade delete (listed in `schema-check.ts` TABLES). Run `pnpm --filter @workspace/db run push` before using a build that includes it.
+- `GET /api/clubs/current/jackpot` now returns `{ total, nights, contributed, paidOut, payouts }` where `total = contributed - paidOut` (dollars).
+- `POST /api/clubs/current/jackpot/payouts` `{ name, amount }`: host or admin (admin also when no live session); rejects amount ≤ 0 or above what's left; ensures the player; returns the updated jackpot.
+- `POST /api/clubs/current/tournaments` is host/admin (`requireMemberSession` + role check); import/list/delete stay admin-only.
+- `liveSessionRole` adds `canPayJackpot` / `canRecordTournament` (admin always; otherwise host of the open or latest ended night).
+- Live idle: "New night" menu (Cash night + Tournament) when extras are allowed; members who can't record keep a simple Start button. Tournament form is `components/record-tournament.tsx` (removed from Club Setup; Setup copy points at Live). Jackpot card shows whenever there is history and hosts/admins can pay out.
 
 ## After the ledger: structure work (see the plan)
 Split My account into Me and Club admin (Club tab gets an Admin section: People, Setup, Settings, Danger); make Members/invite link available to all members
