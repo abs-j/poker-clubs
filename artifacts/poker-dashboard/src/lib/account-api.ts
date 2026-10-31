@@ -134,6 +134,21 @@ export function detectedDefaults(): { timezone?: string; currency?: string } {
 
 export type BalanceChoice = { mode: "jackpot" } | { mode: "player"; name: string } | { mode: "split" } | { mode: "none" };
 
+export type JackpotPayout = {
+  id: number;
+  name: string;
+  /** Dollars paid to this player. */
+  amount: number;
+  at: string;
+  by: string;
+};
+export type JackpotSummary = {
+  /** Dollars still in the pot. */
+  total: number;
+  nights: number;
+  payouts: JackpotPayout[];
+};
+
 export type LiveSessionRole = {
   hostName: string | null;
   bankName: string | null;
@@ -183,8 +198,11 @@ export const accountApi = {
   setSettled: (nightId: number, change: { name: string; settled: boolean } | { all: true; settled: boolean }) =>
     request<NightSettlement>(`/api/clubs/current/nights/${nightId}/settlement`, send("PUT", change)),
   reopenLiveSession: () => request<unknown>("/api/poker/live-session/reopen", send("POST")),
-  /** What the club has put into its bad beat jackpot, in dollars. */
-  jackpot: () => request<{ total: number; nights: number }>("/api/clubs/current/jackpot", { cache: "no-store" }),
+  /** What the club still holds in its bad beat jackpot, in dollars, and the payouts already made. */
+  jackpot: () => request<JackpotSummary>("/api/clubs/current/jackpot", { cache: "no-store" }),
+  /** Host or admin: pay some of the jackpot to a player. Amount is dollars, as typed. */
+  payJackpot: (input: { name: string; amount: string }) =>
+    request<JackpotSummary>("/api/clubs/current/jackpot/payouts", send("POST", input)),
   me: () => request<MeResponse>("/api/clubs/me", { cache: "no-store" }),
   signUp: (input: { name: string; email: string; password: string }) =>
     // The confirmation email's link brings the person back to the app, on this address.

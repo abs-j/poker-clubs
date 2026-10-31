@@ -370,7 +370,7 @@ export function ClubPanel() {
       )}
     </div>
     {isAdmin && <ClubSettingsPanel />}
-    {isAdmin && <ClubDataPanel roster={members.map((member) => member.name)} />}
+    {isAdmin && <ClubDataPanel />}
     {isOwner && (
       <div className="soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
         <p className="section-label text-primary">Danger zone</p>

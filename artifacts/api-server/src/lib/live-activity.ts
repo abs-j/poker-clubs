@@ -1132,7 +1132,8 @@ async function currentSession(clubId: number) {
 
 export async function liveSessionRole(actor: LedgerActor, clubId: number): Promise<LiveSessionRole> {
   const current = await currentSession(clubId);
-  if (!current) return { hostName: null, bankName: null, canManage: false, status: "none", nightId: null };
+  // An admin can record a tournament or a jackpot payout even before the club's first night.
+  if (!current) return { hostName: null, bankName: null, canManage: actor.isAdmin, status: "none", nightId: null };
   const { session, status } = current;
   const hostName = hostOf(session);
   let nightId: number | null = null;

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, type AuthSession } from "../lib/auth";
 import { isClubAdmin } from "../lib/club-access";
-import { LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
+import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { liveSessionRole } from "../lib/live-activity";
 import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
@@ -10,7 +10,7 @@ import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubJackpot, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, setLedgerResolution, undoImport } from "../lib/club-sessions";
+import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport } from "../lib/club-sessions";
 import { parseResolution } from "../lib/night-balance";
 import { nightsToCsv } from "../lib/export-csv";
 import { getClubSettings } from "../lib/club-settings";
@@ -154,9 +154,34 @@ router.put("/clubs/current/ledger/resolution", requireMemberSession, async (req,
   }
 });
 
-/** The club's bad beat jackpot so far: surplus from balanced nights. */
+/** The club's bad beat jackpot so far: surplus from balanced nights, minus payouts. */
 router.get("/clubs/current/jackpot", requireMemberSession, async (_req, res): Promise<void> => {
   res.json(await clubJackpot(memberClubId(res)));
+});
+
+/** Host or admin: pay some of the jackpot to one player. The running total goes down by that amount. */
+router.post("/clubs/current/jackpot/payouts", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const role = await liveSessionRole(actor, memberClubId(res));
+  if (!canManageNight(actor, role.hostName ?? "")) {
+    res.status(403).json({ error: "Only the host or an admin can record a jackpot payout." });
+    return;
+  }
+  try {
+    const view = await recordJackpotPayout(memberClubId(res), actor.name, req.body ?? {});
+    await recordAdminAction("jackpot_paid", `Paid ${view.payouts[0] ? `${view.payouts[0].amount.toFixed(2)} to ${view.payouts[0].name}` : "a jackpot payout"}. ${view.total.toFixed(2)} remains.`, req);
+    res.status(201).json(view);
+  } catch (error) {
+    if (error instanceof JackpotInputError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 });
 
 /** What the viewer still owes or is owed, and how settled each recent night is. */
@@ -249,15 +274,24 @@ router.delete("/clubs/current/sessions/:id", requireAdminSession, async (req, re
   res.status(204).end();
 });
 
-/** Records a tournament: who finished where, entries, knockouts and optionally payouts. */
-router.post("/clubs/current/tournaments", requireAdminSession, async (req, res): Promise<void> => {
+/** Records a tournament: who finished where, entries, knockouts and optionally payouts. The host or an admin. */
+router.post("/clubs/current/tournaments", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const role = await liveSessionRole(actor, memberClubId(res));
+  if (!canManageNight(actor, role.hostName ?? "")) {
+    res.status(403).json({ error: "Only the host or an admin can record a tournament." });
+    return;
+  }
   const checked = validateTournament(req.body, "new");
   if ("error" in checked) {
     res.status(400).json({ error: checked.error });
     return;
   }
-  const session = res.locals.adminSession as { memberName?: string | null };
-  const id = await recordTournament(adminClubId(res), session.memberName ?? null, checked.value);
+  const id = await recordTournament(memberClubId(res), actor.name, checked.value);
   const event = buildTournamentEvent(checked.value);
   await recordAdminAction("night_recorded", `Recorded tournament "${event.title}" (${event.players} players).`, req);
   res.status(201).json({
