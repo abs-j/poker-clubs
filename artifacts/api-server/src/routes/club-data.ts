@@ -1,16 +1,17 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response as ExpressResponse } from "express";
 import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, type AuthSession } from "../lib/auth";
-import { isClubAdmin } from "../lib/club-access";
+import { isClubAdmin, resolveClubContext } from "../lib/club-access";
 import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { liveSessionRole } from "../lib/live-activity";
 import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
-import { commitTournamentImport, deleteTournament, listTournaments, previewTournamentImport, recordTournament } from "../lib/club-tournaments";
+import { commitTournamentImport, deleteTournament, getTournament, listTournaments, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport } from "../lib/club-sessions";
+import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
+import { loadGameTools } from "../lib/game-tools";
 import { parseResolution } from "../lib/night-balance";
 import { nightsToCsv } from "../lib/export-csv";
 import { getClubSettings } from "../lib/club-settings";
@@ -20,10 +21,62 @@ import {
   parseMoney,
   sheetExportUrl,
   type DateOrder,
-  type ParsedNight,
 } from "../lib/import-parse";
 
 const router: IRouter = Router();
+
+/** Club owner or admin. A signed-in member gets 403; anyone else gets 401. */
+async function requireClubAdmin(req: Request, res: ExpressResponse): Promise<boolean> {
+  const context = await resolveClubContext(req);
+  if (!context) {
+    res.status(401).json({ error: "Sign in required." });
+    return false;
+  }
+  if (!isClubAdmin(context.role)) {
+    res.status(403).json({ error: "Only a club admin can change recorded games." });
+    return false;
+  }
+  res.locals.adminSession = {
+    role: "admin",
+    memberName: context.memberName,
+    clubId: context.clubId,
+    clubRole: context.role,
+    userId: context.userId,
+  };
+  return true;
+}
+
+function nightId(value: unknown): number | null {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** { date, players: [{ name, buyIn, cashOut }] } shared by recording and editing a cash night. */
+function readNightBody(body: { date?: unknown; players?: unknown }):
+  | { date: string; players: Array<{ name: string; buyIn: number; cashOut: number }> }
+  | { error: string } {
+  const date = typeof body?.date === "string" ? parseDate(body.date) : null;
+  if (!date) return { error: "Choose the date of the night." };
+  const rows: unknown[] = Array.isArray(body?.players) ? body.players : [];
+  const players: Array<{ name: string; buyIn: number; cashOut: number }> = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const entry = row as { name?: unknown; buyIn?: unknown; cashOut?: unknown };
+    const name = typeof entry.name === "string" ? entry.name.trim().replace(/\s+/g, " ") : "";
+    if (!name) continue;
+    const buyIn = parseMoney(String(entry.buyIn ?? ""));
+    const cashOut = parseMoney(String(entry.cashOut ?? ""));
+    if (name.length > 40 || buyIn === null || cashOut === null || buyIn < 0 || cashOut < 0) {
+      return { error: `Check the amounts for ${name || "a player"}.` };
+    }
+    if (seen.has(name.toLowerCase())) return { error: `${name} is listed twice.` };
+    seen.add(name.toLowerCase());
+    if (buyIn > 0 || cashOut > 0) players.push({ name, buyIn, cashOut });
+  }
+  if (players.length < 2) return { error: "Add at least two players with a buy-in or cash-out." };
+  if (players.length > 100) return { error: "That's more than 100 players for one night." };
+  return { date, players };
+}
 
 function ledgerActor(res: { locals: { memberSession?: AuthSession } }): LedgerActor | null {
   const session = res.locals.memberSession;
@@ -255,9 +308,53 @@ router.get("/clubs/current/sessions", requireAdminSession, async (_req, res): Pr
   res.json({ sessions: await listClubNights(adminClubId(res)) });
 });
 
-router.delete("/clubs/current/sessions/:id", requireAdminSession, async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
+/** Which Games cards an admin can edit or delete, and whether this person can reopen the latest night. */
+router.get("/clubs/current/game-tools", requireMemberSession, async (_req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  res.json(await loadGameTools(memberClubId(res), actor));
+});
+
+/** Replaces the players and date of a hand-entered or imported night. Admin only. */
+router.patch("/clubs/current/sessions/:id", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const id = nightId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "Invalid night." });
+    return;
+  }
+  const night = readNightBody(req.body ?? {});
+  if ("error" in night) {
+    res.status(400).json({ error: night.error });
+    return;
+  }
+  const outcome = await updateNight(adminClubId(res), id, {
+    date: night.date,
+    players: night.players.map((player) => ({
+      name: player.name,
+      buyInCents: Math.round(player.buyIn * 100),
+      cashOutCents: Math.round(player.cashOut * 100),
+    })),
+  });
+  if (outcome === "missing") {
+    res.status(404).json({ error: "That night no longer exists." });
+    return;
+  }
+  if (outcome === "live") {
+    res.status(409).json({ error: "This night came from the live ledger. Reopen it to change the entries." });
+    return;
+  }
+  await recordAdminAction("night_edited", `Edited recorded night #${id}.`, req);
+  res.json({ id, date: night.date, players: night.players.length });
+});
+
+router.delete("/clubs/current/sessions/:id", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const id = nightId(req.params.id);
+  if (id === null) {
     res.status(400).json({ error: "Invalid night." });
     return;
   }
@@ -266,8 +363,10 @@ router.delete("/clubs/current/sessions/:id", requireAdminSession, async (req, re
     res.status(404).json({ error: "That night no longer exists." });
     return;
   }
-  if (outcome === "live") {
-    res.status(409).json({ error: "This night came from the live ledger. Delete it from Ledger history on the Admin page (/admin)." });
+  if (outcome === "jackpot") {
+    res.status(409).json({
+      error: "This night added money to the jackpot that has already been paid out. Deleting it would leave the pot short.",
+    });
     return;
   }
   await recordAdminAction("night_deleted", `Deleted recorded night #${id}.`, req);
@@ -404,9 +503,48 @@ router.get("/clubs/current/tournaments", requireAdminSession, async (_req, res):
   res.json({ tournaments: await listTournaments(adminClubId(res)) });
 });
 
-router.delete("/clubs/current/tournaments/:id", requireAdminSession, async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || !(await deleteTournament(adminClubId(res), id))) {
+router.get("/clubs/current/tournaments/:id", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const id = nightId(req.params.id);
+  const tournament = id === null ? null : await getTournament(adminClubId(res), id);
+  if (!tournament) {
+    res.status(404).json({ error: "That tournament no longer exists." });
+    return;
+  }
+  res.json(tournament);
+});
+
+router.patch("/clubs/current/tournaments/:id", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const id = nightId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "Invalid tournament." });
+    return;
+  }
+  const checked = validateTournament(req.body, `club-${id}`);
+  if ("error" in checked) {
+    res.status(400).json({ error: checked.error });
+    return;
+  }
+  if (!(await updateTournament(adminClubId(res), id, checked.value))) {
+    res.status(404).json({ error: "That tournament no longer exists." });
+    return;
+  }
+  const event = buildTournamentEvent(checked.value);
+  await recordAdminAction("tournament_edited", `Edited tournament "${event.title}".`, req);
+  res.json({
+    id,
+    players: event.players,
+    totalCollected: event.totalCollected,
+    mainPrizePool: event.mainPrizePool,
+    dataCheck: event.dataCheck,
+  });
+});
+
+router.delete("/clubs/current/tournaments/:id", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const id = nightId(req.params.id);
+  if (id === null || !(await deleteTournament(adminClubId(res), id))) {
     res.status(404).json({ error: "That tournament no longer exists." });
     return;
   }
@@ -425,37 +563,9 @@ router.get("/clubs/current/export.csv", requireAdminSession, async (req, res): P
 
 /** Records one night by hand: { date: "YYYY-MM-DD", players: [{ name, buyIn, cashOut }] }. */
 router.post("/clubs/current/sessions", requireAdminSession, async (req, res): Promise<void> => {
-  const date = typeof req.body?.date === "string" ? parseDate(req.body.date) : null;
-  if (!date) {
-    res.status(400).json({ error: "Choose the date of the night." });
-    return;
-  }
-  const rows: unknown[] = Array.isArray(req.body?.players) ? req.body.players : [];
-  const night: ParsedNight = { date, players: [] };
-  const seen = new Set<string>();
-  for (const row of rows) {
-    const entry = row as { name?: unknown; buyIn?: unknown; cashOut?: unknown };
-    const name = typeof entry.name === "string" ? entry.name.trim().replace(/\s+/g, " ") : "";
-    if (!name) continue;
-    const buyIn = parseMoney(String(entry.buyIn ?? ""));
-    const cashOut = parseMoney(String(entry.cashOut ?? ""));
-    if (name.length > 40 || buyIn === null || cashOut === null || buyIn < 0 || cashOut < 0) {
-      res.status(400).json({ error: `Check the amounts for ${name || "a player"}.` });
-      return;
-    }
-    if (seen.has(name.toLowerCase())) {
-      res.status(400).json({ error: `${name} is listed twice.` });
-      return;
-    }
-    seen.add(name.toLowerCase());
-    if (buyIn > 0 || cashOut > 0) night.players.push({ name, buyIn, cashOut });
-  }
-  if (night.players.length < 2) {
-    res.status(400).json({ error: "Add at least two players with a buy-in or cash-out." });
-    return;
-  }
-  if (night.players.length > 100) {
-    res.status(400).json({ error: "That's more than 100 players for one night." });
+  const night = readNightBody(req.body ?? {});
+  if ("error" in night) {
+    res.status(400).json({ error: night.error });
     return;
   }
   const session = res.locals.adminSession as { memberName?: string | null };

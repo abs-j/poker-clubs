@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   clubSessions,
   clubTournaments,
   db,
   jackpotPayouts,
+  liveActivityEventComments,
   liveActivityEvents,
   liveSessions,
+  nightSettlements,
   normalizeNameKey,
   players,
   sessionResults,
@@ -441,17 +443,111 @@ export async function recordJackpotPayout(
   return clubJackpot(clubId);
 }
 
-/** Deletes a hand-entered or imported night. Nights from the live ledger are removed there instead. */
-export async function deleteNight(clubId: number, id: number): Promise<"deleted" | "missing" | "live"> {
-  const [night] = await db
-    .select({ source: clubSessions.source })
-    .from(clubSessions)
-    .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
-    .limit(1);
-  if (!night) return "missing";
-  if (night.source === "live") return "live";
-  await db.delete(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)));
-  return "deleted";
+export type RecordedNightChange = {
+  date: string;
+  players: NightPlayer[];
+};
+
+/**
+ * Replaces the players and date of a hand-entered or imported night.
+ * A night from the live ledger is refused: reopening that night is how its entries change,
+ * so the recorded result cannot drift away from the ledger.
+ */
+export async function updateNight(clubId: number, id: number, change: RecordedNightChange): Promise<"updated" | "missing" | "live"> {
+  return db.transaction(async (tx) => {
+    const [night] = await tx
+      .select({ id: clubSessions.id, source: clubSessions.source })
+      .from(clubSessions)
+      .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
+      .limit(1)
+      .for("update");
+    if (!night) return "missing";
+    if (night.source === "live") return "live";
+
+    await tx
+      .update(clubSessions)
+      .set({ sessionDate: change.date })
+      .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)));
+    await tx.delete(sessionResults).where(eq(sessionResults.sessionId, id));
+    const ids = await ensurePlayers(tx, clubId, change.players.map((player) => player.name));
+    await tx.insert(sessionResults).values(
+      change.players.map((player) => ({
+        sessionId: id,
+        playerId: ids.get(normalizeNameKey(player.name))!,
+        buyInCents: player.buyInCents,
+        cashOutCents: player.cashOutCents,
+      })),
+    );
+    return "updated";
+  });
+}
+
+/**
+ * Deletes one recorded night and the rows that belong to it, in one transaction.
+ * Session results and settle-up ticks go with the night. A live-ledger night takes its
+ * ledger session with it, so closing is not recorded again. The jackpot is the sum of
+ * what nights added minus payouts: a delete that would leave the pot short is refused
+ * and nothing is removed.
+ */
+export async function deleteNight(clubId: number, id: number): Promise<"deleted" | "missing" | "jackpot"> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM clubs WHERE id = ${clubId} FOR UPDATE`);
+    const [night] = await tx
+      .select({
+        id: clubSessions.id,
+        liveSessionKey: clubSessions.liveSessionKey,
+        jackpotCents: clubSessions.jackpotCents,
+      })
+      .from(clubSessions)
+      .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
+      .limit(1)
+      .for("update");
+    if (!night) return "missing";
+
+    const [pot] = await tx
+      .select({
+        contributed: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
+      })
+      .from(clubSessions)
+      .where(eq(clubSessions.clubId, clubId));
+    const [paid] = await tx
+      .select({
+        cents: sql<number>`coalesce(sum(${jackpotPayouts.cents}), 0)`.mapWith(Number),
+      })
+      .from(jackpotPayouts)
+      .where(eq(jackpotPayouts.clubId, clubId));
+    const after = remainingJackpotCents((pot?.contributed ?? 0) - night.jackpotCents, paid?.cents ?? 0);
+    if (night.jackpotCents > 0 && after < 0) return "jackpot";
+
+    if (night.liveSessionKey) {
+      const [live] = await tx
+        .select({ key: liveSessions.sessionKey })
+        .from(liveSessions)
+        .where(and(
+          eq(liveSessions.sessionKey, night.liveSessionKey),
+          or(eq(liveSessions.clubId, clubId), isNull(liveSessions.clubId)),
+        ))
+        .limit(1)
+        .for("update");
+      if (live) {
+        const events = await tx
+          .select({ eventId: liveActivityEvents.eventId })
+          .from(liveActivityEvents)
+          .where(eq(liveActivityEvents.sessionKey, live.key));
+        const eventIds = events.map((event) => event.eventId);
+        if (eventIds.length > 0) {
+          await tx.delete(liveActivityEventComments).where(inArray(liveActivityEventComments.eventId, eventIds));
+          await tx.delete(liveActivityEvents).where(inArray(liveActivityEvents.eventId, eventIds));
+        }
+        await tx.delete(liveSessions).where(eq(liveSessions.sessionKey, live.key));
+      }
+    }
+
+    await tx.delete(nightSettlements).where(and(eq(nightSettlements.clubId, clubId), eq(nightSettlements.clubSessionId, night.id)));
+    await tx.delete(sessionResults).where(eq(sessionResults.sessionId, night.id));
+    await tx.delete(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, night.id)));
+    return "deleted";
+  });
 }
 
 /**

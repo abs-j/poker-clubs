@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { FileUp, Link2, Trash2 } from "lucide-react";
+import { useMemo, useState, type ChangeEvent } from "react";
+import { FileUp, Link2 } from "lucide-react";
 import {
   AccountError,
   accountApi,
   type ImportPreview,
   type ImportSource,
-  type NightRow,
   type TournamentImportPreview,
-  type TournamentRow,
 } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/views/shared";
@@ -22,28 +20,19 @@ const money = (value: string) => {
   const n = Number(value.replace(/[$,\s]/g, ""));
   return Number.isFinite(n) ? n : 0;
 };
-const sourceLabel = { live: "Live ledger", import: "Imported", manual: "Entered by hand" } as const;
 
 function describe(error: unknown): string {
   return error instanceof AccountError ? error.message : "Something went wrong. Try again.";
 }
 
-/** Bringing past results in, and tidying what has been recorded. A new tournament is started from the Live tab. */
+/** One-time history import. Recorded nights are edited and deleted from the Games tab. */
 export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
-  const [nights, setNights] = useState<NightRow[]>([]);
-  const [tournaments, setTournaments] = useState<TournamentRow[]>([]);
-  const loadNights = useCallback(() => {
-    void accountApi.nights().then((result) => setNights(result.sessions)).catch(() => undefined);
-    void accountApi.tournaments().then((result) => setTournaments(result.tournaments)).catch(() => undefined);
-  }, []);
-  useEffect(loadNights, [loadNights]);
-
   return (
     <div className={embedded ? "" : "soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6"} data-testid="panel-club-data">
       {!embedded && <p className="section-label text-primary">Results</p>}
       <h2 className={`${embedded ? "" : "mt-1 "}text-lg font-semibold tracking-tight`}>Club history</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Nights you close in the live ledger are recorded automatically. To catch up a night you missed, start it on the Live tab with its date. Bring in older results here.
+        Nights you close in the live ledger are recorded automatically. To catch up a night you missed, start it on the Live tab with its date. Bring older results in here. Edit or delete a recorded night from the Games tab.
       </p>
       <p className="mt-3 text-xs text-muted-foreground">
         Your results are yours:{" "}
@@ -52,9 +41,8 @@ export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
         </a>{" "}
         any time (cash nights; it can be imported back). Tournaments aren&apos;t in the file yet.
       </p>
-      <ImportSection onDone={loadNights} />
-      <ImportTournaments onDone={loadNights} />
-      <NightList nights={nights} tournaments={tournaments} onChanged={loadNights} />
+      <ImportSection onDone={() => undefined} />
+      <ImportTournaments onDone={() => undefined} />
     </div>
   );
 }
@@ -395,75 +383,6 @@ function ImportSection({ onDone }: { onDone: () => void }) {
             )}
           </div>
         </div>
-      )}
-    </section>
-  );
-}
-
-function NightList({ nights, tournaments, onChanged }: { nights: NightRow[]; tournaments: TournamentRow[]; onChanged: () => void }) {
-  const [error, setError] = useState("");
-  if (nights.length === 0 && tournaments.length === 0) return null;
-  return (
-    <section className="mt-8 border-t border-border/70 pt-6" data-testid="section-night-list">
-      {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
-      {nights.length > 0 && <p className="text-sm font-semibold">Recorded nights ({nights.length})</p>}
-      <ul className={`mt-2 max-h-80 divide-y divide-border/70 overflow-y-auto rounded-xl border border-border ${nights.length === 0 ? "hidden" : ""}`}>
-        {nights.map((night) => (
-          <li key={night.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-            <div className="min-w-0">
-              <p className="font-semibold">{night.date}</p>
-              <p className="text-[11px] text-muted-foreground">
-                {plural(night.players, "player")} · ${night.totalBuyIn.toFixed(2)} in · {sourceLabel[night.source]}{night.jackpot > 0 ? ` · $${night.jackpot.toFixed(2)} to the jackpot` : ""}
-              </p>
-            </div>
-            {night.source === "live" && (
-              <a href="/admin" className="shrink-0 text-xs text-muted-foreground underline hover:text-primary" data-testid={`link-delete-live-night-${night.id}`}>Delete in Admin</a>
-            )}
-            {night.source !== "live" && (
-              <button
-                type="button"
-                aria-label={`Delete the night of ${night.date}`}
-                className={button}
-                onClick={() => {
-                  if (window.confirm(`Delete the night of ${night.date}? This changes everyone's totals.`)) {
-                    setError("");
-                    void accountApi.deleteNight(night.id).then(onChanged).catch((e) => setError(describe(e)));
-                  }
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {tournaments.length > 0 && (
-        <>
-          <p className="mt-6 text-sm font-semibold">Recorded tournaments ({tournaments.length})</p>
-          <ul className="mt-2 divide-y divide-border/70 rounded-xl border border-border" data-testid="list-tournaments">
-            {tournaments.map((tournament) => (
-              <li key={tournament.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{tournament.title}</p>
-                  <p className="text-[11px] text-muted-foreground">{tournament.date} · {plural(tournament.players, "player")} · {plural(tournament.entries, "entry", "entries")}</p>
-                </div>
-                <button
-                  type="button"
-                  aria-label={`Delete ${tournament.title}`}
-                  className={button}
-                  onClick={() => {
-                    if (window.confirm(`Delete "${tournament.title}"? This changes everyone's totals and points.`)) {
-                      setError("");
-                      void accountApi.deleteTournament(tournament.id).then(onChanged).catch((e) => setError(describe(e)));
-                    }
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
       )}
     </section>
   );

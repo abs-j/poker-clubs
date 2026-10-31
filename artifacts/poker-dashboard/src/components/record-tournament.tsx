@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { AccountError, accountApi } from "@/lib/account-api";
+import { AccountError, accountApi, type TournamentDraft } from "@/lib/account-api";
 import { clubToday } from "@/lib/club-format";
 import { formatCurrency } from "@/views/shared";
 
@@ -10,22 +10,53 @@ const primary =
   "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60";
 const input = "h-10 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
 
-type TRow = { name: string; entries: string; knockouts: string; payout: string };
-const emptyTournamentRows = (): TRow[] => Array.from({ length: 4 }, () => ({ name: "", entries: "1", knockouts: "0", payout: "" }));
+type TRow = { name: string; entries: string; knockouts: string; payout: string; topUp: boolean; freeEntry: boolean };
+const blankRow = (): TRow => ({ name: "", entries: "1", knockouts: "0", payout: "", topUp: false, freeEntry: false });
+const emptyTournamentRows = (): TRow[] => Array.from({ length: 4 }, blankRow);
+
+function rowsFrom(initial?: TournamentDraft): TRow[] {
+  const filled = (initial?.players ?? [])
+    .slice()
+    .sort((a, b) => (a.finishPlace ?? 999) - (b.finishPlace ?? 999))
+    .map((player) => ({
+      name: player.name,
+      entries: String(player.entries),
+      knockouts: String(player.knockouts),
+      payout: player.payout === null ? "" : String(player.payout),
+      topUp: player.topUp,
+      freeEntry: player.freeEntry,
+    }));
+  while (filled.length < 4) filled.push(blankRow());
+  return filled;
+}
 
 function describe(error: unknown): string {
   return error instanceof AccountError ? error.message : "Something went wrong. Try again.";
 }
 
 /** A tournament: list the players in the order they finished; the place is their position. */
-export function RecordTournament({ roster, onDone, onCancel }: { roster: string[]; onDone?: () => void; onCancel?: () => void }) {
-  const [date, setDate] = useState(clubToday());
-  const [title, setTitle] = useState("");
-  const [buyIn, setBuyIn] = useState("");
-  const [bounty, setBounty] = useState("");
-  const [shares, setShares] = useState({ first: 50, second: 30, third: 20 });
-  const [ownPayouts, setOwnPayouts] = useState(false);
-  const [rows, setRows] = useState<TRow[]>(emptyTournamentRows);
+export function RecordTournament({
+  roster,
+  onDone,
+  onCancel,
+  initial,
+  plain = false,
+}: {
+  roster: string[];
+  onDone?: () => void;
+  onCancel?: () => void;
+  /** When set, the form edits this tournament instead of recording a new one. */
+  initial?: TournamentDraft;
+  /** Sits inside a Games card, without its own frame. */
+  plain?: boolean;
+}) {
+  const [date, setDate] = useState(initial?.date ?? clubToday());
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [buyIn, setBuyIn] = useState(initial ? String(initial.buyIn) : "");
+  const [bounty, setBounty] = useState(initial && initial.bounty ? String(initial.bounty) : "");
+  const [shares, setShares] = useState(initial?.shares ?? { first: 50, second: 30, third: 20 });
+  const [ownPayouts, setOwnPayouts] = useState(initial?.players.some((player) => player.payout !== null) ?? false);
+  const [rows, setRows] = useState<TRow[]>(() => (initial ? rowsFrom(initial) : emptyTournamentRows()));
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,20 +70,33 @@ export function RecordTournament({ roster, onDone, onCancel }: { roster: string[
     setError("");
     setMessage("");
     try {
-      const result = await accountApi.recordTournament({
-        date,
-        title: title.trim(),
-        buyIn,
-        bounty,
-        shares,
-        players: filled.map((row, index) => ({
-          name: row.name,
-          finishPlace: index + 1,
-          entries: Number(row.entries) || 1,
-          knockouts: Number(row.knockouts) || 0,
-          ...(ownPayouts ? { payout: row.payout } : {}),
-        })),
-      });
+      const players = filled.map((row, index) => ({
+        name: row.name,
+        finishPlace: index + 1,
+        entries: Number(row.entries) || 1,
+        knockouts: Number(row.knockouts) || 0,
+        ...(ownPayouts ? { payout: row.payout } : {}),
+        ...(initial ? { topUp: row.topUp, freeEntry: row.freeEntry } : {}),
+      }));
+      const result = initial
+        ? await accountApi.updateTournament(Number(initial.id.replace(/^club-/, "")), {
+            date,
+            title: title.trim(),
+            buyIn,
+            bounty,
+            topUp: initial.topUp,
+            startingStack: initial.startingStack,
+            winnerKeepsBounty: initial.winnerKeepsBounty,
+            venue: initial.venue,
+            notes: initial.notes,
+            shares,
+            players,
+          })
+        : await accountApi.recordTournament({ date, title: title.trim(), buyIn, bounty, shares, players });
+      if (initial) {
+        onDone?.();
+        return;
+      }
       setMessage(
         `Tournament recorded. ${formatCurrency(result.totalCollected)} collected, ${formatCurrency(result.mainPrizePool)} in the prize pool.` +
           (result.dataCheck === "OK" ? "" : ` Heads up: ${result.dataCheck}.`),
@@ -70,11 +114,11 @@ export function RecordTournament({ roster, onDone, onCancel }: { roster: string[
   const grid = ownPayouts ? "grid-cols-[1.6rem_minmax(0,1fr)_3rem_3rem_4.5rem]" : "grid-cols-[1.6rem_minmax(0,1fr)_3.2rem_3.2rem]";
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-record-tournament">
+    <section className={plain ? "border-t border-border/70 px-4 py-3" : "rounded-2xl border border-border bg-card p-5"} data-testid={initial ? "section-edit-tournament" : "section-record-tournament"}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">Record a tournament</p>
-          <p className="text-xs text-muted-foreground">List the players in the order they finished. Prizes are worked out from the shares, or enter them yourself. This is saved on its own, separate from the cash ledger.</p>
+          <p className="text-sm font-semibold">{initial ? "Edit this tournament" : "Record a tournament"}</p>
+          <p className="text-xs text-muted-foreground">{initial ? "Changes everyone's totals. List the players in the order they finished." : "List the players in the order they finished. Prizes are worked out from the shares, or enter them yourself. This is saved on its own, separate from the cash ledger."}</p>
         </div>
         {onCancel && (
           <button type="button" onClick={onCancel} className={button} data-testid="button-tournament-cancel">
@@ -150,12 +194,12 @@ export function RecordTournament({ roster, onDone, onCancel }: { roster: string[
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className={button} onClick={() => setRows((current) => [...current, ...emptyTournamentRows().slice(0, 2)])}>
+        <button type="button" className={button} onClick={() => setRows((current) => [...current, blankRow(), blankRow()])}>
           <Plus className="h-4 w-4" />
           More players
         </button>
         <button type="button" disabled={busy || filled.length < 2 || shareTotal > 100} onClick={() => void save()} className={primary} data-testid="button-tournament-save">
-          Save tournament
+          {busy ? "Saving…" : initial ? "Save changes" : "Save tournament"}
         </button>
       </div>
       {error && <p role="alert" data-testid="status-tournament-error" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
