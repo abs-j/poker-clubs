@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Check, Copy, LogOut, QrCode, Trash2, UserPlus } from "lucide-react";
+import { Check, ChevronDown, Copy, LogOut, QrCode, Trash2, UserPlus } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ClubDataPanel } from "@/components/club-data-panel";
 import { ClubSettingsPanel } from "@/components/club-settings-panel";
@@ -251,8 +251,11 @@ export function ClubPanel() {
         </div>
       )}
 
-      <div className="mt-6">
-        <p className="text-sm font-semibold">Members ({members.length})</p>
+      <details className="group mt-6" data-testid="section-members">
+        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          <span>Members ({members.length})</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
         <ul className="mt-2 divide-y divide-border/70 rounded-xl border border-border" data-testid="list-members">
           {members.map((member) => {
             const self = member.name === active.playerName;
@@ -344,7 +347,7 @@ export function ClubPanel() {
             </button>
           </form>
         )}
-      </div>
+      </details>
 
       <div className="mt-6 grid gap-4 border-t border-border/70 pt-5 sm:grid-cols-2">
         <form
