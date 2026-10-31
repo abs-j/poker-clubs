@@ -38,3 +38,17 @@ export function canEditEntry(actor: LedgerActor, hostName: string, createdBy: st
 export function canSettle(actor: LedgerActor, hostName: string, bankName: string | null | undefined): boolean {
   return canManageNight(actor, hostName) || (!!bankName && samePerson(actor.name, bankName));
 }
+
+/**
+ * Pay the jackpot or record a tournament from Live.
+ * Admins always can (including when no night is open). Otherwise the host of the open or latest ended night.
+ */
+export function canManageExtras(
+  actor: LedgerActor,
+  status: "open" | "ended" | "none",
+  hostName: string | null,
+): boolean {
+  if (actor.isAdmin) return true;
+  if (status === "none" || !hostName) return false;
+  return samePerson(actor.name, hostName);
+}

@@ -138,9 +138,29 @@ export type LiveSessionRole = {
   hostName: string | null;
   bankName: string | null;
   canManage: boolean;
+  /** Host of the open/latest ended night, or a club admin (including when no night exists). */
+  canPayJackpot: boolean;
+  /** Same rule as canPayJackpot: record a tournament from Live's New night menu. */
+  canRecordTournament: boolean;
   status: "open" | "ended" | "none";
   /** The recorded night of the latest closed session, once it exists. */
   nightId: number | null;
+};
+
+export type JackpotPayout = {
+  id: number;
+  player: string;
+  amount: number;
+  at: string;
+  by: string;
+};
+
+export type JackpotSummary = {
+  total: number;
+  nights: number;
+  contributed: number;
+  paidOut: number;
+  payouts: JackpotPayout[];
 };
 
 export type SettleLine = {
@@ -183,8 +203,11 @@ export const accountApi = {
   setSettled: (nightId: number, change: { name: string; settled: boolean } | { all: true; settled: boolean }) =>
     request<NightSettlement>(`/api/clubs/current/nights/${nightId}/settlement`, send("PUT", change)),
   reopenLiveSession: () => request<unknown>("/api/poker/live-session/reopen", send("POST")),
-  /** What the club has put into its bad beat jackpot, in dollars. */
-  jackpot: () => request<{ total: number; nights: number }>("/api/clubs/current/jackpot", { cache: "no-store" }),
+  /** What the club has put into its bad beat jackpot, in dollars, minus payouts. */
+  jackpot: () => request<JackpotSummary>("/api/clubs/current/jackpot", { cache: "no-store" }),
+  /** Host or admin: pay some of the jackpot to a player. Amount is dollars. */
+  payJackpot: (input: { name: string; amount: string | number }) =>
+    request<JackpotSummary>("/api/clubs/current/jackpot/payouts", send("POST", input)),
   me: () => request<MeResponse>("/api/clubs/me", { cache: "no-store" }),
   signUp: (input: { name: string; email: string; password: string }) =>
     // The confirmation email's link brings the person back to the app, on this address.

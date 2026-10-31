@@ -220,6 +220,24 @@ export const clubTournaments = pgTable(
   (table) => [index("club_tournaments_club_date_idx").on(table.clubId, table.eventDate)],
 );
 
+/** Money paid out from the club's bad beat jackpot to a player. */
+export const jackpotPayouts = pgTable(
+  "jackpot_payouts",
+  {
+    id: serial("id").primaryKey(),
+    clubId: integer("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
+    paidBy: text("paid_by").notNull(),
+  },
+  (table) => [index("jackpot_payouts_club_id_idx").on(table.clubId)],
+);
+
 export const tournamentResults = pgTable(
   "tournament_results",
   {
@@ -252,3 +270,4 @@ export type Invite = typeof invites.$inferSelect;
 export type ClubSession = typeof clubSessions.$inferSelect;
 export type SessionResult = typeof sessionResults.$inferSelect;
 export type ClubTournament = typeof clubTournaments.$inferSelect;
+export type JackpotPayout = typeof jackpotPayouts.$inferSelect;

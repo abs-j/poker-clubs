@@ -250,7 +250,7 @@ console.log("\nAccounts and clubs");
     expect((await resolve(owner, { mode: "jackpot" })).ok, "jackpot choice refused");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "ledger did not close after the choice");
     const jackpot = await (await api("/api/clubs/current/jackpot", { jar: owner })).json();
-    expect(jackpot.total === 4 && jackpot.nights === 1, `jackpot ${JSON.stringify(jackpot)}`);
+    expect(jackpot.total === 4 && jackpot.nights === 1 && jackpot.contributed === 4 && jackpot.paidOut === 0, `jackpot ${JSON.stringify(jackpot)}`);
     // Under: more came out than went in; it comes off one player.
     await api("/api/poker/live-session/start", { jar: owner, method: "POST" });
     await add("buy_in", 10, "Smoke Guest");
@@ -261,6 +261,22 @@ console.log("\nAccounts and clubs");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "ledger did not close");
     const after = await (await api("/api/clubs/current/jackpot", { jar: owner })).json();
     expect(after.total === 4, "a shortfall changed the jackpot");
+  });
+
+  await check("the host or an admin can pay the jackpot; a member who is not the host cannot", async () => {
+    const pay = (jar, body) => api("/api/clubs/current/jackpot/payouts", { jar, method: "POST", body });
+    const role = await (await api("/api/poker/live-session/role", { jar: owner })).json();
+    expect(role.canPayJackpot === true && role.canRecordTournament === true, `owner extras ${JSON.stringify(role)}`);
+    const guestRole = await (await api("/api/poker/live-session/role", { jar: guest })).json();
+    expect(guestRole.canPayJackpot === false, `guest extras ${JSON.stringify(guestRole)}`);
+    expect((await pay(guest, { name: "Smoke Guest", amount: 1 })).status === 403, "a member who is not the host paid the jackpot");
+    expect((await pay(owner, { name: "Smoke Guest", amount: 0 })).status === 400, "a zero payout was accepted");
+    expect((await pay(owner, { name: "Smoke Guest", amount: 99 })).status === 400, "an oversize payout was accepted");
+    const paid = await pay(owner, { name: "Smoke Guest", amount: 1.5 });
+    expect(paid.status === 201, `payout ${paid.status}`);
+    const jackpot = await paid.json();
+    expect(jackpot.total === 2.5 && jackpot.paidOut === 1.5 && jackpot.payouts.length === 1, `after payout ${JSON.stringify(jackpot)}`);
+    expect(jackpot.payouts[0].player === "Smoke Guest" && jackpot.payouts[0].amount === 1.5, `payout row ${JSON.stringify(jackpot.payouts[0])}`);
   });
 
   await check("the host manages the night, and reopening it does not record it twice", async () => {
@@ -583,6 +599,7 @@ console.log("\nAccounts and clubs");
         { name: "Wes", finishPlace: 4, entries: 1, knockouts: 0 },
       ],
     };
+    expect((await api("/api/clubs/current/tournaments", { jar: guest, method: "POST", body })).status === 403, "a member who is not the host recorded a tournament");
     const bad = await api("/api/clubs/current/tournaments", { jar: owner, method: "POST", body: { ...body, players: [body.players[0], { ...body.players[1], finishPlace: 1 }] } });
     expect(bad.status === 400, `duplicate places should be refused, got ${bad.status}`);
     const saved = await api("/api/clubs/current/tournaments", { jar: owner, method: "POST", body });
@@ -930,6 +947,11 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
     setter.call(node, "2026-01-10");
     node.dispatchEvent(new Event("input", { bubbles: true }));
   });
+  // Owner/admin sees New night (cash + tournament). Open the menu, confirm Tournament is there, then start a cash night.
+  await wait('[data-testid="button-new-night"]');
+  await tapCentered('[data-testid="button-new-night"]');
+  await wait('[data-testid="menu-record-tournament"]');
+  await wait('[data-testid="button-start-live-session"]');
   await tapCentered('[data-testid="button-start-live-session"]');
   await wait('[data-testid="text-live-night-date"]');
   expect(/10 Jan 2026/.test(await text('[data-testid="text-live-night-date"]')), "the past night's date should show on Live");
