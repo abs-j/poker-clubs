@@ -369,6 +369,41 @@ console.log("\nAccounts and clubs");
     expect((await mineFor(owner)).oweCents === 800, "closing again should ask for settling again");
   });
 
+  await check("a night can be started for a past date and filled from notes by its host", async () => {
+    const start = (jar, body) => api("/api/poker/live-session/start", { jar, method: "POST", body });
+    const notes = (jar, players) => api("/api/poker/live-session/notes", { jar, method: "POST", body: { players } });
+    expect((await start(owner, { date: "2999-01-01" })).status === 400, "a future night was accepted");
+    expect((await start(owner, { date: "2026-02-30" })).status === 400, "an impossible date was accepted");
+    expect((await start(owner, { date: "yesterday" })).status === 400, "a date that is not a date was accepted");
+
+    const started = await start(owner, { date: "2026-02-14" });
+    expect(started.status === 201, `start ${started.status}`);
+    const snapshot = await started.json();
+    expect(snapshot.sessionStatus === "open" && snapshot.sessionDate.slice(0, 10) === "2026-02-14", `snapshot ${snapshot.sessionStatus} ${snapshot.sessionDate}`);
+
+    const players = [{ name: "Notes Ann", buyIn: "10", cashOut: "20" }, { name: "Notes Bo", buyIn: "20", cashOut: "10" }];
+    expect((await notes(guest, players)).status === 403, "a member who is not the host filled the night from notes");
+    expect((await notes(owner, [])).status === 400, "an empty notes list was accepted");
+    expect((await notes(owner, [{ name: "Notes Ann", buyIn: "-5", cashOut: "0" }])).status === 400, "a negative amount was accepted");
+    expect((await api("/api/clubs/current/sessions/notes-image", { jar: guest, method: "POST", body: { data: "x", mediaType: "image/jpeg" } })).status === 403, "a member who is not the host read a notes picture");
+    const read = await api("/api/clubs/current/sessions/notes-image", { jar: owner, method: "POST", body: { data: "x", mediaType: "image/jpeg" } });
+    expect([400, 503].includes(read.status), `the host was refused the picture reader (${read.status})`);
+
+    const filled = await notes(owner, players);
+    expect(filled.status === 201, `notes ${filled.status}`);
+    const ledger = await filled.json();
+    expect(ledger.entries.length === 4 && ledger.entries.every((entry) => entry.createdBy === "Pat Imported"), "notes entries should be logged by the host");
+    expect(Math.abs(ledger.totals.buyIns - 30) < 0.001 && Math.abs(ledger.totals.cashOuts - 30) < 0.001, `totals ${JSON.stringify(ledger.totals)}`);
+
+    expect((await api("/api/poker/live-session/end", { jar: guest, method: "POST" })).status === 403, "a member who is not the host closed the past night");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close the past night");
+    const after = await (await api("/api/poker/live-activity", { jar: owner })).json();
+    expect(after.sessionStatus === "ended" && after.sessionDate.slice(0, 10) === "2026-02-14", `after closing: ${after.sessionStatus} ${after.sessionDate}`);
+    const dashboard = await (await api("/api/poker/dashboard", { jar: owner })).json();
+    expect(dashboard.sessions.some((night) => night.date === "2026-02-14" && night.players.some((p) => p.player === "Notes Ann" && p.net === 10)), "the past night was not recorded under its own date");
+    expect((await notes(owner, players)).status === 400, "notes were added with no open night");
+  });
+
   await check("an imported batch can be undone; members cannot import", async () => {
     const refused = await api("/api/clubs/current/import", { jar: guest, method: "POST", body: { text: history } });
     expect(refused.status === 401, `expected 401, got ${refused.status}`);
@@ -882,6 +917,36 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
   await phone.waitForFunction(() => /Everyone has settled/.test(document.body.innerText), { timeout: 15000 });
   await phone.tap('[data-testid="tab-sessions"]');
   await phone.waitForFunction(() => /Settled/.test(document.querySelector('[data-testid="badge-settle-1"]')?.innerText ?? ""), { timeout: 15000 });
+  // Catching up a night: pick a past date on Live, then fill the night from pasted notes.
+  // Scrolled to the middle first so the fixed tab bar is never on top of what is tapped.
+  const tapCentered = async (selector) => {
+    await phone.$eval(selector, (node) => node.scrollIntoView({ block: "center" }));
+    await phone.tap(selector);
+  };
+  await phone.tap('[data-testid="tab-live"]');
+  await wait('[data-testid="input-live-night-date"]');
+  await phone.$eval('[data-testid="input-live-night-date"]', (node) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(node, "2026-01-10");
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await tapCentered('[data-testid="button-start-live-session"]');
+  await wait('[data-testid="text-live-night-date"]');
+  expect(/10 Jan 2026/.test(await text('[data-testid="text-live-night-date"]')), "the past night's date should show on Live");
+  await wait('[data-testid="box-night-notes"]');
+  await tapCentered('[data-testid="box-night-notes"] summary');
+  await phone.type('[data-testid="input-night-notes"]', "Sam Settle - $10 -> $25\nIvy - $25 -> $10");
+  await tapCentered('[data-testid="button-night-notes-fill"]');
+  await phone.waitForSelector('[data-testid="table-night-notes"]', { timeout: 8000 }).catch(async () => {
+    await phone.screenshot({ path: `${OUT}/live-notes-failed.png`, fullPage: true });
+    throw new Error(`notes were not read: ${await phone.$eval('[data-testid="status-night-notes"]', (n) => n.innerText).catch(() => "no status shown")}`);
+  });
+  await tapCentered('[data-testid="button-notes-add"]');
+  await phone.waitForFunction(() => /Added 2 players to the ledger/.test(document.body.innerText), { timeout: 15000 });
+  await phone.waitForFunction(() => /4 entries/.test(document.querySelector('[data-testid="section-live-activity"]')?.innerText ?? ""), { timeout: 15000 });
+  const wide = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(wide <= 1, `the Live page scrolls sideways on a phone (${wide}px)`);
+  await phone.screenshot({ path: `${OUT}/live-notes.png`, fullPage: true });
   await context.close();
 });
 

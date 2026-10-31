@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   calculateLiveLedgerTotals,
   calculateLivePlayerTotals,
+  cleanNotesPlayers,
   formatLiveLedgerTimestamp,
+  chooseLedgerDate,
   liveLedgerSheetRowRangesForSession,
   liveLedgerSessionDate,
   normalizeGoogleSheetsDate,
@@ -444,4 +446,34 @@ test("activity committed before the locked close scan prevents discard", () => {
     { deletedAt: null },
   ];
   assert.equal(shouldDiscardEmptyLiveSession(rowsVisibleToClose), false);
+});
+test("a night starts for tonight unless a real past date is chosen", () => {
+  assert.deepEqual(chooseLedgerDate(undefined, "2026-10-31"), { date: "2026-10-31" });
+  assert.deepEqual(chooseLedgerDate("", "2026-10-31"), { date: "2026-10-31" });
+  assert.deepEqual(chooseLedgerDate("2026-10-31", "2026-10-31"), { date: "2026-10-31" });
+  assert.deepEqual(chooseLedgerDate("2026-03-03", "2026-10-31"), { date: "2026-03-03" });
+  assert.deepEqual(chooseLedgerDate("2024-02-29", "2026-10-31"), { date: "2024-02-29" });
+  for (const bad of ["2026-11-01", "2026-02-30", "2026-13-01", "31/10/2026", "1999-12-31", 5, {}]) {
+    assert.ok("error" in chooseLedgerDate(bad, "2026-10-31"), `${JSON.stringify(bad)} should be refused`);
+  }
+});
+
+test("players read from notes are tidied, merged by name and dropped when they have no money", () => {
+  const read = cleanNotesPlayers([
+    { name: "  Ann ", buyIn: "20", cashOut: 45.5 },
+    { name: "ann", buyIn: 10, cashOut: "0" },
+    { name: "Bo", buyIn: 0, cashOut: 0 },
+    { name: "", buyIn: 5, cashOut: 5 },
+    { name: "Cy", buyIn: "", cashOut: 7 },
+  ]);
+  assert.deepEqual(read, { players: [
+    { name: "Ann", buyInCents: 3000, cashOutCents: 4550 },
+    { name: "Cy", buyInCents: 0, cashOutCents: 700 },
+  ] });
+});
+
+test("notes with a bad amount, a long name or nobody are refused", () => {
+  for (const bad of [[], "x", null, [{ name: "Ann", buyIn: -1, cashOut: 0 }], [{ name: "Ann", buyIn: "abc", cashOut: 0 }], [{ name: "x".repeat(81), buyIn: 1, cashOut: 0 }], [{ name: "Bo", buyIn: 0, cashOut: 0 }], Array.from({ length: 101 }, (_, i) => ({ name: `P${i}`, buyIn: 1, cashOut: 1 }))]) {
+    assert.ok("error" in cleanNotesPlayers(bad), `${JSON.stringify(bad).slice(0, 60)} should be refused`);
+  }
 });

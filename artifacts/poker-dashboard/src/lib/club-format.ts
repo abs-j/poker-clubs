@@ -14,6 +14,15 @@ export const clubName = () => current.name;
 export const clubTimeZone = () => current.timeZone;
 export const clubCurrency = () => current.currency;
 
+/** Today's calendar date ("YYYY-MM-DD") where the club is, which can differ from the browser's. */
+export function clubToday(now: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: current.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
 /** File-name friendly version of the club name. */
 export function clubFileSlug(): string {
   return current.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "poker-club";
