@@ -36,17 +36,17 @@ test("a sheet where the date is only on the first row of each night", () => {
   const text = [
     ",,,,",
     "Date,Player,Buy-in,Cash-out,Net",
-    "13/03/2026,Raju,$20.00,$53.75,$33.75",
-    ",Will,$10.00,$0.00,-$10.00",
-    ",Andy,$10.00,$33.05,$23.05",
+    "13/03/2026,Rhys,$20.00,$53.75,$33.75",
+    ",Wes,$10.00,$0.00,-$10.00",
+    ",Alex,$10.00,$33.05,$23.05",
     ",Total,$40.00,$86.80,",
-    "14/03/2026,Raju,$10.00,$0.00,-$10.00",
-    ",Will,$10.00,$20.00,$10.00",
+    "14/03/2026,Rhys,$10.00,$0.00,-$10.00",
+    ",Wes,$10.00,$20.00,$10.00",
   ].join("\n");
   const result = parseHistory(text);
   assert.equal(result.error, undefined);
   assert.equal(result.nights.length, 2);
-  assert.deepEqual(result.nights[0].players.map((p) => p.name), ["Raju", "Will", "Andy"]);
+  assert.deepEqual(result.nights[0].players.map((p) => p.name), ["Rhys", "Wes", "Alex"]);
   assert.equal(result.nights[1].date, "2026-03-14");
   assert.equal(result.rowsRead, 5);
   // Night one is unbalanced (40 in, 86.80 out): the import warns but still reads it.

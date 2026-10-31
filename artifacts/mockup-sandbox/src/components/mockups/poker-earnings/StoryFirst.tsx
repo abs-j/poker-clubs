@@ -8,22 +8,22 @@ type Result = { name: string; net: number; unmatched?: boolean };
 type Standing = { name: string; net: number };
 
 const cashStandings: Standing[] = [
-  { name: "Jason", net: 372.43 }, { name: "Alfie", net: 191.80 }, { name: "Ranuka", net: 149.07 },
-  { name: "Shourya", net: 135.05 }, { name: "Abhay", net: 116.26 },
+  { name: "Jules", net: 372.43 }, { name: "Arlo", net: 191.80 }, { name: "Remy", net: 149.07 },
+  { name: "Sasha", net: 135.05 }, { name: "Ada", net: 116.26 },
 ];
 const combinedStandings: Standing[] = [
-  { name: "Jason", net: 364.93 }, { name: "Abhay", net: 265.01 }, { name: "Ranuka", net: 241.79 },
-  { name: "Alfie", net: 184.30 }, { name: "Shourya", net: 115.05 },
+  { name: "Jules", net: 364.93 }, { name: "Ada", net: 265.01 }, { name: "Remy", net: 241.79 },
+  { name: "Arlo", net: 184.30 }, { name: "Sasha", net: 115.05 },
 ];
 const tournamentResults: Result[] = [
-  { name: "Abhay", net: 148.75 }, { name: "Raju", net: 48.53 }, { name: "Ranuka", net: 92.72 },
-  { name: "Aarav K", net: 0 }, { name: "Jason", net: -7.50 }, { name: "Alfie", net: -7.50 },
-  { name: "Hayley", net: -10 }, { name: "Toby", net: -10, unmatched: true }, { name: "Aarya", net: -15 },
-  { name: "Aryan", net: -17.50, unmatched: true }, { name: "Shravan", net: -17.50 },
-  { name: "Sadeesha", net: -20 }, { name: "Kaustav", net: -20 }, { name: "Vedant", net: -20 },
-  { name: "Aarav R", net: -20 }, { name: "Shourya", net: -20 }, { name: "Manas", net: -20 },
-  { name: "Ben Ch", net: -20 }, { name: "Vivan", net: -20 }, { name: "Valentina", net: -20 },
-  { name: "Shiv", net: -25 },
+  { name: "Ada", net: 148.75 }, { name: "Rhys", net: 48.53 }, { name: "Remy", net: 92.72 },
+  { name: "Ari K", net: 0 }, { name: "Jules", net: -7.50 }, { name: "Arlo", net: -7.50 },
+  { name: "Harper", net: -10 }, { name: "Theo", net: -10, unmatched: true }, { name: "Avery", net: -15 },
+  { name: "Ansel", net: -17.50, unmatched: true }, { name: "Silas", net: -17.50 },
+  { name: "Sloane", net: -20 }, { name: "Kai", net: -20 }, { name: "Vic", net: -20 },
+  { name: "Ari R", net: -20 }, { name: "Sasha", net: -20 }, { name: "Milo", net: -20 },
+  { name: "Finn Ch", net: -20 }, { name: "Vera", net: -20 }, { name: "Violet", net: -20 },
+  { name: "Sage", net: -25 },
 ].sort((a, b) => b.net - a.net || a.name.localeCompare(b.name));
 const monthlyCash = [
   { label: "Mar", net: 91.90 }, { label: "Apr", net: -59.05 }, { label: "May", net: 0.10 },
@@ -87,8 +87,8 @@ export function StoryFirst() {
             <div className="sf-mark" aria-hidden="true"><Spade size={19} strokeWidth={1.8} /></div>
             <div><div className="sf-brand-title">Poker Club</div><div className="sf-brand-sub">Members · earnings</div></div>
           </div>
-          <div className="sf-member" aria-label="Signed in as Abhay">
-            <span className="sf-avatar" aria-hidden="true">A</span><span>Abhay</span><ChevronDown size={13} aria-hidden="true" />
+          <div className="sf-member" aria-label="Signed in as Ada">
+            <span className="sf-avatar" aria-hidden="true">A</span><span>Ada</span><ChevronDown size={13} aria-hidden="true" />
           </div>
         </header>
 
@@ -130,7 +130,7 @@ export function StoryFirst() {
               {refinementsOpen ? "Hide filters" : "Filters"}<ChevronDown size={14} aria-hidden="true" />
             </button>
           </div>
-          <p className="sf-filter-explainer">Period refines dated results only; your all-time headline and standings stay fixed. Player refines standings and event rows; the trend remains Abhay’s.</p>
+          <p className="sf-filter-explainer">Period refines dated results only; your all-time headline and standings stay fixed. Player refines standings and event rows; the trend remains Ada’s.</p>
           {activeFilters.length > 0 && <div className="sf-active-filters" aria-label="Selected filters">
             {activeFilters.map((item) => <span className="sf-chip" key={item.id}>{item.label}<button type="button" aria-label={`Remove ${item.label} filter`} onClick={item.clear}><X size={12} /></button></span>)}
             <button className="sf-clear" type="button" onClick={() => { setPeriod("ALL"); setPlayer("ALL"); }}>Clear all</button>
@@ -147,22 +147,22 @@ export function StoryFirst() {
             <div className="sf-ranking">
               {visibleStandings.length ? visibleStandings.map((row) => {
                 const rank = standings.findIndex((entry) => entry.name === row.name) + 1;
-                return <div className={`sf-rank-row ${row.name === "Abhay" ? "is-member" : ""}`} key={row.name}>
-                  <span className="sf-rank-num">{scope === "tournaments" ? "·" : rank}</span><span className="sf-rank-name">{row.name}{row.name === "Abhay" && <span className="sf-you">you</span>}</span><span className={`sf-rank-value ${row.net >= 0 ? "sf-positive" : "sf-negative"}`}>{signed(row.net)}</span>
+                return <div className={`sf-rank-row ${row.name === "Ada" ? "is-member" : ""}`} key={row.name}>
+                  <span className="sf-rank-num">{scope === "tournaments" ? "·" : rank}</span><span className="sf-rank-name">{row.name}{row.name === "Ada" && <span className="sf-you">you</span>}</span><span className={`sf-rank-value ${row.net >= 0 ? "sf-positive" : "sf-negative"}`}>{signed(row.net)}</span>
                 </div>;
               }) : <div className="sf-trend-empty"><div><strong>{player} isn’t in this standings list</strong><p>Standings show the visible top five for this scope. See the dated tournament result below when available.</p></div></div>}
             </div>
           </article>
 
           <article className="sf-panel" aria-labelledby="sf-trend-title">
-            <div className="sf-panel-head"><div><p className="sf-label">Dated results over time</p><h2 id="sf-trend-title">{scope === "tournaments" ? "Abhay’s event net" : "Abhay’s dated net"}</h2><p className="sf-panel-sub">{scope === "tournaments" ? "One 4 Oct snapshot, not a season-long curve." : period === "ALL" ? "Abhay’s dated monthly cash net, then the 4 Oct tournament result." : scope === "all" && period === "2026-10" ? "October starts at zero: cash net, then the single event net." : "Abhay’s cash net for this month, rebased to zero."}</p></div></div>
+            <div className="sf-panel-head"><div><p className="sf-label">Dated results over time</p><h2 id="sf-trend-title">{scope === "tournaments" ? "Ada’s event net" : "Ada’s dated net"}</h2><p className="sf-panel-sub">{scope === "tournaments" ? "One 4 Oct snapshot, not a season-long curve." : period === "ALL" ? "Ada’s dated monthly cash net, then the 4 Oct tournament result." : scope === "all" && period === "2026-10" ? "October starts at zero: cash net, then the single event net." : "Ada’s cash net for this month, rebased to zero."}</p></div></div>
             {scope === "tournaments" && period !== "ALL" && period !== "2026-10" ? <div className="sf-trend-empty"><div><strong>No tournament event in this month</strong><p>The only tournament snapshot is 4 October 2026. Select October 2026 to view its Net Profit.</p></div></div> : scope === "tournaments" ? <div className="sf-trend-empty"><div><strong>4 October 2026 · {signed(148.75)}</strong><p>One tournament snapshot with 21 players. No additional tournament dates are available to plot.</p></div></div> : (
               <div className="sf-chart-wrap">
                 <TrendChart points={datedTrail} scope={scope} />
                 <div className="sf-chart-labels"><span>{period === "ALL" ? "13 Mar 2026" : monthName(period)}</span><span>{period === "ALL" ? (scope === "cash" ? "2 Oct 2026" : "4 Oct 2026") : scope === "all" && period === "2026-10" ? "4 Oct event" : "Cash month net"}</span></div>
               </div>
             )}
-            {scope !== "tournaments" && <div className="sf-trend-end"><span>{period === "ALL" ? (scope === "cash" ? "Abhay’s dated cash trail · 46 sessions" : "Abhay’s dated combined trail · through event") : `Abhay · ${monthName(period)} dated net`}</span><strong>{signed(period === "ALL" ? (scope === "cash" ? 114.90 : 263.65) : visibleTrendEnd)}</strong></div>}
+            {scope !== "tournaments" && <div className="sf-trend-end"><span>{period === "ALL" ? (scope === "cash" ? "Ada’s dated cash trail · 46 sessions" : "Ada’s dated combined trail · through event") : `Ada · ${monthName(period)} dated net`}</span><strong>{signed(period === "ALL" ? (scope === "cash" ? 114.90 : 263.65) : visibleTrendEnd)}</strong></div>}
             {scope === "tournaments" && period === "2026-10" && <div className="sf-event">
               <div className="sf-event-top"><span className="sf-event-date">04 Oct 2026</span><span className="sf-event-tag">Snapshot · 21 players</span></div>
               <h3>Poker Club tournament</h3><p>One dated event in the source. Tournament Net Profit only; invested $370, returned $370.</p>
@@ -172,11 +172,11 @@ export function StoryFirst() {
         </section>
 
         {scope !== "cash" && <section className="sf-panel sf-results" aria-labelledby="sf-results-title">
-          <div className="sf-results-head"><div><p className="sf-label">Dated result</p><h2 id="sf-results-title">Tournament net · 4 October 2026</h2><p>Every player shown by Net Profit. Aryan and Toby are tournament-only identities.</p></div><span className="sf-count">{visibleResults.length} of 21 players</span></div>
+          <div className="sf-results-head"><div><p className="sf-label">Dated result</p><h2 id="sf-results-title">Tournament net · 4 October 2026</h2><p>Every player shown by Net Profit. Ansel and Theo are tournament-only identities.</p></div><span className="sf-count">{visibleResults.length} of 21 players</span></div>
           {shouldShowEvent ? <div className="sf-table-scroll"><table className="sf-table">
             <thead><tr><th scope="col">Player</th><th scope="col">Tournament net</th></tr></thead>
-            <tbody>{visibleResults.map((row) => <tr key={row.name} className={row.name === "Abhay" ? "member-row" : ""}>
-              <td><span className="sf-table-name">{row.name}</span>{row.name === "Abhay" && <span className="sf-you">you</span>}{row.unmatched && <span className="sf-unmatched" title="No exact identity in Player Totals">Tournament-only · unmatched</span>}</td>
+            <tbody>{visibleResults.map((row) => <tr key={row.name} className={row.name === "Ada" ? "member-row" : ""}>
+              <td><span className="sf-table-name">{row.name}</span>{row.name === "Ada" && <span className="sf-you">you</span>}{row.unmatched && <span className="sf-unmatched" title="No exact identity in Player Totals">Tournament-only · unmatched</span>}</td>
               <td className={row.net > 0 ? "sf-positive" : row.net < 0 ? "sf-negative" : "sf-zero"}>{signed(row.net)}</td>
             </tr>)}</tbody>
           </table></div> : <div className="sf-trend-empty"><div><strong>No tournament event in this period</strong><p>The only tournament snapshot is dated 4 October 2026. No other tournament dates are available.</p></div></div>}
@@ -208,7 +208,7 @@ function TrendChart({ points, scope }: { points: Array<{ label: string; net: num
   const y = (value: number) => height - paddingY - ((value - min) / (max - min)) * (height - paddingY * 2);
   const polyline = points.map((point, index) => `${x(index)},${y(point.running)}`).join(" ");
   const zeroY = y(0);
-  return <svg className="sf-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Abhay’s dated ${scope === "all" ? "combined" : scope} net; visible results end at ${signed(points[points.length - 1].running)}.`}>
+  return <svg className="sf-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Ada’s dated ${scope === "all" ? "combined" : scope} net; visible results end at ${signed(points[points.length - 1].running)}.`}>
     <line x1={paddingX} x2={width - paddingX} y1={zeroY} y2={zeroY} stroke="#dbe4db" strokeDasharray="4 5" />
     <text x={paddingX} y={Math.max(11, zeroY - 5)} fill="#78877f" fontSize="9" fontFamily="DM Mono, monospace">$0</text>
     {points.length > 1 && <polyline points={polyline} fill="none" stroke="#287453" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />}

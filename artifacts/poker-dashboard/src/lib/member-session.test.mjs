@@ -24,8 +24,8 @@ function deps(responses, { cancelAfter = Infinity } = {}) {
 }
 
 test("a signed-in member is returned straight away", async () => {
-  const d = deps([ok({ authenticated: true, memberName: "Abhay" })]);
-  assert.deepEqual(await checkMemberSession(d), { authenticated: true, memberName: "Abhay" });
+  const d = deps([ok({ authenticated: true, memberName: "Ada" })]);
+  assert.deepEqual(await checkMemberSession(d), { authenticated: true, memberName: "Ada" });
   assert.equal(d.calls, 1);
 });
 
