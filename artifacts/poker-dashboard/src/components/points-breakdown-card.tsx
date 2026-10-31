@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChartCard } from "@/components/club-charts";
 import { usePoints } from "@/components/points-context";
-import { ordinal } from "@/lib/share-card";
+import { ordinal } from "@/lib/utils";
 import { pointsFor, seasonLabel } from "@/lib/points";
 import { formatDate, signedCurrency } from "@/views/shared";
 

@@ -16,7 +16,7 @@ import { avatarKey, useMemberAvatars } from "@/lib/avatars";
 import { CartesianGrid, Tooltip as ChartTooltip, Line, LineChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartEmpty, DataTooltip, EmptyPanel, HeadMetric, MetricCard, PageIntro, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency } from "./shared";
 
-export function PlayersView({ players, sessions, allSessions, tournaments, onOpenTournament, scope, initialPlayer, viewer, onCompare }: { players: Player[]; sessions: Session[]; allSessions: Session[]; tournaments: TournamentEvent[]; onOpenTournament: (id: string) => void; scope: PerformanceScope; initialPlayer: string | null; viewer: string; onCompare: (name: string) => void }) {
+export function PlayersView({ players, sessions, allSessions, tournaments, onOpenTournament, scope, initialPlayer, viewer }: { players: Player[]; sessions: Session[]; allSessions: Session[]; tournaments: TournamentEvent[]; onOpenTournament: (id: string) => void; scope: PerformanceScope; initialPlayer: string | null; viewer: string }) {
   const activityLabel = scope === "tournaments" ? "Events" : "Games";
   const returnLabel = scope === "cash" ? "Cash-out" : scope === "tournaments" ? "Payout" : "Returned";
   const rateLabel = scope === "tournaments" ? "event" : "game";
@@ -52,6 +52,7 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
 
   const selectedPlayer = players.find((player) => player.name === selectedName);
   const isOwnProfile = Boolean(selectedPlayer) && normalizePlayerName(selectedPlayer!.name) === normalizePlayerName(viewer);
+  const viewerPlayer = players.find((player) => normalizePlayerName(player.name) === normalizePlayerName(viewer));
   const { badges: badgeMap, careers } = useAchievements();
   const memberAvatars = useMemberAvatars();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -161,14 +162,6 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
                   )}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => onCompare(selectedPlayer.name)}
-                data-testid="button-compare-player"
-                className="shrink-0 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:border-primary/50 hover:text-primary"
-              >
-                Compare with…
-              </button>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <HeadMetric label={`${activityLabel} in profit`} value={`${selectedPlayer.positiveSessionPct.toFixed(1)}%`} positive={selectedPlayer.positiveSessionPct >= 50} />
@@ -191,6 +184,7 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
             </div> : <EmptyPanel title="No games in this scope" description="Try another season from the global filter." />}
           </div>
         </div>
+        {!isOwnProfile && viewerPlayer && <YouVsThem you={viewerPlayer} them={selectedPlayer} rateLabel={rateLabel} activityLabel={activityLabel} />}
         <PointsBreakdownCard playerName={selectedPlayer.name} previewNights={5} />
         <TournamentRecordCard tournaments={tournaments} playerName={selectedPlayer.name} onOpenTournament={onOpenTournament} />
         <TrophyShelf sessions={allSessions} playerName={selectedPlayer.name} badgeMap={badgeMap} careerGames={careerFor(careers, selectedPlayer.name)?.games} />
@@ -198,6 +192,44 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
         {isOwnProfile && <AvatarPickerDialog open={pickerOpen} onOpenChange={setPickerOpen} name={selectedPlayer.name} current={memberAvatars.get(avatarKey(viewer))} />}
       </> : <EmptyPanel title="Choose a player" description="Search for a name or select a player above to view their stats." />}
     </section>
+  );
+}
+
+/** How the signed-in member compares with the player whose profile is open. Replaces the old Compare tab. */
+function YouVsThem({ you, them, rateLabel, activityLabel }: { you: Player; them: Player; rateLabel: string; activityLabel: string }) {
+  const rows: Array<{ label: string; a: number; b: number; format: (value: number) => string; higherIsBetter: boolean }> = [
+    { label: "Net result", a: you.profitTotal, b: them.profitTotal, format: signedCurrency, higherIsBetter: true },
+    { label: `${activityLabel} in profit`, a: you.positiveSessionPct, b: them.positiveSessionPct, format: (value) => `${value.toFixed(0)}%`, higherIsBetter: true },
+    { label: `Profit per ${rateLabel}`, a: you.profitPerSession, b: them.profitPerSession, format: signedCurrency, higherIsBetter: true },
+    { label: activityLabel, a: you.gamesPlayed, b: them.gamesPlayed, format: (value) => String(value), higherIsBetter: true },
+    { label: "Best result", a: you.maxWin, b: them.maxWin, format: signedCurrency, higherIsBetter: true },
+    { label: "Worst result", a: you.maxLoss, b: them.maxLoss, format: signedCurrency, higherIsBetter: true },
+  ];
+  return (
+    <div data-testid="card-you-vs-them" className="soft-shadow overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="border-b border-border p-5">
+        <p className="section-label">You vs {them.name}</p>
+        <h2 className="mt-1 text-lg font-semibold">How you compare</h2>
+      </div>
+      <table className="w-full text-left text-sm">
+        <thead className="bg-secondary/35 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          <tr><th className="px-4 py-3">&nbsp;</th><th className="px-3 py-3">You</th><th className="px-3 py-3">{them.name}</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const tie = row.a === row.b;
+            const youWin = row.higherIsBetter ? row.a > row.b : row.a < row.b;
+            return (
+              <tr key={row.label} className="border-t border-border/70">
+                <td className="px-4 py-3 font-medium">{row.label}</td>
+                <td className={`px-3 py-3 font-mono ${!tie && youWin ? "font-semibold text-chart-1" : "text-muted-foreground"}`}>{row.format(row.a)}</td>
+                <td className={`px-3 py-3 font-mono ${!tie && !youWin ? "font-semibold text-chart-1" : "text-muted-foreground"}`}>{row.format(row.b)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

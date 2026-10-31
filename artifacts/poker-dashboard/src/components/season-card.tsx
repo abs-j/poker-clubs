@@ -1,14 +1,8 @@
-import { lazy, Suspense, useMemo, useState } from "react";
-import { Image as ImageIcon, Sparkles } from "lucide-react";
+import { useMemo } from "react";
 import { ChartCard } from "@/components/club-charts";
-import { RecapStudio } from "@/components/recap-studio";
-import { usePoints } from "@/components/points-context";
 import { buildSeason, type Season } from "@/lib/achievements";
 import type { ChartSession } from "@/lib/club-charts";
-import { buildStandingsRecap } from "@/lib/recaps";
-import { formatDate, signedCurrency } from "@/views/shared";
-
-const SeasonRecapDialog = lazy(() => import("@/components/season-recap"));
+import { formatDate } from "@/views/shared";
 
 function AwardTile({ label, name, detail, onOpen }: { label: string; name: string; detail: string; onOpen: (name: string) => void }) {
   return (
@@ -31,40 +25,11 @@ type SeasonCardProps = {
 };
 
 /**
- * Season highlights: the awards, the recap slides and the share image. The standings
+ * Season highlights: the awards. The standings
  * themselves live in the two podiums above, so this card no longer repeats them.
  */
 export function SeasonCard({ sessions, viewer, onOpenPlayer }: SeasonCardProps) {
   const season = useMemo<Season | null>(() => buildSeason(sessions), [sessions]);
-  const { rowsFor } = usePoints();
-  const [studioOpen, setStudioOpen] = useState(false);
-  const [recapOpen, setRecapOpen] = useState(false);
-  const pointsRows = useMemo(() => (season ? rowsFor(season.key) : []), [rowsFor, season]);
-
-  const standingsPack = useMemo(() => {
-    if (!season || !studioOpen) return null;
-    const usePoints = pointsRows.length > 0;
-    return buildStandingsRecap({
-      id: `${season.key}-${usePoints ? "points" : "profit"}`,
-      eyebrow: usePoints ? "Club points" : "Season standings",
-      title: `${season.label} standings`,
-      subtitle: `${season.games} ${season.games === 1 ? "game" : "games"} · ${formatDate(season.from, "d MMM")} to ${formatDate(season.to, "d MMM")}`,
-      dateLabel: season.label,
-      rows: usePoints
-        ? pointsRows.slice(0, 8).map((row) => ({
-            name: row.name,
-            value: `${Math.round(row.points)} pts`,
-            sub: `${row.wins} ${row.wins === 1 ? "win" : "wins"} · ${row.nights} ${row.nights === 1 ? "night" : "nights"}`,
-          }))
-        : season.standings.slice(0, 8).map((row) => ({
-            name: row.name,
-            value: signedCurrency(row.net),
-            positive: row.net >= 0,
-            sub: `${row.wins} ${row.wins === 1 ? "win" : "wins"} · ${row.games} ${row.games === 1 ? "game" : "games"}`,
-          })),
-    });
-  }, [season, studioOpen, pointsRows]);
-
   if (!season || !season.leader) return null;
 
   return (
@@ -85,33 +50,6 @@ export function SeasonCard({ sessions, viewer, onOpenPlayer }: SeasonCardProps) 
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setRecapOpen(true)}
-          data-testid="button-open-season-recap"
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          Season recap
-        </button>
-        <button
-          type="button"
-          onClick={() => setStudioOpen(true)}
-          data-testid="button-share-season-image"
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
-        >
-          <ImageIcon className="h-3.5 w-3.5" />
-          Share standings
-        </button>
-      </div>
-
-      <RecapStudio open={studioOpen} onOpenChange={setStudioOpen} pack={standingsPack} />
-      {recapOpen && (
-        <Suspense fallback={null}>
-          <SeasonRecapDialog open={recapOpen} onOpenChange={setRecapOpen} sessions={sessions} viewer={viewer} />
-        </Suspense>
-      )}
     </ChartCard>
   );
 }

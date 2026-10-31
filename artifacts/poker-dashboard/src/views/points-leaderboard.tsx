@@ -1,12 +1,10 @@
 import { useMemo, useState } from "react";
-import { HelpCircle, Image as ImageIcon } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ChartCard } from "@/components/club-charts";
 import { usePointsSeason } from "@/components/points-season-context";
 import { usePoints } from "@/components/points-context";
-import { RecapStudio } from "@/components/recap-studio";
 import { pointsExamples, seasonLabel, type PointsRow } from "@/lib/points";
-import { buildStandingsRecap } from "@/lib/recaps";
 import { EmptyPanel, formatDate, signedCurrency } from "./shared";
 
 type PointsLeaderboardProps = {
@@ -70,30 +68,9 @@ export function PointsLeaderboard({ viewer, onOpenPlayer }: PointsLeaderboardPro
   const { firstNight } = usePoints();
   const [showRules, setShowRules] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const [imageOpen, setImageOpen] = useState(false);
 
   const viewerKey = viewer.trim().toLocaleLowerCase();
   const visible = showAll ? rows : rows.slice(0, 15);
-  const nightsCounted = useMemo(() => rows.reduce((max, row) => Math.max(max, row.nights), 0), [rows]);
-  const sharePack = useMemo(
-    () =>
-      imageOpen
-        ? buildStandingsRecap({
-            id: `points-${active}`,
-            eyebrow: "Club points",
-            title: `${seasonLabel(active)} standings`,
-            subtitle: `${rows.length} players · ${nightsCounted} nights counted`,
-            dateLabel: seasonLabel(active),
-            rows: rows.slice(0, 8).map((row) => ({
-              name: row.name,
-              value: `${Math.round(row.points)} pts`,
-              sub: `${row.wins} ${row.wins === 1 ? "win" : "wins"} · ${row.nights} ${row.nights === 1 ? "night" : "nights"}`,
-            })),
-          })
-        : null,
-    [imageOpen, rows, active, nightsCounted],
-  );
-
   if (!hasNights) {
     return <EmptyPanel title="No scored nights in this period" description="Club points count nights with at least four players. Choose another period or All time." />;
   }
@@ -108,17 +85,6 @@ export function PointsLeaderboard({ viewer, onOpenPlayer }: PointsLeaderboardPro
         eyebrow="Club points"
         title={`${seasonLabel(active)} points table`}
         description={`Points for turning up and for where you finished, scaled to how many played. ${rows.length} players have a scored night here${firstNight ? `, and scoring starts on ${formatDate(firstNight)}, so it lists fewer people than the profit table` : ""}.`}
-        action={
-          <button
-            type="button"
-            onClick={() => setImageOpen(true)}
-            data-testid="button-share-points"
-            className="inline-flex h-10 items-center gap-2 self-start rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
-          >
-            <ImageIcon className="h-3.5 w-3.5" />
-            Share
-          </button>
-        }
       >
         <button
           type="button"
@@ -172,7 +138,6 @@ export function PointsLeaderboard({ viewer, onOpenPlayer }: PointsLeaderboardPro
         )}
       </div>
 
-      <RecapStudio open={imageOpen} onOpenChange={setImageOpen} pack={sharePack} />
     </section>
   );
 }

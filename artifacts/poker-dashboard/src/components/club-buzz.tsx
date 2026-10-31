@@ -15,11 +15,10 @@ type ClubBuzzProps = {
   sessions: ChartSession[];
   viewer: string;
   onOpenPlayer: (name: string) => void;
-  onCompare: (name: string) => void;
 };
 
 /** What changed lately in plain sentences, plus the viewer's closest rival. */
-export function ClubBuzz({ sessions, viewer, onOpenPlayer, onCompare }: ClubBuzzProps) {
+export function ClubBuzz({ sessions, viewer, onOpenPlayer }: ClubBuzzProps) {
   const items = useMemo(() => buildBuzz(sessions, 4), [sessions]);
   const rivalry = useMemo(() => buildRivalry(sessions, viewer), [sessions, viewer]);
   if (!items.length && !rivalry) return null;
@@ -70,10 +69,10 @@ export function ClubBuzz({ sessions, viewer, onOpenPlayer, onCompare }: ClubBuzz
             </div>
             <button
               type="button"
-              onClick={() => onCompare(rivalry.name)}
+              onClick={() => onOpenPlayer(rivalry.name)}
               className="inline-flex min-h-[44px] shrink-0 items-center rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
             >
-              Compare
+              See profile
             </button>
           </div>
         </div>

@@ -1,13 +1,8 @@
-import { useMemo, useState } from "react";
-import { Crown, Images, Swords } from "lucide-react";
+import { Crown, Swords } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ChartCard } from "@/components/club-charts";
 import type { TournamentEvent } from "@/lib/earnings-analytics";
-import { RecapStudio } from "@/components/recap-studio";
-import { usePoints } from "@/components/points-context";
-import { quarterOf, seasonLabel } from "@/lib/points";
-import { tournamentRecapFromEvent } from "@/lib/recaps";
-import { ordinal } from "@/lib/share-card";
+import { ordinal } from "@/lib/utils";
 import { nameKey, rulesSummary } from "@/lib/tournaments";
 import { formatCurrency, formatDate, signedCurrency } from "@/views/shared";
 
@@ -22,18 +17,6 @@ type LatestTournamentCardProps = {
 /** Home: the most recent tournament at a glance, with the viewer's own result. */
 export function LatestTournamentCard({ event, viewer, totalEvents, onOpen, onSeeAll }: LatestTournamentCardProps) {
   const mine = event.results.find((result) => nameKey(result.player) === nameKey(viewer));
-  const { afterNight } = usePoints();
-  const [recapOpen, setRecapOpen] = useState(false);
-  const recapPack = useMemo(
-    () =>
-      recapOpen
-        ? tournamentRecapFromEvent(event, {
-            pointsAfter: afterNight({ date: event.date, tournamentId: event.id }),
-            seasonName: seasonLabel(quarterOf(event.date)),
-          })
-        : null,
-    [recapOpen, event, afterNight],
-  );
   const podium = [
     { place: 1, name: event.winner, prize: event.winnerPrize },
     { place: 2, name: event.runnerUp, prize: event.results.find((r) => r.finishPlace === 2)?.mainPrize ?? 0 },
@@ -97,19 +80,9 @@ export function LatestTournamentCard({ event, viewer, totalEvents, onOpen, onSee
             >
               Full results
             </button>
-            <button
-              type="button"
-              onClick={() => setRecapOpen(true)}
-              data-testid="button-recap-latest-tournament"
-              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
-            >
-              <Images className="h-3.5 w-3.5" aria-hidden="true" />
-              Recap
-            </button>
           </div>
         </div>
       </div>
-      {recapPack && <RecapStudio open={recapOpen} onOpenChange={setRecapOpen} pack={recapPack} />}
     </ChartCard>
   );
 }

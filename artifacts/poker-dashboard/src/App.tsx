@@ -50,7 +50,6 @@ const GuidelinesView = lazy(() => import("./views/guidelines-view").then((m) => 
 const GamesView = lazy(() => import("./views/games-view").then((m) => ({ default: m.GamesView })));
 const PointsLeaderboard = lazy(() => import("./views/points-leaderboard").then((m) => ({ default: m.PointsLeaderboard })));
 const PeriodLeaderboards = lazy(() => import("./views/period-leaderboards").then((m) => ({ default: m.PeriodLeaderboards })));
-const HeadToHeadView = lazy(() => import("./views/head-to-head-view").then((m) => ({ default: m.HeadToHeadView })));
 const PlayersView = lazy(() => import("./views/players-view").then((m) => ({ default: m.PlayersView })));
 import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, FileSpreadsheet, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
 
@@ -95,7 +94,7 @@ type PeriodSummary = {
   positiveSessions: number;
   negativeSessions: number;
 };
-type View = "overview" | "sessions" | "live" | "months" | "head-to-head" | "players" | "guidelines" | "account";
+type View = "overview" | "sessions" | "live" | "months" | "players" | "guidelines" | "account";
 type BreakdownMode = "months" | "quarters";
 
 function buildScopePeriods(
@@ -408,8 +407,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   const [refreshing, setRefreshing] = useState(false);
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
-  const [headA, setHeadA] = useState("");
-  const [headB, setHeadB] = useState("");
   const [refreshError, setRefreshError] = useState(false);
   const [visualizerSearch, setVisualizerSearch] = useState("");
 
@@ -610,16 +607,12 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   const [showHistoryChart, setShowHistoryChart] = useState(false);
   const [gamesMode, setGamesMode] = useState<GamesMode>("all");
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null);
-  const isPlayersView = activeView === "months" || activeView === "players" || activeView === "head-to-head";
+  const isPlayersView = activeView === "months" || activeView === "players";
   const showFilters = activeView === "sessions" || isPlayersView;
 
   const openPlayer = (name: string) => {
     setSelectedPlayer(name);
     navigate("players");
-  };
-  const compareWith = (name: string) => {
-    setHeadA(name);
-    navigate("head-to-head");
   };
   const openGame = (sessionNumber: number) => {
     // Tournament sessions open the tournament; cash games open their card.
@@ -637,11 +630,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
     setSelectedTournament(id);
     navigate("sessions");
   };
-
-  useEffect(() => {
-    if (!headA && availablePlayers[0]) setHeadA(availablePlayers[0]);
-    if (!headB && availablePlayers[1]) setHeadB(availablePlayers[1]);
-  }, [availablePlayers, headA, headB]);
 
   if (isLoading) return <DashboardSkeleton />;
   if (isError && (error as { status?: number } | null)?.status === 401) return <SessionExpiredState onSignIn={() => void onLogout()} />;
@@ -811,7 +799,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 )}
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <SeasonCard sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />
-                  <ClubBuzz sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} onCompare={compareWith} />
+                  <ClubBuzz sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />
                 </div>
                 <div className="mt-4">
                   {showHistoryChart ? (
@@ -857,8 +845,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
               />
               </PointsSeasonProvider>
             )}
-            {activeView === "head-to-head" && <HeadToHeadView players={selectedPeriodKey ? seasonPlayers : scopePlayers} sessions={scopeSessions} scope={performanceScope} initialPlayer={null} headA={headA} headB={headB} onA={setHeadA} onB={setHeadB} />}
-              {activeView === "players" && <PlayersView players={selectedPeriodKey ? seasonPlayers : scopePlayers} sessions={scopeSessions} allSessions={homeSessions} tournaments={tournaments} onOpenTournament={openTournament} scope={performanceScope} initialPlayer={selectedPlayer ?? memberName} viewer={memberName} onCompare={compareWith} />}
+              {activeView === "players" && <PlayersView players={selectedPeriodKey ? seasonPlayers : scopePlayers} sessions={scopeSessions} allSessions={homeSessions} tournaments={tournaments} onOpenTournament={openTournament} scope={performanceScope} initialPlayer={selectedPlayer ?? memberName} viewer={memberName} />}
              {activeView === "guidelines" && <GuidelinesView />}
             {activeView === "account" && (
               <AccountView
