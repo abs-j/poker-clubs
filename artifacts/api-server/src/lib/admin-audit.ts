@@ -20,7 +20,8 @@ export type AdminAuditAction =
   | "night_recorded"
   | "jackpot_paid"
   | "settings_updated"
-  | "results_exported";
+  | "results_exported"
+  | "players_merged";
 
 /** Never throws: a logging problem must not block the action being recorded. */
 export async function recordAdminAction(action: AdminAuditAction, detail: string, req: Request): Promise<void> {

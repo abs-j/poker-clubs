@@ -19,7 +19,28 @@ jobs:
   checks:
     name: Typecheck, tests and build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # The merge API tests talk to Postgres. Without it they are skipped locally and fail in CI.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: poker
+          POSTGRES_PASSWORD: poker
+          POSTGRES_DB: poker_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U poker -d poker_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://poker:poker@localhost:5432/poker_ci
+      SESSION_SECRET: ci-only-session-secret-not-used-anywhere-else
+
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +61,9 @@ jobs:
 
       - name: Website tests
         run: pnpm --filter @workspace/poker-dashboard test
+
+      - name: Create the database tables
+        run: pnpm --filter @workspace/db push-force
 
       - name: API tests
         run: pnpm --filter @workspace/api-server test

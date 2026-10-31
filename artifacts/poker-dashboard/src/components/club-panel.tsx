@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { ClubDataPanel } from "@/components/club-data-panel";
 import { ClubSettingsPanel } from "@/components/club-settings-panel";
 import { DeleteClub } from "@/components/account-security";
+import { MergeNames } from "@/components/merge-names";
 import {
   AccountError,
   accountApi,
@@ -524,6 +525,7 @@ export function ClubHome() {
                 Add
               </button>
             </form>
+            <MergeNames names={members.map((member) => member.name)} mine={active.playerName} onMerged={() => { void reload(); }} />
             {adminInvites.length > 0 && (
               <ul className="mt-4 space-y-2" data-testid="list-admin-invites">
                 {adminInvites.map((invite) => (

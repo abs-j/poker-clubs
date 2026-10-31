@@ -1210,6 +1210,112 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
   }
 });
 
+await check("an admin can preview and merge two names; a member cannot, and another club cannot", async () => {
+  const origin = { origin: BASE };
+  const secret = "smoke-test-pass-9";
+  const stamp = Date.now();
+  const owner = cookieJar();
+  const member = cookieJar();
+  const rival = cookieJar();
+  const ownerEmail = `merge-${stamp}@example.com`;
+  expect((await api("/api/identity/sign-up/email", { jar: owner, method: "POST", headers: origin, body: { name: "Nia Merge", email: ownerEmail, password: secret } })).ok, "owner sign-up failed");
+  expect((await api("/api/clubs", { jar: owner, method: "POST", body: { name: `Merge Club ${stamp}`, playerName: "Nia Merge" } })).status === 201, "club not created");
+  expect((await api("/api/clubs/current/players/merge", { method: "POST", body: { keep: "Ann", merge: "Ann Typo" } })).status === 401, "signed-out merge should be 401");
+
+  expect((await api("/api/identity/sign-up/email", { jar: member, method: "POST", headers: origin, body: { name: "Guest Merge", email: `merge-guest-${stamp}@example.com`, password: secret } })).ok, "member sign-up failed");
+  const invite = await api("/api/clubs/current/invites", { jar: owner, method: "POST", body: {} });
+  expect(invite.status === 201, `invite ${invite.status}`);
+  const code = (await invite.json()).invite.code;
+  expect((await api(`/api/invites/${code}/accept`, { jar: member, method: "POST", body: { name: "Guest Merge" } })).ok, "member could not join");
+  expect((await api("/api/clubs/current/players/merge", { jar: member, method: "POST", body: { keep: "Ann", merge: "Ann Typo" } })).status === 403, "a member should get 403");
+
+  const history = ["Date,Player,Buy-in,Cash-out", "2026-02-02,Ann,20,30", ",Ann Typo,10,0", ",Nia Merge,10,10"].join("\n");
+  const imported = await api("/api/clubs/current/import", { jar: owner, method: "POST", body: { text: history } });
+  expect(imported.status === 201, `import ${imported.status} ${await imported.text()}`);
+  const before = await (await api("/api/poker/dashboard", { jar: owner })).json();
+  const profit = (data, name) => data.leaderboard.find((player) => player.name === name)?.profitTotal ?? null;
+  expect(profit(before, "Ann") === 10 && profit(before, "Ann Typo") === -10, "imported profits were not what the merge check expects");
+
+  expect((await api("/api/identity/sign-up/email", { jar: rival, method: "POST", headers: origin, body: { name: "Rival Merge", email: `merge-rival-${stamp}@example.com`, password: secret } })).ok, "rival sign-up failed");
+  expect((await api("/api/clubs", { jar: rival, method: "POST", body: { name: `Rival Merge ${stamp}`, playerName: "Rival Merge" } })).status === 201, "rival club not created");
+  expect((await api("/api/clubs/current/players/merge/preview", { jar: rival, method: "POST", body: { keep: "Ann", merge: "Ann Typo" } })).status === 404, "a name from another club should be 404");
+
+  const preview = await api("/api/clubs/current/players/merge/preview", { jar: owner, method: "POST", body: { keep: "Ann", merge: "Ann Typo" } });
+  const shown = await preview.json();
+  expect(preview.status === 200, `preview ${preview.status} ${JSON.stringify(shown)}`);
+  expect(shown.irreversible === true && shown.nights === 1 && shown.nightsCombined === 1, `preview counts ${JSON.stringify(shown)}`);
+  const still = await (await api("/api/poker/dashboard", { jar: owner })).json();
+  expect(profit(still, "Ann Typo") === -10, "preview should not move any history");
+
+  const context = await browser.createBrowserContext();
+  const phone = await context.newPage();
+  try {
+    await phone.setViewport(PHONE);
+    phone.on("pageerror", (error) => pageErrors.push(error.message));
+    phone.on("response", (response) => { if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`); });
+    const wait = (selector) => phone.waitForSelector(selector, { timeout: 15000 });
+    const press = async (selector) => {
+      await wait(selector);
+      await phone.evaluate((sel) => {
+        const node = document.querySelector(sel);
+        node.scrollIntoView({ block: "center" });
+        const bar = document.querySelector('[data-testid="nav-bottom-tabs"]');
+        const rect = node.getBoundingClientRect();
+        const limit = bar ? bar.getBoundingClientRect().top - 16 : window.innerHeight - 16;
+        if (rect.bottom > limit) window.scrollBy(0, rect.bottom - limit);
+      }, selector);
+      try {
+        await phone.tap(selector);
+      } catch {
+        await phone.$eval(selector, (node) => node.click());
+      }
+    };
+    await phone.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+    await wait('[data-testid="input-email"]');
+    await phone.type('[data-testid="input-email"]', ownerEmail);
+    await phone.type('[data-testid="input-password"]', secret);
+    await press('[data-testid="button-account-submit"]');
+    await wait('[data-testid="section-home-overview"]');
+    await press('[data-testid="tab-guidelines"]');
+    await wait('[data-testid="section-admin-people"]');
+    const peopleOpen = await phone.$eval('[data-testid="section-admin-people"]', (node) => node.open);
+    if (!peopleOpen) await press('[data-testid="section-admin-people"] summary');
+    await wait('[data-testid="select-merge-keep"]');
+    await phone.select('[data-testid="select-merge-keep"]', "Ann");
+    await phone.select('[data-testid="select-merge-into"]', "Ann Typo");
+    await press('[data-testid="button-merge-preview"]');
+    await wait('[data-testid="text-merge-irreversible"]');
+    const warning = await phone.$eval('[data-testid="text-merge-irreversible"]', (node) => node.innerText);
+    expect(/cannot be undone/i.test(warning), `preview should say the merge is irreversible, saw "${warning}"`);
+    const previewText = await phone.$eval('[data-testid="list-merge-preview"]', (node) => node.innerText);
+    expect(/1 recorded night/.test(previewText) && /added together/.test(previewText), `preview list was "${previewText}"`);
+    await phone.screenshot({ path: `${OUT}/merge-preview.png`, fullPage: true });
+    await press('[data-testid="button-merge-confirm"]');
+    await wait('[data-testid="status-merge-done"]');
+    const done = await phone.$eval('[data-testid="status-merge-done"]', (node) => node.innerText);
+    expect(/Ann Typo is now part of Ann/.test(done), `done message was "${done}"`);
+    const options = await phone.$$eval('[data-testid="select-merge-into"] option', (nodes) => nodes.map((node) => node.value));
+    expect(!options.includes("Ann Typo"), "the merged name should leave the list");
+    const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(sideways <= 1, `the Club page scrolls sideways on a phone (${sideways}px)`);
+    await phone.screenshot({ path: `${OUT}/merge-done.png`, fullPage: true });
+  } catch (error) {
+    await phone.screenshot({ path: `${OUT}/merge-failed.png`, fullPage: true }).catch(() => undefined);
+    const where = await phone.evaluate(() => document.body.innerText.slice(0, 600)).catch(() => "");
+    throw new Error(`${error.message}\n${where}`);
+  } finally {
+    await context.close();
+  }
+
+  const after = await (await api("/api/poker/dashboard", { jar: owner })).json();
+  const sum = (data) => data.leaderboard.reduce((total, player) => total + player.profitTotal, 0);
+  expect(after.totals.totalBuyIn === before.totals.totalBuyIn && after.totals.totalCashOut === before.totals.totalCashOut, "club buy-in or cash-out changed");
+  expect(sum(after) === sum(before), "leaderboard profit no longer adds up");
+  expect(profit(after, "Ann") === 0 && profit(after, "Ann Typo") === null && profit(after, "Nia Merge") === 0, `profits after merge ${JSON.stringify(after.leaderboard.map((player) => [player.name, player.profitTotal]))}`);
+  const rivalBoard = await (await api("/api/poker/dashboard", { jar: rival })).json();
+  expect(rivalBoard.leaderboard.length === 0, "the other club should still be empty");
+});
+
 await check("terms and privacy are readable without signing in, and sign-up asks for agreement", async () => {
   // A clean browser context, so this is a first-time visitor and not the member signed in above.
   const visitorContext = await browser.createBrowserContext();
