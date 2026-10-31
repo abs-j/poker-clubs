@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run with L4: typecheck clean, API 126 tests, dashboard 99 tests, smoke 50/50.
+State as of 31 Oct 2026. Last local run with S2 (merge two names): typecheck clean, API 135 tests, dashboard 99 tests, smoke 51/51.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -15,7 +15,7 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 ## Where work stopped
 
 L4 is done (jackpot payout, and tournaments started from the Live tab's New night menu). L3 (past nights and notes, no schema change), L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). The structure work is next.
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). No schema change for merging names, so publishing S2 does not need a database push. The next structure step is admin edit and delete on the Games tab.
 
 ## How to work
 
@@ -86,7 +86,17 @@ Split My account into Me and Club admin (Club tab gets an Admin section: People,
 (admins reset it); merge two names; admin Games-tab edit/delete; platform admin page (email allow-list env var, usage across clubs) replacing `/admin`; update the Privacy page
 so usage is visible only to the platform owner; Leaderboard tab label and Home content per the plan.
 
+### S2. Merge two names
+Done. No schema change, so no database push.
+- `POST /api/clubs/current/players/merge/preview` and `POST /api/clubs/current/players/merge`. Club owner or admin only: a signed-in member gets 403, anyone else 401. The club comes from `adminClubId`. A name that is not in that club is 404.
+- One transaction moves session results, ledger names (including who logged, edited or deleted an entry, and comments), tournament results, settle-up ticks, jackpot payouts, host, bank, started-by and ended-by, the balance choice when it names a player, the linked account, the profile picture, and usage rows. The removed name is deleted only after nothing still points at it.
+- Same night in a cash game: buy-ins and cash-outs are added. Same tournament: results are added and prizes written down as amounts, unless both names took a top-up or both had a free entry, in which case the merge is refused and nothing changes. Same settle-up night: the tick stays only when both names were already settled. Two linked accounts are refused.
+- The Club tab (rules) shows Admin → People for an owner or admin: pick both names, preview what moves, then confirm. The preview says the merge cannot be undone.
+- API tests live in `merge-players.test.mjs` and need `DATABASE_URL` (CI's checks job provides Postgres). Smoke covers the preview and confirm on a phone. Last local run: typecheck clean, API 135, dashboard 99, smoke 51/51.
+
+Next structure step: **admin edit and delete on the Games tab** (admins and hosts edit, reopen or delete a night from Games). Do not start the platform admin page or the Privacy change in that step.
+
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
-- Not done: edit a recorded night (the reopen step covers it), jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. The structure work (Me vs Club admin, platform admin page, merge names) has not started.
+- Not done: edit a recorded night from the Games tab (the reopen step covers the ledger side), jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. Still to do in the structure work: split My account into Me and Club admin, the platform admin page, and the Privacy change. Merging two names is done (S2).

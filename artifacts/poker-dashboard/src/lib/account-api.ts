@@ -27,6 +27,26 @@ export type MemberRow = {
   email?: string | null;
   joinedAt: string | null;
 };
+export type MergePreview = {
+  keep: string;
+  merge: string;
+  irreversible: true;
+  nights: number;
+  nightsCombined: number;
+  ledgerEntries: number;
+  tournaments: number;
+  tournamentsCombined: number;
+  settlements: number;
+  settlementsMoved: number;
+  settlementsCombined: number;
+  settlementsCleared: number;
+  jackpotPayouts: number;
+  hostNights: number;
+  bankNights: number;
+  claim: "none" | "stays" | "moves";
+  picture: "none" | "moves" | "kept";
+};
+
 export type InviteRow = {
   id: number;
   code: string;
@@ -235,6 +255,10 @@ export const accountApi = {
     request<{ invite: { id: number; code: string } }>("/api/clubs/current/invites", send("POST", input)),
   revokeInvite: (id: number) => request<void>(`/api/clubs/current/invites/${id}`, { method: "DELETE" }),
   addPlayer: (name: string) => request<unknown>("/api/clubs/current/players", send("POST", { name })),
+  previewMerge: (input: { keep: string; merge: string }) =>
+    request<MergePreview>("/api/clubs/current/players/merge/preview", send("POST", input)),
+  mergePlayers: (input: { keep: string; merge: string }) =>
+    request<MergePreview & { merged: true }>("/api/clubs/current/players/merge", send("POST", input)),
   setRole: (playerId: number, role: "owner" | "admin" | "member") =>
     request<unknown>(`/api/clubs/current/members/${playerId}`, send("PATCH", { role })),
   removeMember: (playerId: number) => request<void>(`/api/clubs/current/members/${playerId}`, { method: "DELETE" }),

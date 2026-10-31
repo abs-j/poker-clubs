@@ -1,4 +1,5 @@
 import { useClubSettings } from "@/components/club-settings-context";
+import { MergeNames } from "@/components/merge-names";
 import { PageIntro } from "./shared";
 
 /** A club's own rules: paragraphs, "# headings" and "- bullets" from plain text. */
@@ -42,5 +43,10 @@ function ClubGuidelines({ text }: { text: string | null }) {
 
 export function GuidelinesView() {
   const { settings } = useClubSettings();
-  return <ClubGuidelines text={settings.guidelines} />;
+  return (
+    <div className="space-y-4">
+      <ClubGuidelines text={settings.guidelines} />
+      <MergeNames />
+    </div>
+  );
 }

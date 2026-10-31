@@ -3,20 +3,24 @@ import { cleanTimezone } from "../lib/club-settings-parse";
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { clubs, db, invites, jackpotPayouts, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
+import { recordAdminAction } from "../lib/admin-audit";
 import { adminClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
 import {
   identityUser,
+  isClubAdmin,
   membershipsFor,
   newInviteCode,
   nameKey,
   normalizeInviteCode,
   pickActiveClub,
+  resolveClubContext,
   setActiveClubCookie,
   uniqueClubSlug,
   ACTIVE_CLUB_COOKIE,
   type ClubRole,
   type IdentityUser,
 } from "../lib/club-access";
+import { MergeError, mergePlayers, previewPlayerMerge } from "../lib/merge-players";
 import { googleSignInEnabled } from "../lib/identity";
 import { emailMode } from "../lib/email";
 
@@ -308,6 +312,75 @@ router.post("/clubs/current/players", requireAdminSession, async (req, res): Pro
     return;
   }
   res.status(201).json({ player: created });
+});
+
+function mergeNamesFrom(body: unknown): { keep: string; merge: string } | { error: string } {
+  const input = (body ?? {}) as { keep?: unknown; merge?: unknown };
+  const keep = typeof input.keep === "string" ? input.keep.trim().replace(/\s+/g, " ") : "";
+  const merge = typeof input.merge === "string" ? input.merge.trim().replace(/\s+/g, " ") : "";
+  if (!keep || !merge) return { error: "Enter both names." };
+  if (keep.length > 80 || merge.length > 80) return { error: "Names must be 80 characters or fewer." };
+  if (nameKey(keep) === nameKey(merge)) return { error: "Choose two different names." };
+  return { keep, merge };
+}
+
+/** Club owner or admin. Members who are signed in get 403; everyone else gets 401. */
+async function requireClubAdmin(req: Request, res: Response): Promise<boolean> {
+  const context = await resolveClubContext(req);
+  if (!context) {
+    res.status(401).json({ error: "Sign in required." });
+    return false;
+  }
+  if (!isClubAdmin(context.role)) {
+    res.status(403).json({ error: "Only a club admin can merge names." });
+    return false;
+  }
+  res.locals.adminSession = {
+    role: "admin",
+    memberName: context.memberName,
+    clubId: context.clubId,
+    clubRole: context.role,
+    userId: context.userId,
+  };
+  return true;
+}
+
+function sendMergeError(res: Response, error: unknown): void {
+  if (error instanceof MergeError) {
+    res.status(error.status).json({ error: error.message });
+    return;
+  }
+  throw error;
+}
+
+router.post("/clubs/current/players/merge/preview", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const names = mergeNamesFrom(req.body);
+  if ("error" in names) {
+    res.status(400).json({ error: names.error });
+    return;
+  }
+  try {
+    res.json(await previewPlayerMerge(adminClubId(res), names.keep, names.merge));
+  } catch (error) {
+    sendMergeError(res, error);
+  }
+});
+
+router.post("/clubs/current/players/merge", async (req, res): Promise<void> => {
+  if (!(await requireClubAdmin(req, res))) return;
+  const names = mergeNamesFrom(req.body);
+  if ("error" in names) {
+    res.status(400).json({ error: names.error });
+    return;
+  }
+  try {
+    const result = await mergePlayers(adminClubId(res), names.keep, names.merge);
+    await recordAdminAction("players_merged", `Merged "${result.merge}" into "${result.keep}".`, req);
+    res.json(result);
+  } catch (error) {
+    sendMergeError(res, error);
+  }
 });
 
 router.get("/clubs/current/invites", requireAdminSession, async (_req, res): Promise<void> => {
