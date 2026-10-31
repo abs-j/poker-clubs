@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run with the platform usage page: typecheck clean, API 141 tests, dashboard 99 tests, smoke 55/55.
+State as of 31 Oct 2026. Last local run with the Leaderboard label and Home content: typecheck clean, API 141 tests, dashboard 99 tests, smoke 56/56.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -15,7 +15,7 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 ## Where work stopped
 
 L4 is done (jackpot payout, and tournaments started from the Live tab's New night menu). L3 (past nights and notes, no schema change), L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, Games-tab edit and delete, and the platform usage page do not change the schema, so publishing them does not need a database push. The platform usage page is done. The next structure step is the Leaderboard tab label and Home content from the plan.
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, Games-tab edit and delete, the platform usage page, and the Leaderboard label and Home content do not change the schema, so publishing them does not need a database push. The simplification plan's build order is finished. Nothing in that plan is left to start.
 
 ## How to work
 
@@ -115,9 +115,16 @@ Done. No schema change, so no database push.
 - The Privacy page (and the matching Terms sentence) says usage is visible only to the platform owner. Club admins still see member emails.
 - Set `PLATFORM_ADMIN_EMAILS` in Replit Secrets. Smoke uses `smoke-platform@example.com` for that check, so the API process and the smoke process need the same value.
 
-Next structure step: **the Leaderboard tab label and Home content** from `docs/SIMPLIFICATION_PLAN.md`. Do not start those in the platform-usage PR.
+### S5. Leaderboard label and Home content
+Done. No schema change, so no database push.
+- The phone and desktop tabs read Home, Games, Live, Leaderboard, Club. The ranking table's label is Leaderboard (it had said Leaderboards). A player's page, opened from that tab, is titled Profile. The platform usage page calls that section Profile too.
+- Home with no night on: your summary (all-time net, rank, cash and tournament split), your last game, anything you still owe or are owed, and the profit podium.
+- Home while a night is on: the live banner instead of the summary and last game. The profit podium stays, and so does settle-up.
+- The points podium, the points table, season highlights, and the optional running-totals chart stay on the Leaderboard. Club buzz stays, on the Club tab. The result-by-game chart stays on a profile. The separate latest-tournament card is gone; Games already lists tournaments, and the last-game card still states a tournament finish.
+
+The simplification plan has no further steps.
 
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
-- Not done: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3) and the platform usage page (S4) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only. Still ahead: the Leaderboard tab label and Home content from the plan.
+- Not done, and not part of the simplification plan: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres, a public landing page. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3), the platform usage page (S4), and the Leaderboard label and Home content (S5) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only.

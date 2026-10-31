@@ -781,23 +781,60 @@ await check("signing in lands on Home with the tab bar on screen", async () => {
   await page.screenshot({ path: `${OUT}/home.png` });
 });
 
-await check("Home shows two podiums, net profit first then club points", async () => {
+await check("Home shows your summary, last game and the profit podium", async () => {
   await sleep(1500);
-  const ids = await testIdsInOrder(/^(card-home-standings|card-home-points-podium)$/);
-  expect(ids.join() === "card-home-standings,card-home-points-podium", `order was ${ids.join(", ")}`);
+  await visible('[data-testid="text-personal-net"]');
+  await visible('[data-testid="card-my-night"]');
+  await visible('[data-testid="card-home-standings"]');
+  const tabs = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="nav-bottom-tabs"] button')].map((button) => button.textContent.trim()),
+  );
+  expect(tabs.join(",") === "Home,Games,Live,Leaderboard,Club", `tabs were ${tabs.join(", ")}`);
+  const gone = await page.evaluate(() => ({
+    points: !!document.querySelector('[data-testid="card-home-points-podium"]'),
+    chart: !!document.querySelector('[data-testid="card-home-results"]'),
+    tournament: !!document.querySelector('[data-testid="card-latest-tournament"]'),
+    season: !!document.querySelector('[data-testid="card-season"]'),
+    buzz: !!document.querySelector('[data-testid="card-club-buzz"]'),
+    history: !!document.querySelector('[data-testid="button-show-history-chart"]'),
+    banner: !!document.querySelector('[data-testid="banner-live-game"]'),
+  }));
+  expect(!gone.points && !gone.chart && !gone.tournament && !gone.season && !gone.buzz && !gone.history && !gone.banner, `Home still has extra cards ${JSON.stringify(gone)}`);
   const podiums = await page.evaluate(() => document.querySelectorAll('[data-testid="podium"]').length);
-  expect(podiums === 2, `expected 2 podiums, found ${podiums}`);
+  expect(podiums === 1, `expected the profit podium only, found ${podiums}`);
+  await page.screenshot({ path: `${OUT}/home.png` });
 });
 
-await check("Home states your tournament finish the same way everywhere", async () => {
-  const text = await page.evaluate(() => ({
-    night: document.querySelector('[data-testid="card-my-night"]')?.innerText ?? "",
-    latest: document.querySelector('[data-testid="text-latest-tournament-mine"]')?.innerText ?? "",
+await check("Home states your last tournament finish", async () => {
+  const night = await page.$eval('[data-testid="card-my-night"]', (node) => node.innerText);
+  expect(/your last tournament/i.test(night), `last game was not the tournament: ${night.replace(/\s+/g, " ").slice(0, 160)}`);
+  expect(/1st of 4/.test(night), `finish line was ${night.match(/\d+(?:st|nd|rd|th) of \d+/)?.[0] ?? "missing"}`);
+});
+
+await check("a live night replaces the summary with the banner, and closing brings it back", async () => {
+  const started = await page.evaluate(async () => {
+    const response = await fetch("/api/poker/live-session/start", { method: "POST", credentials: "include" });
+    return response.status;
+  });
+  expect(started === 200 || started === 201, `start returned ${started}`);
+  await page.reload({ waitUntil: "networkidle2" });
+  await visible('[data-testid="banner-live-game"]');
+  await visible('[data-testid="card-home-standings"]');
+  const hidden = await page.evaluate(() => ({
+    summary: !!document.querySelector('[data-testid="text-personal-net"]'),
+    night: !!document.querySelector('[data-testid="card-my-night"]'),
   }));
-  const place = (t) => (t.match(/(\d+(?:st|nd|rd|th)) of (\d+)/) ?? []).slice(1, 3).join(" of ");
-  if (/Your last tournament/.test(text.night) && /of \d+/.test(text.latest)) {
-    expect(place(text.night) === place(text.latest), `last-game card says "${place(text.night)}", tournament card says "${place(text.latest)}"`);
-  }
+  expect(!hidden.summary && !hidden.night, `summary still showing ${JSON.stringify(hidden)}`);
+  const ended = await page.evaluate(async () => {
+    const response = await fetch("/api/poker/live-session/end", { method: "POST", credentials: "include" });
+    return response.status;
+  });
+  expect(ended === 200, `close returned ${ended}`);
+  await page.reload({ waitUntil: "networkidle2" });
+  await visible('[data-testid="text-personal-net"]');
+  await visible('[data-testid="card-my-night"]');
+  const banner = await page.$('[data-testid="banner-live-game"]');
+  expect(banner === null, "the live banner stayed after the empty night was discarded");
 });
 
 await check("Games opens on All and lists games", async () => {
@@ -843,11 +880,17 @@ await check("leaderboard: profit podium, points podium, then the tables", async 
   await page.tap('[data-testid="tab-months"]');
   await visible('[data-testid="section-period-leaderboards"]');
   await visible('[data-testid="card-points-podium"]');
+  const label = await page.$eval('[data-testid="text-leaderboard-label"]', (node) => node.textContent.trim());
+  expect(label === "Leaderboard", `the table label was "${label}"`);
   const ids = await testIdsInOrder(/^(card-podium|card-points-podium|card-leaderboard-bars|section-points-leaderboard)$/);
   expect(
     ids.join() === "card-podium,card-points-podium,card-leaderboard-bars,section-points-leaderboard",
     `order was ${ids.join(", ")}`,
   );
+  await visible('[data-testid="card-season"]');
+  await visible('[data-testid="button-show-history-chart"]');
+  const buzz = await page.$('[data-testid="card-club-buzz"]');
+  expect(buzz === null, "club buzz should live on the Club tab");
   await page.screenshot({ path: `${OUT}/leaderboard.png` });
 });
 
@@ -882,6 +925,8 @@ await check("no text is smaller than 11px on the main pages", async () => {
 await check("tapping a podium name opens that player's profile", async () => {
   await page.tap('[data-testid="card-podium"] [data-testid="podium-name-1"]');
   await visible('[data-testid="metric-player-profit"]');
+  const title = await page.$eval('[data-testid="text-page-title-profile"]', (node) => node.textContent.trim());
+  expect(title === "Profile", `profile title was "${title}"`);
   const order = await testIdsInOrder(/^(metric-player-profit|card-points-breakdown)$/);
   expect(order[0] === "metric-player-profit", `profit should come first: ${order.join(", ")}`);
 });
@@ -897,6 +942,7 @@ await check("Live ledger and Club pages load", async () => {
   await visible('[data-testid="button-share-invite"]');
   await visible('[data-testid="button-invite-qr"]');
   await visible('[data-testid="section-club-jackpot"]');
+  await visible('[data-testid="card-club-buzz"]');
   await visible('[data-testid="section-admin"]');
   await visible('[data-testid="section-admin-people"]');
   await visible('[data-testid="section-admin-setup"]');

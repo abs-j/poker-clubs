@@ -85,7 +85,7 @@ export function PeriodLeaderboards({ players, sessions, allSessions, activePerio
       {afterOverview}
       <div id="profit-table" className="soft-shadow scroll-mt-4 overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-end sm:justify-between sm:p-5">
-          <div><p className="section-label">Leaderboards</p><h2 className="mt-1 text-lg font-semibold">{scopeLabel} · {earningsScopeLabel}</h2><p className="mt-1 text-xs text-muted-foreground">Player rankings and stats use the selected earnings scope and period.</p></div>
+          <div><p className="section-label" data-testid="text-leaderboard-label">Leaderboard</p><h2 className="mt-1 text-lg font-semibold">{scopeLabel} · {earningsScopeLabel}</h2><p className="mt-1 text-xs text-muted-foreground">Player rankings and stats use the selected earnings scope and period.</p></div>
           <label className="relative flex items-center gap-2 text-xs">
             <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Sort by</span>
             <select value={sortValue} onChange={(event) => setSortValue(event.target.value)} data-testid="select-leaderboard-sort" className="h-9 appearance-none rounded-lg border border-border bg-background px-3 pr-8 text-xs font-medium outline-none focus:border-primary">
