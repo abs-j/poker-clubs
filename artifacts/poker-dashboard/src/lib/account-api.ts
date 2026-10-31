@@ -10,7 +10,7 @@ export type MeResponse = {
   user: AccountUser | null;
   clubs: ClubSummary[];
   active: string | null;
-  options: { googleSignIn: boolean; legacyAccessCodes: boolean; email: boolean };
+  options: { googleSignIn: boolean; email: boolean };
 };
 export type InvitePreview = {
   club: { name: string; slug: string };

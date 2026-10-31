@@ -17,8 +17,6 @@ Set these in the Repl (Tools → Secrets) before the first publish.
 | `REQUIRE_EMAIL_VERIFICATION` | optional | `true` blocks sign-in until the email is confirmed. |
 | `TRUSTED_ORIGINS` | optional | Extra addresses the site is served from (e.g. a `www.` alias). |
 
-Do **not** set `MEMBER_ACCESS_CODES`, `ADMIN_PASSWORD` or `LEGACY_DEFAULT_CLUB`. They switch on the original single-club
-(Monash) mode: access-code sign-in, a Google Sheet reader and mirror, and a public snapshot page.
 
 ## 2. Create the tables (once, and after any schema change)
 

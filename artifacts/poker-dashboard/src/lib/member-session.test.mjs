@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { checkMemberSession, landingPathForSessions } from "./member-session.ts";
+import { checkMemberSession } from "./member-session.ts";
 
 const ok = (body) => ({ ok: true, status: 200, json: async () => body });
 const status = (code) => ({ ok: false, status: code, json: async () => ({}) });
@@ -55,11 +55,4 @@ test("a cancelled check stops quietly", async () => {
   const d = deps([status(503)], { cancelAfter: 1 });
   assert.equal(await checkMemberSession(d), null);
   assert.equal(d.calls, 1);
-});
-
-test("signed-in members and admins land in the matching dashboard", () => {
-  assert.equal(landingPathForSessions(true, false), "/dashboard");
-  assert.equal(landingPathForSessions(false, true), "/admin");
-  assert.equal(landingPathForSessions(false, false), null);
-  assert.equal(landingPathForSessions(true, true), "/dashboard");
 });

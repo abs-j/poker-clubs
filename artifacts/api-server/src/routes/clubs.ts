@@ -3,7 +3,6 @@ import { cleanTimezone } from "../lib/club-settings-parse";
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { clubs, db, invites, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
-import { isOriginalClub } from "../lib/club-settings";
 import { adminClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
 import {
   identityUser,
@@ -56,7 +55,6 @@ router.get("/clubs/me", async (req, res): Promise<void> => {
   const user = await identityUser(req);
   const options = {
     googleSignIn: googleSignInEnabled,
-    legacyAccessCodes: Boolean(process.env.MEMBER_ACCESS_CODES),
     // Whether the server can send email: password reset, email confirmation and emailed invites.
     email: emailMode() !== "off",
   };
@@ -436,10 +434,6 @@ router.delete("/clubs/current", requireMemberSession, async (req, res): Promise<
   const session = res.locals.memberSession as { userId?: string; clubId: number; clubRole?: ClubRole };
   if (!session.userId || session.clubRole !== "owner") {
     res.status(403).json({ error: "Only the club owner can delete the club." });
-    return;
-  }
-  if (await isOriginalClub(session.clubId)) {
-    res.status(400).json({ error: "The original club can't be deleted from here." });
     return;
   }
   const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, session.clubId)).limit(1);

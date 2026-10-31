@@ -235,7 +235,7 @@ paths:
       operationId: getPokerDashboard
       tags: [poker]
       summary: Get the live poker dashboard
-      description: Reads Player Totals, Cumulative Profit, Legends, the latest-game-date helper, and the monthly Session Log tabs. It returns dated sessions, quarterly and monthly summaries, player results, and standings for the Monash Poker analytics hub.
+      description: The signed-in club's results, built from its recorded nights and tournaments. It returns dated sessions, quarterly and monthly summaries, player results, and standings.
       responses:
         "200":
           description: Poker dashboard data
@@ -243,25 +243,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PokerDashboard"
-        "502":
-          description: Upstream spreadsheet unavailable
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /poker/public-summary:
-    get:
-      operationId: getPublicPokerSummary
-      tags: [poker]
-      summary: Get the public poker activity snapshot
-      description: Returns only non-monetary aggregate activity for the public club snapshot. It does not include player identities, rankings, money totals, spreadsheet links, or session records.
-      responses:
-        "200":
-          description: Public poker activity summary
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PublicPokerSummary"
         "502":
           description: Upstream spreadsheet unavailable
           content:
@@ -329,25 +310,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LiveActivityHistoryResponse"
-        "401":
-          description: Member authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /poker/live-activity/sync:
-    post:
-      operationId: syncPokerLiveActivity
-      tags: [poker]
-      summary: Retry the live ledger sheet backup
-      description: Retries the Live Activity sheet mirror while keeping the database-backed ledger available.
-      responses:
-        "200":
-          description: Current ledger and sheet backup status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LiveActivitySnapshot"
         "401":
           description: Member authentication required
           content:

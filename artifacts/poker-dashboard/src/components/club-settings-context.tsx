@@ -11,7 +11,6 @@ export type ClubSettings = {
   currency: string;
   timezone: string;
   guidelines: string | null;
-  isOriginal: boolean;
   points: { preset: PresetChoice; rules: PointsRules };
 };
 export type PresetInfo = { id: Exclude<PresetChoice, "custom">; label: string; description: string; rules: PointsRules };
@@ -23,7 +22,6 @@ const FALLBACK: ClubSettings = {
   currency: "AUD",
   timezone: "Australia/Melbourne",
   guidelines: null,
-  isOriginal: false,
   points: { preset: "standard", rules: POINTS_RULES },
 };
 

@@ -1,7 +1,7 @@
 // Builds the dashboard payload for a club that keeps its own results, instead of reading a
 // Google Sheet. Pure functions with no database access, so the maths can be unit tested.
 // The output matches what the sheet reader produces, so the website needs no special case.
-import type { PokerDashboard } from "./poker-sheet";
+import type { PokerDashboard } from "./dashboard-types";
 import { aggregateTournaments, type TournamentEvent } from "./tournament-parse.ts";
 
 export type NightInput = {

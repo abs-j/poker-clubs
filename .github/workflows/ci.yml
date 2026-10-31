@@ -77,10 +77,6 @@ jobs:
     env:
       DATABASE_URL: postgres://poker:poker@localhost:5432/poker_ci
       SESSION_SECRET: ci-only-session-secret-not-used-anywhere-else
-      ADMIN_PASSWORD: ci-admin-password
-      MEMBER_ACCESS_CODES: '{"Abhay":"ci-member-code"}'
-      # Read the club sheet through its public export; there is no Replit connector here.
-      POKER_SHEET_PUBLIC_ONLY: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -134,10 +130,6 @@ jobs:
         working-directory: ${{ runner.temp }}/smoke
         env:
           SMOKE_BASE_URL: http://localhost:5173
-          SMOKE_MEMBER_CODE: ci-member-code
-          SMOKE_ADMIN_PASSWORD: ci-admin-password
-          # This database is thrown away after the run, so the live-ledger test may write to it.
-          SMOKE_WRITE: "1"
           CHROME_PATH: /usr/bin/google-chrome
           SMOKE_OUT: ${{ runner.temp }}/smoke-output
         run: node "$GITHUB_WORKSPACE/scripts/smoke/smoke.mjs"

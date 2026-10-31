@@ -241,7 +241,7 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Reads Player Totals, Cumulative Profit, Legends, the latest-game-date helper, and the monthly Session Log tabs. It returns dated sessions, quarterly and monthly summaries, player results, and standings for the Monash Poker analytics hub.
+ * The signed-in club's results, built from its recorded nights and tournaments. It returns dated sessions, quarterly and monthly summaries, player results, and standings.
  * @summary Get the live poker dashboard
  */
 export const GetPokerDashboardResponse = zod.object({
@@ -407,33 +407,6 @@ export const GetPokerDashboardResponse = zod.object({
   "net": zod.number(),
   "status": zod.string().nullable()
 }))
-}))
-})
-
-
-/**
- * Returns only non-monetary aggregate activity for the public club snapshot. It does not include player identities, rankings, money totals, spreadsheet links, or session records.
- * @summary Get the public poker activity snapshot
- */
-export const GetPublicPokerSummaryResponse = zod.object({
-  "title": zod.string(),
-  "latestGameDate": zod.string().nullable(),
-  "totalSessions": zod.number(),
-  "totalPlayers": zod.number(),
-  "totalGames": zod.number(),
-  "lastUpdated": zod.string(),
-  "isStale": zod.boolean(),
-  "months": zod.array(zod.object({
-  "month": zod.string(),
-  "label": zod.string(),
-  "range": zod.string(),
-  "sessionCount": zod.number(),
-  "gameCount": zod.number()
-})),
-  "monthlyGames": zod.array(zod.object({
-  "month": zod.string(),
-  "label": zod.string(),
-  "gameCount": zod.number()
 }))
 })
 
@@ -614,64 +587,6 @@ export const GetPokerLiveActivityHistoryResponse = zod.object({
   "revision": zod.number()
 }))
 }))
-})
-
-
-/**
- * Retries the Live Activity sheet mirror while keeping the database-backed ledger available.
- * @summary Retry the live ledger sheet backup
- */
-export const SyncPokerLiveActivityResponse = zod.object({
-  "sessionKey": zod.string(),
-  "sessionDate": zod.coerce.date(),
-  "entries": zod.array(zod.object({
-  "eventId": zod.string(),
-  "sessionKey": zod.string(),
-  "sessionDate": zod.coerce.date(),
-  "memberName": zod.string(),
-  "action": zod.enum(['buy_in', 'cash_out']),
-  "amount": zod.number(),
-  "comment": zod.string().nullable().describe('Optional note provided when the entry was added.'),
-  "auditComments": zod.array(zod.object({
-  "action": zod.enum(['entry', 'edit', 'delete']),
-  "comment": zod.string(),
-  "createdBy": zod.string(),
-  "createdAt": zod.coerce.date()
-})),
-  "occurredAt": zod.coerce.date(),
-  "createdBy": zod.string(),
-  "createdAt": zod.coerce.date(),
-  "updatedBy": zod.string(),
-  "updatedAt": zod.coerce.date(),
-  "deleted": zod.boolean(),
-  "revision": zod.number()
-})),
-  "hasRecordedActivity": zod.boolean(),
-  "playerSummaries": zod.array(zod.object({
-  "playerName": zod.string(),
-  "buyIns": zod.number(),
-  "cashOuts": zod.number()
-})),
-  "totals": zod.object({
-  "buyIns": zod.number(),
-  "cashOuts": zod.number(),
-  "net": zod.number()
-}),
-  "syncStatus": zod.enum(['synced', 'pending', 'error']),
-  "syncMessage": zod.string().nullable(),
-  "lastSyncedAt": zod.coerce.date().nullable(),
-  "sessionStatus": zod.enum(['not_started', 'open', 'finalizing', 'ended']),
-  "startedBy": zod.string().nullable(),
-  "startedAt": zod.coerce.date().nullable(),
-  "endedBy": zod.string().nullable(),
-  "endedAt": zod.coerce.date().nullable(),
-  "closeSummary": zod.object({
-  "buyIns": zod.number(),
-  "cashOuts": zod.number(),
-  "difference": zod.number(),
-  "balanceStatus": zod.enum(['balanced', 'unbalanced']),
-  "closedAt": zod.coerce.date()
-}).nullable()
 })
 
 

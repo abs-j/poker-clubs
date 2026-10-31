@@ -11,7 +11,6 @@ import {
   sessionResults,
 } from "@workspace/db";
 import { buildClubDashboard, type NightInput } from "./club-dashboard";
-import { getDefaultClubId } from "./club-context";
 import { nightFingerprint, type ParsedNight } from "./import-parse";
 import { pickYear, yearsOf } from "./years";
 import { loadTournamentEvents } from "./club-tournaments";
@@ -119,11 +118,9 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
 
 /**
  * Every closed live session becomes a recorded night. Safe to run any time: a live session
- * that already has its night is left alone. The original club keeps its Google Sheet instead.
+ * that already has its night is left alone.
  */
 export async function syncClosedLiveSessions(clubId: number): Promise<number> {
-  if (clubId === (await getDefaultClubId())) return 0;
-
   const pending = await db
     .select({ key: liveSessions.sessionKey, date: liveSessions.sessionDate, endedBy: liveSessions.endedBy, resolution: liveSessions.balanceResolution })
     .from(liveSessions)

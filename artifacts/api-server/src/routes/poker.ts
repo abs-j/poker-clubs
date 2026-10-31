@@ -7,19 +7,14 @@ import {
   GetPokerDashboardResponse,
   GetPokerLiveActivityResponse,
   GetPokerLiveActivityHistoryResponse,
-  GetPublicPokerSummaryResponse,
   EndPokerLiveSessionResponse,
   StartPokerLiveSessionResponse,
-  SyncPokerLiveActivityResponse,
   UpdatePokerLiveActivityBody,
   UpdatePokerLiveActivityResponse,
 } from "@workspace/api-zod";
-import { fetchPokerDashboard, fetchPublicPokerSummary, PokerSheetSourceError } from "../lib/poker-sheet";
 import { loadClubDashboard } from "../lib/club-sessions";
 import { YEAR_COOKIE, yearCookie } from "./club-data";
 import { memberClubId, requireMemberSession } from "../lib/auth";
-import { legacyEnabled } from "../lib/club-context";
-import { isOriginalClub as isOriginal } from "../lib/club-settings";
 import { resolveAttributedPlayer } from "../lib/live-activity-player";
 import {
   createLiveActivityEvent,
@@ -27,7 +22,6 @@ import {
   getLiveActivityHistory,
   getLiveActivitySnapshot,
   endLiveSession,
-  retryLiveActivitySheetSync,
   startLiveSession,
   updateLiveActivityEvent,
 } from "../lib/live-activity";
@@ -48,66 +42,17 @@ async function validateAttributedPlayer(
 
 router.get("/poker/dashboard", requireMemberSession, async (req, res): Promise<void> => {
   try {
-    const forceRefresh = req
-      .get("cache-control")
-      ?.split(",")
-      .some((directive) => directive.trim().toLowerCase() === "no-cache");
-    // The Google Sheet is the original club's history. Other clubs start with no history
-    // until they record or import their own sessions.
-    const clubId = memberClubId(res);
-    const isOriginalClub = await isOriginal(clubId);
-    const dashboard = isOriginalClub
-      ? await fetchPokerDashboard({ forceRefresh })
-      : await loadClubDashboard(clubId, res.locals.memberSession.clubName ?? "Your club", yearCookie(req.cookies?.[YEAR_COOKIE]));
-    // The sheet changes slowly, so a short browser cache is fine. A club's own results change
-    // the moment someone imports or closes a night, so those are never cached.
-    res.set("Cache-Control", isOriginalClub ? "private, max-age=30" : "no-store");
+    const dashboard = await loadClubDashboard(
+      memberClubId(res),
+      res.locals.memberSession.clubName ?? "Your club",
+      yearCookie(req.cookies?.[YEAR_COOKIE]),
+    );
+    // A club's results change the moment someone imports or closes a night, so they are never cached.
+    res.set("Cache-Control", "no-store");
     res.json(GetPokerDashboardResponse.parse(dashboard));
   } catch (error) {
     req.log.error({ err: error }, "Unable to load poker dashboard");
-    if (error instanceof PokerSheetSourceError) {
-      res.status(502).json({
-        error: error.message,
-        code: "SOURCE_TAB_MISSING",
-        sourceTab: error.sourceTab,
-      });
-      return;
-    }
-
-    res
-      .status(502)
-      .json({ error: "Unable to load the poker sheet right now." });
-  }
-});
-
-router.get("/poker/public-summary", async (req, res): Promise<void> => {
-  // The public snapshot is the original club's page; a general deployment has none.
-  if (!legacyEnabled()) {
-    res.status(404).json({ error: "Not found." });
-    return;
-  }
-  try {
-    const forceRefresh = req
-      .get("cache-control")
-      ?.split(",")
-      .some((directive) => directive.trim().toLowerCase() === "no-cache");
-    const summary = await fetchPublicPokerSummary({ forceRefresh });
-    res.set("Cache-Control", "public, max-age=60, s-maxage=60");
-    res.json(GetPublicPokerSummaryResponse.parse(summary));
-  } catch (error) {
-    req.log.error({ err: error }, "Unable to load public poker summary");
-    if (error instanceof PokerSheetSourceError) {
-      res.status(502).json({
-        error: error.message,
-        code: "SOURCE_TAB_MISSING",
-        sourceTab: error.sourceTab,
-      });
-      return;
-    }
-
-    res
-      .status(502)
-      .json({ error: "Unable to load the public poker snapshot right now." });
+    res.status(502).json({ error: "Unable to load the club's results right now." });
   }
 });
 
@@ -136,20 +81,6 @@ router.get("/poker/live-activity/history", requireMemberSession, async (req, res
   } catch (error) {
     req.log.error({ err: error }, "Unable to load live ledger history");
     res.status(502).json({ error: "Unable to load live ledger history right now." });
-  }
-});
-
-router.post("/poker/live-activity/sync", requireMemberSession, async (req, res): Promise<void> => {
-  res.set("Cache-Control", "no-store");
-  res.removeHeader("ETag");
-  res.removeHeader("Last-Modified");
-  try {
-    res.json(
-      SyncPokerLiveActivityResponse.parse(await retryLiveActivitySheetSync(memberClubId(res))),
-    );
-  } catch (error) {
-    req.log.error({ err: error }, "Unable to retry live ledger sheet backup");
-    res.status(502).json({ error: "Unable to retry the live ledger sheet backup." });
   }
 });
 

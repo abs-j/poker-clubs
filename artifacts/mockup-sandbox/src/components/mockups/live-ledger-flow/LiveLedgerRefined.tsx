@@ -128,7 +128,7 @@ export function LiveLedgerRefined() {
                   <CircleDollarSign className="h-[18px] w-[18px]" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="truncate text-[15px] font-semibold tracking-[-0.035em] sm:text-lg">Monash Poker</h1>
+                  <h1 className="truncate text-[15px] font-semibold tracking-[-0.035em] sm:text-lg">Poker Club</h1>
                   <p className="truncate text-[10px] text-muted-foreground sm:text-xs">Shared session ledger</p>
                 </div>
               </div>
@@ -195,7 +195,7 @@ export function LiveLedgerRefined() {
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 {view === "overview" ? <LayoutDashboard className="h-5 w-5" /> : <Users className="h-5 w-5" />}
               </span>
-              <p className="section-label mt-4 text-primary">Monash Poker</p>
+              <p className="section-label mt-4 text-primary">Poker Club</p>
               <h2 className="mt-1 text-2xl font-semibold tracking-tight">{view === "overview" ? "Session overview" : "Players"}</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">The live ledger is where tonight’s money movement is recorded. Return there to pick up where the table left off.</p>
               <button onClick={() => setView("live")} className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">
@@ -206,7 +206,7 @@ export function LiveLedgerRefined() {
             <section className="space-y-4 pt-4 sm:space-y-5 sm:pt-5" data-testid="section-live-ledger">
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <div>
-                  <p className="section-label text-primary">Tonight · Monash Poker</p>
+                  <p className="section-label text-primary">Tonight · Poker Club</p>
                   <h2 className="mt-0.5 text-xl font-semibold tracking-[-0.035em] sm:text-2xl">Live ledger</h2>
                 </div>
                 <div className="inline-flex items-center gap-1.5 rounded-full border border-chart-1/25 bg-chart-1/10 px-2.5 py-1.5 text-[10px] font-semibold text-chart-1 sm:text-xs">

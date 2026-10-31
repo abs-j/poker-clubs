@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { parseResolution } from "./night-balance";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { ReplitConnectors } from "@replit/connectors-sdk";
 import {
   db,
   liveActivityEventComments,
@@ -9,7 +8,6 @@ import {
   liveSessions,
 } from "@workspace/db";
 import { logger } from "./logger";
-import { getDefaultClubId } from "./club-context";
 import { syncClosedLiveSessions } from "./club-sessions";
 import { clubTimezone } from "./club-settings";
 import {
@@ -26,7 +24,6 @@ import {
 import {
   assertLiveActivitySessionIsClosed,
   assertValidLiveActivityDeleteBackupId,
-  createLiveActivitySheetRollbackGuard,
   deleteLiveActivitySessionSafely,
 } from "./live-ledger-deletion";
 
@@ -36,9 +33,6 @@ export {
   LiveActivitySessionNotFoundError,
 } from "./live-ledger-deletion";
 
-const SPREADSHEET_ID = "10COQnx6Rd_KzLNsxwZCqd6GDnUXy4GBGYPhRas_msyw";
-const LIVE_ACTIVITY_SHEET_TITLE = "Live Activity";
-const LIVE_ACTIVITY_SHEET_LOCK_NAME = "monash-live-activity-sheet-sync";
 const LIVE_ACTIVITY_HEADERS = [
   "event_id",
   "session_key",
@@ -60,10 +54,6 @@ export type LiveActivityAction = "buy_in" | "cash_out";
 export type LiveActivityAuditAction = "entry" | "edit" | "delete";
 export type LiveSyncStatus = "synced" | "pending" | "error";
 export type LiveSessionStatus = "not_started" | "open" | "finalizing" | "ended";
-
-function isProductionLiveActivityEnvironment(): boolean {
-  return process.env.NODE_ENV === "production";
-}
 
 type SheetMetadata = {
   sheets?: Array<{
@@ -189,10 +179,6 @@ export class LiveActivitySyncError extends Error {
   }
 }
 
-let sheetSyncPromise: Promise<string> | null = null;
-let sheetSyncRequestedWhileRunning = false;
-let sheetSyncError: string | null = null;
-let sheetSyncedAt: string | null = null;
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -232,123 +218,6 @@ function newSessionKeyForDate(sessionDate: string): string {
 
 function isAction(value: unknown): value is LiveActivityAction {
   return value === "buy_in" || value === "cash_out";
-}
-
-function rowHash(event: {
-  eventId: string;
-  sessionKey: string;
-  sessionDate: string;
-  memberName: string;
-  action: LiveActivityAction;
-  amountCents: number;
-  occurredAt: Date;
-  createdBy: string;
-  createdAt: Date;
-  updatedBy: string;
-  updatedAt: Date;
-  deletedAt: Date | null;
-  revision: number;
-  comment?: string | null;
-}): string {
-  return createHash("sha256")
-    .update(JSON.stringify([
-      event.eventId,
-      event.sessionKey,
-      event.sessionDate,
-      event.memberName,
-      event.action,
-      event.amountCents,
-      event.occurredAt.toISOString(),
-      event.createdBy,
-      event.createdAt.toISOString(),
-      event.updatedBy,
-      event.updatedAt.toISOString(),
-      Boolean(event.deletedAt),
-      event.revision,
-      event.comment ?? null,
-    ]))
-    .digest("hex");
-}
-
-function rowForEvent(event: {
-  eventId: string;
-  sessionKey: string;
-  sessionDate: string;
-  memberName: string;
-  action: LiveActivityAction;
-  amountCents: number;
-  occurredAt: Date;
-  createdBy: string;
-  createdAt: Date;
-  updatedBy: string;
-  updatedAt: Date;
-  deletedAt: Date | null;
-  revision: number;
-  comment: string | null;
-}): unknown[] {
-  return [
-    event.eventId,
-    event.sessionKey,
-    event.sessionDate,
-    event.memberName,
-    event.action,
-    centsToAmount(event.amountCents),
-    formatLiveLedgerTimestamp(event.occurredAt),
-    event.createdBy,
-    formatLiveLedgerTimestamp(event.createdAt),
-    event.updatedBy,
-    formatLiveLedgerTimestamp(event.updatedAt),
-    event.deletedAt ? "TRUE" : "FALSE",
-    event.revision,
-    event.comment ?? "",
-  ];
-}
-
-function parseSheetEvent(row: unknown[]): ParsedSheetEvent | null {
-  const eventId = String(row[0] ?? "").trim();
-  const sessionDate = normalizeGoogleSheetsDate(row[2]);
-  const memberName = String(row[3] ?? "").trim();
-  const action = row[4];
-  const occurredAt = validDate(row[6]);
-  const createdAt = validDate(row[8]) ?? occurredAt;
-  const updatedAt = validDate(row[10]) ?? createdAt;
-  const amountCents = amountToCents(row[5]);
-
-  if (
-    !eventId ||
-    !sessionDate ||
-    !memberName ||
-    !isAction(action) ||
-    amountCents <= 0 ||
-    !occurredAt ||
-    !createdAt ||
-    !updatedAt
-  ) {
-    return null;
-  }
-
-  const deleted = String(row[11] ?? "").trim().toLowerCase() === "true";
-  const revision = Math.max(1, Number(row[12]) || 1);
-  const event = {
-    eventId,
-    sessionKey:
-      String(row[1] ?? "").trim() || legacySessionKeyForDate(sessionDate),
-    sessionDate,
-    memberName,
-    action,
-    amountCents,
-    occurredAt,
-    createdBy: String(row[7] ?? "").trim() || "Google Sheets editor",
-    createdAt,
-    updatedBy: String(row[9] ?? "").trim() || "Google Sheets editor",
-    updatedAt,
-    deletedAt: deleted ? updatedAt : null,
-    deletedBy: deleted ? String(row[9] ?? "").trim() || "Google Sheets editor" : null,
-    revision,
-    comment: String(row[13] ?? "").trim() || null,
-  };
-
-  return { ...event, sheetHash: rowHash(event) };
 }
 
 function toEntry(
@@ -397,414 +266,14 @@ async function loadAuditComments(
   return byEventId;
 }
 
-async function requestJson(
-  connectors: ReplitConnectors,
-  path: string,
-  init: ConnectorRequestInit,
-): Promise<Record<string, unknown>> {
-  const response = await connectors.proxy("google-sheet", path, init);
-  if (!response.ok) {
-    throw new LiveActivitySyncError(
-      `Google Sheets returned ${response.status} for live activity synchronization.`,
-    );
-  }
-  return (await response.json()) as Record<string, unknown>;
-}
-
-async function ensureLiveActivitySheet(connectors: ReplitConnectors): Promise<string> {
-  const metadataPath =
-    `/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets(properties(title,sheetId))`;
-  let metadata = (await requestJson(connectors, metadataPath, { method: "GET" })) as SheetMetadata;
-  let existing = metadata.sheets?.find(
-    (sheet) => sheet.properties?.title === LIVE_ACTIVITY_SHEET_TITLE,
-  )?.properties?.title;
-
-  if (!existing) {
-    await requestJson(connectors, `/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [{ addSheet: { properties: { title: LIVE_ACTIVITY_SHEET_TITLE } } }],
-      }),
-    });
-    metadata = (await requestJson(connectors, metadataPath, { method: "GET" })) as SheetMetadata;
-    existing = metadata.sheets?.find(
-      (sheet) => sheet.properties?.title === LIVE_ACTIVITY_SHEET_TITLE,
-    )?.properties?.title;
-  }
-
-  if (!existing) {
-    throw new LiveActivitySyncError("The Live Activity sheet could not be created.");
-  }
-
-  const headerRange = encodeURIComponent(`'${existing}'!A1:N1`);
-  const headerResponse = (await requestJson(
-    connectors,
-    `/v4/spreadsheets/${SPREADSHEET_ID}/values/${headerRange}?valueRenderOption=FORMATTED_VALUE`,
-    { method: "GET" },
-  )) as SheetValueResponse;
-  const headers = headerResponse.values?.[0] ?? [];
-  if (headers.length === 0) {
-    await requestJson(
-      connectors,
-      `/v4/spreadsheets/${SPREADSHEET_ID}/values/${headerRange}?valueInputOption=RAW`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values: [LIVE_ACTIVITY_HEADERS] }),
-      },
-    );
-  } else {
-    const legacyHeadersMatch = LIVE_ACTIVITY_HEADERS.slice(0, 13).every(
-      (header, index) => String(headers[index] ?? "").trim() === header,
-    );
-    if (!legacyHeadersMatch || (headers.length > 13 && String(headers[13] ?? "").trim() !== "comment")) {
-      throw new LiveActivitySyncError(
-        "The Live Activity sheet exists but its header row does not match the expected format.",
-      );
-    }
-    if (headers.length === 13) {
-      await requestJson(
-        connectors,
-        `/v4/spreadsheets/${SPREADSHEET_ID}/values/${headerRange}?valueInputOption=RAW`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ values: [LIVE_ACTIVITY_HEADERS] }),
-        },
-      );
-    }
-  }
-
-  return existing;
-}
-
-async function readLiveActivityRows(
-  connectors: ReplitConnectors,
-  sheetTitle: string,
-): Promise<unknown[][]> {
-  const range = encodeURIComponent(`'${sheetTitle}'!A1:O10000`);
-  const payload = (await requestJson(
-    connectors,
-    `/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?valueRenderOption=FORMATTED_VALUE`,
-    { method: "GET" },
-  )) as SheetValueResponse;
-  return payload.values ?? [];
-}
-
-async function writeLiveActivityRow(
-  connectors: ReplitConnectors,
-  sheetTitle: string,
-  rowNumber: number,
-  row: unknown[],
-): Promise<void> {
-  const range = encodeURIComponent(`'${sheetTitle}'!A${rowNumber}:N${rowNumber}`);
-  const result = await requestJson(
-    connectors,
-    `/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?valueInputOption=RAW`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values: [row] }),
-    },
-  );
-  const returnedRange =
-    typeof result["updatedRange"] === "string"
-      ? result["updatedRange"].split("!").at(-1)?.replaceAll("$", "").toUpperCase()
-      : undefined;
-  const expectedRange = `A${rowNumber}:N${rowNumber}`;
-  if (returnedRange !== expectedRange) {
-    throw new LiveActivitySyncError(
-      `Google Sheets wrote to ${returnedRange ?? "an unreported range"} instead of ${expectedRange}.`,
-    );
-  }
-}
-
-async function clearLiveActivityRows(
-  connectors: ReplitConnectors,
-  sheetTitle: string,
-): Promise<void> {
-  const range = encodeURIComponent(`'${sheetTitle}'!A2:O10000`);
-  await requestJson(
-    connectors,
-    `/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}:clear`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    },
-  );
-}
-
-async function clearLiveActivitySheetRanges(
-  connectors: ReplitConnectors,
-  sheetTitle: string,
-  ranges: string[],
-): Promise<void> {
-  if (ranges.length === 0) return;
-  const requestedRanges = ranges.map((range) => `'${sheetTitle}'!${range}`);
-  const result = await requestJson(
-    connectors,
-    `/v4/spreadsheets/${SPREADSHEET_ID}/values:batchClear`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ranges: requestedRanges }),
-    },
-  );
-  const clearedRanges = result["clearedRanges"];
-  const normalizeRange = (value: unknown) =>
-    typeof value === "string"
-      ? value.split("!").at(-1)?.replaceAll("$", "").toUpperCase()
-      : undefined;
-  const expectedRanges = ranges.map((range) => range.replaceAll("$", "").toUpperCase());
-  const actualRanges = Array.isArray(clearedRanges)
-    ? clearedRanges.map(normalizeRange)
-    : [];
-  if (
-    actualRanges.length !== expectedRanges.length ||
-    expectedRanges.some((range) => !actualRanges.includes(range))
-  ) {
-    throw new LiveActivitySyncError(
-      "Google Sheets did not confirm clearing exactly the selected live-ledger rows.",
-    );
-  }
-}
-
-async function restoreLiveActivityRows(
-  connectors: ReplitConnectors,
-  sheetTitle: string,
-  rows: string[][],
-): Promise<void> {
-  if (rows.length === 0) return;
-  const range = encodeURIComponent(`'${sheetTitle}'!A1:O${rows.length}`);
-  await requestJson(
-    connectors,
-    `/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?valueInputOption=RAW`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values: rows }),
-    },
-  );
-}
-
-async function syncLiveActivitySheet(options: { preferLocal?: boolean } = {}): Promise<string> {
-  if (!isProductionLiveActivityEnvironment()) return new Date().toISOString();
-
-  // The production sheet mirror belongs to the original club only, so it does nothing elsewhere.
-  const clubId = await getDefaultClubId();
-  if (clubId === null) return new Date().toISOString();
-  return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(0, hashtext(${LIVE_ACTIVITY_SHEET_LOCK_NAME}))`,
-    );
-    const connectors = new ReplitConnectors();
-    const sheetTitle = await ensureLiveActivitySheet(connectors);
-    const rows = await readLiveActivityRows(connectors, sheetTitle);
-    const parsedRows: Array<{ rowNumber: number; event: ParsedSheetEvent }> = [];
-    const seenEventIds = new Set<string>();
-    const duplicateEventIds = new Set<string>();
-    let invalidRows = 0;
-
-    for (const [index, row] of rows.slice(1).entries()) {
-      const parsed = parseSheetEvent(row);
-      if (!parsed && row.some((value) => String(value ?? "").trim() !== "")) {
-        invalidRows += 1;
-      }
-      if (parsed) {
-        if (seenEventIds.has(parsed.eventId)) duplicateEventIds.add(parsed.eventId);
-        seenEventIds.add(parsed.eventId);
-        parsedRows.push({ rowNumber: index + 2, event: parsed });
-      }
-    }
-
-    if (invalidRows > 0) {
-      throw new LiveActivitySyncError(
-        `${invalidRows} live activity row(s) have invalid values. Correct them in the Live Activity tab.`,
-      );
-    }
-    if (duplicateEventIds.size > 0) {
-      throw new LiveActivitySyncError(
-        `${duplicateEventIds.size} duplicate live activity event ID(s) were found. Correct the Live Activity tab before syncing.`,
-      );
-    }
-
-    const dbEvents = await tx.select().from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId));
-    const dbByEventId = new Map(dbEvents.map((event) => [event.eventId, event]));
-    const sheetRowsByEventId = new Map<
-      string,
-      { rowNumber: number; event: ParsedSheetEvent }
-    >();
-    const conflicts: string[] = [];
-
-    for (const row of parsedRows) {
-      const { event: parsed } = row;
-      sheetRowsByEventId.set(parsed.eventId, row);
-      const existing = dbByEventId.get(parsed.eventId);
-      if (!existing) {
-        await tx.insert(liveActivityEvents).values({
-          clubId,
-          eventId: parsed.eventId,
-          sessionKey: parsed.sessionKey,
-          sessionDate: parsed.sessionDate,
-          memberName: parsed.memberName,
-          action: parsed.action,
-          amountCents: parsed.amountCents,
-          occurredAt: parsed.occurredAt,
-          createdBy: parsed.createdBy,
-          createdAt: parsed.createdAt,
-          updatedBy: parsed.updatedBy,
-          updatedAt: parsed.updatedAt,
-          deletedAt: parsed.deletedAt,
-          deletedBy: parsed.deletedBy,
-          revision: parsed.revision,
-          comment: parsed.comment,
-          sheetHash: parsed.sheetHash,
-        });
-      } else if (existing.sheetHash === null && existing.sheetHash !== parsed.sheetHash) {
-        // A null hash marks an app write that still needs to reach the sheet.
-        // Keep the local revision authoritative only when the app explicitly
-        // requested a write. A plain refresh surfaces the unresolved conflict.
-        if (!options.preferLocal) conflicts.push(parsed.eventId);
-      } else if (existing.sheetHash !== parsed.sheetHash) {
-        await tx
-          .update(liveActivityEvents)
-          .set({
-            sessionKey: parsed.sessionKey,
-            sessionDate: parsed.sessionDate,
-            memberName: parsed.memberName,
-            action: parsed.action,
-            amountCents: parsed.amountCents,
-            occurredAt: parsed.occurredAt,
-            createdBy: parsed.createdBy,
-            createdAt: parsed.createdAt,
-            updatedBy: parsed.updatedBy,
-            updatedAt: parsed.updatedAt,
-            deletedAt: parsed.deletedAt,
-            deletedBy: parsed.deletedBy,
-            revision: parsed.revision,
-            comment: parsed.comment,
-            sheetHash: parsed.sheetHash,
-          })
-          .where(
-            and(
-              eq(liveActivityEvents.eventId, parsed.eventId),
-              eq(liveActivityEvents.revision, existing.revision),
-              eq(liveActivityEvents.sheetHash, existing.sheetHash),
-            ),
-          );
-      }
-    }
-
-    let nextRowNumber = rows.length + 1;
-    for (const event of dbEvents) {
-      const row = rowForEvent({ ...event, action: event.action as LiveActivityAction });
-      const parsedEvent = {
-        eventId: event.eventId,
-        sessionKey: event.sessionKey,
-        sessionDate: event.sessionDate,
-        memberName: event.memberName,
-        action: event.action as LiveActivityAction,
-        amountCents: event.amountCents,
-        occurredAt: event.occurredAt,
-        createdBy: event.createdBy,
-        createdAt: event.createdAt,
-        updatedBy: event.updatedBy,
-        updatedAt: event.updatedAt,
-        deletedAt: event.deletedAt,
-        revision: event.revision,
-        comment: event.comment,
-      };
-      const expectedHash = rowHash(parsedEvent);
-      const sheetRow = sheetRowsByEventId.get(event.eventId);
-      if (!sheetRow) {
-        await writeLiveActivityRow(connectors, sheetTitle, nextRowNumber++, row);
-        await tx
-          .update(liveActivityEvents)
-          .set({ sheetHash: expectedHash })
-          .where(
-            and(
-              eq(liveActivityEvents.eventId, event.eventId),
-              eq(liveActivityEvents.revision, event.revision),
-            ),
-          );
-      } else if (
-        event.sheetHash === null &&
-        (options.preferLocal || !conflicts.includes(event.eventId))
-      ) {
-        await writeLiveActivityRow(connectors, sheetTitle, sheetRow.rowNumber, row);
-        await tx
-          .update(liveActivityEvents)
-          .set({ sheetHash: expectedHash })
-          .where(
-            and(
-              eq(liveActivityEvents.eventId, event.eventId),
-              eq(liveActivityEvents.revision, event.revision),
-            ),
-          );
-      }
-    }
-
-    if (conflicts.length > 0) {
-      throw new LiveActivitySyncError(
-        `Unresolved sheet edit for ${conflicts.length} live activity row(s). Edit the entry in the app to choose the correct value.`,
-      );
-    }
-
-    return new Date().toISOString();
-  });
-}
-
-async function runLiveActivitySheetSync(): Promise<string> {
-  if (!isProductionLiveActivityEnvironment()) return new Date().toISOString();
-  if (sheetSyncPromise) {
-    sheetSyncRequestedWhileRunning = true;
-    return sheetSyncPromise;
-  }
-
-  sheetSyncPromise = syncLiveActivitySheet({ preferLocal: true })
-    .then((syncedAt) => {
-      sheetSyncError = null;
-      sheetSyncedAt = syncedAt;
-      logger.info({ syncedAt }, "Live activity sheet backup synchronized");
-      return syncedAt;
-    })
-    .catch((error: unknown) => {
-      sheetSyncError =
-        error instanceof Error ? error.message : "Google Sheets backup is unavailable.";
-      logger.warn({ err: error }, "Live activity sheet backup failed");
-      throw error;
-    })
-    .finally(() => {
-      sheetSyncPromise = null;
-      if (sheetSyncRequestedWhileRunning) {
-        sheetSyncRequestedWhileRunning = false;
-        scheduleLiveActivitySheetSync();
-      }
-    });
-
-  return sheetSyncPromise;
-}
-
-function scheduleLiveActivitySheetSync(): void {
-  if (!isProductionLiveActivityEnvironment()) return;
-  void runLiveActivitySheetSync().catch(() => undefined);
-}
-
-export function startLiveActivitySheetSync(): void {
-  if (!isProductionLiveActivityEnvironment()) return;
-  scheduleLiveActivitySheetSync();
-  const retryTimer = setInterval(scheduleLiveActivitySheetSync, 60_000);
-  retryTimer.unref();
-}
-
 export class LiveActivityResetConflictError extends Error {
   constructor() {
     super("The live ledger changed after the backup was created. Download a fresh backup before resetting.");
     this.name = "LiveActivityResetConflictError";
   }
 }
+
+const liveActivityEnvironment = () => (process.env.NODE_ENV === "production" ? ("production" as const) : ("development" as const));
 
 function buildLiveActivityResetBackup(
   sessionRows: (typeof liveSessions.$inferSelect)[],
@@ -865,17 +334,8 @@ function buildLiveActivityResetBackup(
 const clubEventIds = (clubId: number) =>
   db.select({ id: liveActivityEvents.eventId }).from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId));
 
-/** The production sheet mirrors one club's ledger only: the original (default) club. */
-async function usesLiveActivitySheet(clubId: number): Promise<boolean> {
-  if (!isProductionLiveActivityEnvironment()) return false;
-  const original = await getDefaultClubId();
-  return original !== null && clubId === original;
-}
-
 export async function getLiveActivityResetBackup(clubId: number) {
-  const environment = isProductionLiveActivityEnvironment()
-    ? ("production" as const)
-    : ("development" as const);
+  const environment = liveActivityEnvironment();
   const [sessionRows, eventRows, commentRows] = await Promise.all([
     db.select().from(liveSessions).where(eq(liveSessions.clubId, clubId)).orderBy(asc(liveSessions.id)),
     db.select().from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId)).orderBy(asc(liveActivityEvents.id)),
@@ -886,23 +346,7 @@ export async function getLiveActivityResetBackup(clubId: number) {
       .orderBy(asc(liveActivityEventComments.id)),
   ]);
 
-  let sheetRows: string[][] = [];
-  if (await usesLiveActivitySheet(clubId)) {
-    const connectors = new ReplitConnectors();
-    const sheetTitle = await ensureLiveActivitySheet(connectors);
-    const values = await readLiveActivityRows(connectors, sheetTitle);
-    sheetRows = values.map((row) =>
-      Array.from({ length: 15 }, (_, index) => String(row[index] ?? "")),
-    );
-  }
-
-  return buildLiveActivityResetBackup(
-    sessionRows,
-    eventRows,
-    commentRows,
-    environment,
-    sheetRows,
-  );
+  return buildLiveActivityResetBackup(sessionRows, eventRows, commentRows, environment, []);
 }
 
 export async function resetLiveActivityLedger(backupId: string, clubId: number) {
@@ -910,21 +354,12 @@ export async function resetLiveActivityLedger(backupId: string, clubId: number) 
     throw new LiveActivityResetConflictError();
   }
 
-  const environment = isProductionLiveActivityEnvironment()
-    ? ("production" as const)
-    : ("development" as const);
-  const connectors = (await usesLiveActivitySheet(clubId)) ? new ReplitConnectors() : null;
-  let sheetTitle: string | null = null;
-  let sheetRowsBeforeReset: string[][] = [];
-  let sheetWasCleared = false;
+  const environment = liveActivityEnvironment();
 
-  try {
+  {
     return await db.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(0, hashtext('monash-live-session'))`,
-      );
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(0, hashtext(${LIVE_ACTIVITY_SHEET_LOCK_NAME}))`,
+        sql`SELECT pg_advisory_xact_lock(0, hashtext('live-session'))`,
       );
       await tx.select().from(liveSessions).where(eq(liveSessions.clubId, clubId)).for("update");
       await tx.select().from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId)).for("update");
@@ -938,30 +373,9 @@ export async function resetLiveActivityLedger(backupId: string, clubId: number) 
           .where(inArray(liveActivityEventComments.eventId, clubEventIds(clubId)))
           .orderBy(asc(liveActivityEventComments.id)),
       ]);
-      let sheetRows: string[][] = [];
-      if (environment === "production" && connectors) {
-        const currentSheetTitle = await ensureLiveActivitySheet(connectors);
-        const values = await readLiveActivityRows(connectors, currentSheetTitle);
-        sheetRows = values.map((row) =>
-          Array.from({ length: 15 }, (_, index) => String(row[index] ?? "")),
-        );
-      }
-      const backup = buildLiveActivityResetBackup(
-        sessionRows,
-        eventRows,
-        commentRows,
-        environment,
-        sheetRows,
-      );
+      const backup = buildLiveActivityResetBackup(sessionRows, eventRows, commentRows, environment, []);
       if (backup.backupId !== backupId) {
         throw new LiveActivityResetConflictError();
-      }
-
-      sheetRowsBeforeReset = backup.sheetRows;
-      if (environment === "production" && connectors) {
-        sheetTitle = LIVE_ACTIVITY_SHEET_TITLE;
-        await clearLiveActivityRows(connectors, sheetTitle);
-        sheetWasCleared = true;
       }
 
       await tx
@@ -993,31 +407,7 @@ export async function resetLiveActivityLedger(backupId: string, clubId: number) 
         freshSessionStartedAt: freshSessionStartedAt.toISOString(),
       };
     });
-  } catch (error) {
-    if (sheetWasCleared && connectors && sheetTitle) {
-      try {
-        await restoreLiveActivityRows(connectors, sheetTitle, sheetRowsBeforeReset);
-      } catch (restoreError) {
-        logger.error(
-          { err: restoreError },
-          "Live Activity sheet could not be restored after a failed ledger reset",
-        );
-        throw new Error(
-          "The database reset did not complete, and automatic sheet restoration failed. Use the downloaded backup to restore the Live Activity sheet before retrying.",
-        );
-      }
-    }
-    throw error;
   }
-}
-
-export async function retryLiveActivitySheetSync(clubId: number): Promise<LiveActivitySnapshot> {
-  try {
-    await runLiveActivitySheetSync();
-  } catch {
-    // The database-backed ledger remains available when the sheet mirror fails.
-  }
-  return getLiveActivitySnapshot(clubId);
 }
 
 async function listEventsForSession(sessionKey: string) {
@@ -1106,12 +496,6 @@ function snapshot(
   const sessionDate = session?.sessionDate ?? liveLedgerSessionDate();
   const activeEvents = events.filter((event) => !event.deletedAt);
   const totals = calculateLiveLedgerTotals(activeEvents);
-  const hasPendingChanges = events.some((event) => event.sheetHash === null);
-  const syncStatus: LiveSyncStatus = sheetSyncError
-    ? "error"
-    : hasPendingChanges || !sheetSyncedAt
-      ? "pending"
-      : "synced";
 
   return {
     sessionKey: session?.sessionKey ?? legacySessionKeyForDate(sessionDate),
@@ -1139,13 +523,10 @@ function snapshot(
       cashOuts: centsToAmount(totals.cashOutsCents),
       net: centsToAmount(totals.buyInsCents - totals.cashOutsCents),
     },
-    syncStatus,
-    syncMessage:
-      sheetSyncError ??
-      (syncStatus === "pending"
-        ? "Saved to the live ledger; the Google Sheets backup is pending."
-        : null),
-    lastSyncedAt: sheetSyncedAt,
+    // There is no spreadsheet backup; the fields stay so the response shape is unchanged.
+    syncStatus: "synced" as LiveSyncStatus,
+    syncMessage: null,
+    lastSyncedAt: null,
     ...sessionState(session),
   };
 }
@@ -1168,25 +549,12 @@ export async function deleteLiveActivityLedgerSession(
 ) {
   assertValidLiveActivityDeleteBackupId(backupId);
 
-  const environment = isProductionLiveActivityEnvironment()
-    ? ("production" as const)
-    : ("development" as const);
-  const sheetBacked = await usesLiveActivitySheet(clubId);
-  const connectors = sheetBacked ? new ReplitConnectors() : null;
-  const sheetRollback = createLiveActivitySheetRollbackGuard((restoreError) => {
-    logger.error(
-      { err: restoreError, sessionKey },
-      "Unable to restore Live Activity rows after a failed session deletion",
-    );
-  });
+  const environment = liveActivityEnvironment();
 
-  return sheetRollback.run(() =>
+  return (
     db.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(0, hashtext('monash-live-session'))`,
-      );
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(0, hashtext(${LIVE_ACTIVITY_SHEET_LOCK_NAME}))`,
+        sql`SELECT pg_advisory_xact_lock(0, hashtext('live-session'))`,
       );
       await tx.select().from(liveSessions).where(eq(liveSessions.clubId, clubId)).for("update");
       await tx.select().from(liveActivityEvents).where(eq(liveActivityEvents.clubId, clubId)).for("update");
@@ -1203,23 +571,7 @@ export async function deleteLiveActivityLedgerSession(
       const session = sessionRows.find((row) => row.sessionKey === sessionKey);
       assertLiveActivitySessionIsClosed(session);
 
-      let sheetRows: string[][] = [];
-      let sheetTitle: string | null = null;
-      if (environment === "production" && connectors) {
-        sheetTitle = await ensureLiveActivitySheet(connectors);
-        const values = await readLiveActivityRows(connectors, sheetTitle);
-        sheetRows = values.map((row) =>
-          Array.from({ length: 15 }, (_, index) => String(row[index] ?? "")),
-        );
-      }
-
-      const backup = buildLiveActivityResetBackup(
-        sessionRows,
-        eventRows,
-        commentRows,
-        environment,
-        sheetRows,
-      );
+      const backup = buildLiveActivityResetBackup(sessionRows, eventRows, commentRows, environment, []);
       const sessionEvents = eventRows.filter((event) => event.sessionKey === sessionKey);
       const eventIds = new Set(sessionEvents.map((event) => event.eventId));
       const sessionComments = commentRows.filter((comment) => eventIds.has(comment.eventId));
@@ -1227,28 +579,14 @@ export async function deleteLiveActivityLedgerSession(
         session,
         backupId,
         currentBackupId: backup.backupId,
-        environment: sheetBacked ? environment : ("development" as const),
-        rows: backup.sheetRows,
+        // No spreadsheet is involved: these hooks exist for the shared deletion helper and do nothing.
+        environment: "development",
+        rows: [],
         sessionKey,
         eventIds,
-        selectRanges: liveLedgerSheetRowRangesForSession,
-        onMutationStarted: () => {
-          if (!connectors || !sheetTitle) {
-            throw new Error("The production Live Activity sheet is unavailable.");
-          }
-          sheetRollback.markMutationStarted(backup.sheetRows, (rows) =>
-            restoreLiveActivityRows(connectors, sheetTitle!, rows),
-          );
-        },
-        clearRanges: async (ranges) => {
-          if (!connectors || !sheetTitle) {
-            throw new Error("The production Live Activity sheet is unavailable.");
-          }
-          const sheetRanges = ranges.map(
-            ([startRow, endRow]) => `A${startRow}:N${endRow}`,
-          );
-          await clearLiveActivitySheetRanges(connectors, sheetTitle, sheetRanges);
-        },
+        selectRanges: () => [],
+        onMutationStarted: () => undefined,
+        clearRanges: async () => undefined,
         deleteEvents: async (eventIdsToDelete) => {
           await tx
             .delete(liveActivityEvents)
@@ -1269,7 +607,7 @@ export async function deleteLiveActivityLedgerSession(
         deletedComments: sessionComments.length,
         clearedSheetRows,
       };
-    }),
+    })
   );
 }
 
@@ -1396,7 +734,6 @@ export async function createLiveActivityEvent(input: {
     return { session, created: true };
   });
 
-  if (result.created) scheduleLiveActivitySheetSync();
   return snapshotForSession(result.session);
 }
 
@@ -1461,7 +798,6 @@ export async function updateLiveActivityEvent(input: {
     return lockedSession;
   });
 
-  scheduleLiveActivitySheetSync();
   return snapshotForSession(session);
 }
 
@@ -1517,14 +853,13 @@ export async function deleteLiveActivityEvent(
     return lockedSession;
   });
 
-  scheduleLiveActivitySheetSync();
   return snapshotForSession(session);
 }
 
 export async function startLiveSession(memberName: string, clubId: number): Promise<LiveActivitySnapshot> {
   const sessionDate = liveLedgerSessionDate(new Date(), await clubTimezone(clubId));
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(0, hashtext('monash-live-session'))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(0, hashtext('live-session'))`);
     const [openSession] = await tx
       .select()
       .from(liveSessions)
@@ -1560,7 +895,6 @@ export async function startLiveSession(memberName: string, clubId: number): Prom
     }
   });
 
-  scheduleLiveActivitySheetSync();
   return getLiveActivitySnapshot(clubId);
 }
 
@@ -1615,9 +949,8 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
 
     const events = allEvents.filter((event) => !event.deletedAt);
     const totals = calculateLiveLedgerTotals(events);
-    // A gap would otherwise land on the leaderboard as it is. Clubs record to the database, so an admin
-    // must say what to do with it first (the original club's sheet backup keeps its old behaviour).
-    if (totals.balanceStatus === "unbalanced" && !parseResolution(session.balanceResolution) && clubId !== (await getDefaultClubId())) {
+    // A gap would otherwise land on the leaderboard as it is, so someone must say what to do with it first.
+    if (totals.balanceStatus === "unbalanced" && !parseResolution(session.balanceResolution)) {
       const gap = (Math.abs(totals.differenceCents) / 100).toFixed(2);
       throw new Error(`This ledger is out by ${gap}. A club admin needs to choose how to balance it before it closes.`);
     }
@@ -1645,7 +978,6 @@ export async function endLiveSession(memberName: string, clubId: number): Promis
     );
   }
   if (result.outcome === "closed") {
-    scheduleLiveActivitySheetSync();
     // The night joins the club's results so leaderboards and points include it right away.
     await syncClosedLiveSessions(clubId).catch((error: unknown) => {
       logger.error({ err: error, clubId }, "Could not record the closed live session as a night");

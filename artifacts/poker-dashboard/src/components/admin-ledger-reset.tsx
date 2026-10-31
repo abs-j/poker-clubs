@@ -139,13 +139,6 @@ export function AdminLedgerResetPanel() {
         <p className="font-semibold">What will be cleared</p>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
           <li>The live-ledger database attached to this environment.</li>
-          <li>
-            {backupSummary
-              ? productionScope
-                ? "The shared Google Sheets Live Activity tab, except its header row."
-                : "No Google Sheet rows. Development is isolated from the shared sheet."
-              : "Production also clears the shared Google Sheets Live Activity tab; development leaves that shared tab untouched."}
-          </li>
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
           Download the backup first. The final action requires typing <span className="font-mono font-semibold text-foreground">{resetPhrase}</span>.

@@ -18,8 +18,7 @@ history exists only on the local branch `full-history` (it contains Monash scree
    `docs/DEPLOY.md` end to end (restore drill, `LIVE_SITE_URL`).
 2. **Resend**: live site reports email on. Confirm real delivery (`docs/EMAIL_SETUP.md`) and `VITE_CONTACT_EMAIL`.
 3. **Before making the repo public:** replace real Monash member first names in the tests/mockup
-   (`import-parse.test.mjs`, `podium.test.mjs`, `recaps.test.mjs`, `share-card.test.mjs`, `mockup-sandbox/.../StoryFirst.tsx`),
-   and remove the legacy Monash sheet code (`poker-sheet.ts`, the sheet mirror in `live-activity.ts`, `SPREADSHEET_ID`).
+   (`import-parse.test.mjs`, `podium.test.mjs`, `mockup-sandbox/.../StoryFirst.tsx`). The legacy Monash code is gone.
    Have the Terms/Privacy text (`artifacts/poker-dashboard/src/views/legal.tsx`) reviewed.
 4. Nice to have: avatars out of Postgres, a public landing page, edit a recorded night, tournament CSV import/export.
 
@@ -38,17 +37,19 @@ PORT=3000 BASE_PATH=/ pnpm --filter @workspace/poker-dashboard build
 ```
 
 End-to-end: `scripts/smoke/smoke.mjs` (run it from a folder with `puppeteer-core` installed). It needs the real API and
-site running with the legacy access-code env set, because its first half checks the Monash legacy mode:
-`SMOKE_BASE_URL=http://localhost:5173 SMOKE_MEMBER_CODE=<code> SMOKE_ADMIN_PASSWORD=<pw> CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs`.
-CI (`.github/workflows/ci.yml`) does this on every push; it passed on the first push.
-Last local run (31 Oct 2026): 118 API tests, 115 dashboard tests, typecheck clean. Smoke last run at 52/52 earlier.
+site running against an empty or throwaway database; it creates its own accounts and clubs:
+`SMOKE_BASE_URL=http://localhost:5173 CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs`.
+CI (`.github/workflows/ci.yml`) does this on every push.
+Last local run (31 Oct 2026): 115 API tests, 96 dashboard tests, typecheck clean, smoke 44/44.
 
 ## Things that bit before
 
 - Every club's data is scoped by `club_id`; the active club comes from the signed-in membership, never a default.
   Any new route must take its club from `memberClubId(res)` / `adminClubId(res)`.
-- The legacy Monash mode (access codes, Google Sheet reader and mirror, public snapshot, default club) is OFF unless
-  `MEMBER_ACCESS_CODES` or `LEGACY_DEFAULT_CLUB=true`. `getDefaultClubId()` returns `null` otherwise.
+- Everyone signs in with an account (Better Auth). The old Monash mode (access codes, admin password, Google Sheet
+  reader and mirror, public snapshot, default club) was removed on 31 Oct 2026. Its unused tables and columns
+  (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`) are still in the
+  schema so no push drops data.
 - No migration files: schema changes are applied with `pnpm --filter @workspace/db run push`. The API refuses to start
   (clear message) if tables or recent columns are missing; add new columns to `lib/schema-check.ts`.
 - The dashboard payload is validated by generated zod schemas from `lib/api-spec/openapi.yaml`, which strips unknown fields.

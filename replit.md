@@ -35,5 +35,4 @@ React Query, Recharts. Email: Resend.
 ## Notes
 
 - Every club's data is scoped by `club_id`; the active club comes from the signed-in membership, never from a default.
-- The original single-club Monash mode (access codes, Google Sheet reader) exists behind `MEMBER_ACCESS_CODES` or
-  `LEGACY_DEFAULT_CLUB=true` and is off in a normal deployment.
+- Everyone signs in with an account (Better Auth). There are no access codes, no admin password and no Google Sheet reader.

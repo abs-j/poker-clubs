@@ -1,16 +1,15 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { getGetPokerLiveActivityQueryKey, getGetPokerLiveActivityHistoryQueryKey, useGetPokerLiveActivityHistory, useCreatePokerLiveActivity, useDeletePokerLiveActivity, useEndPokerLiveSession, useGetPokerLiveActivity, useStartPokerLiveSession, useSyncPokerLiveActivity, useUpdatePokerLiveActivity, type LiveActivityHistoryRecord, type LiveActivityEntry, type LiveActivityInputAction, type LivePlayerSummary } from "@workspace/api-client-react";
+import { getGetPokerLiveActivityQueryKey, getGetPokerLiveActivityHistoryQueryKey, useGetPokerLiveActivityHistory, useCreatePokerLiveActivity, useDeletePokerLiveActivity, useEndPokerLiveSession, useGetPokerLiveActivity, useStartPokerLiveSession, useUpdatePokerLiveActivity, type LiveActivityHistoryRecord, type LiveActivityEntry, type LiveActivityInputAction, type LivePlayerSummary } from "@workspace/api-client-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { buildLiveLedgerUrl } from "@/lib/live-ledger-links";
 import { copyTextToClipboard, formatLivePlayerSummaryRows, livePlayerNetProfit } from "@/lib/live-player-summary";
-import { ArrowDown, ArrowUp, Activity, Check, ChevronDown, CircleDollarSign, Copy, Download, MoreHorizontal, Pencil, Printer, QrCode, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Activity, Check, ChevronDown, CircleDollarSign, Copy, Download, MoreHorizontal, Pencil, Printer, QrCode, Plus, Trash2, X } from "lucide-react";
 import { PageIntro, formatCurrency, formatDate, signedCurrency } from "./shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { clubFileSlug, clubTimeZone } from "@/lib/club-format";
-import { useClubSettings } from "@/components/club-settings-context";
 import { accountApi, type BalanceChoice } from "@/lib/account-api";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
@@ -20,7 +19,6 @@ type LiveSessionViewProps = { memberName: string; availablePlayers: string[] };
 export function LiveSessionView({ memberName, availablePlayers }: LiveSessionViewProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { settings: clubSettings } = useClubSettings();
   const [endPromptOpen, setEndPromptOpen] = useState(false);
   // What to do with a gap when closing: money left on the table goes to the jackpot; money paid out beyond it comes off players.
   const [balanceMode, setBalanceMode] = useState<BalanceChoice["mode"] | null>(null);
@@ -49,7 +47,6 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const deleteMutation = useDeletePokerLiveActivity();
   const startMutation = useStartPokerLiveSession();
   const endMutation = useEndPokerLiveSession();
-  const syncMutation = useSyncPokerLiveActivity();
   const [action, setAction] = useState<LiveActivityInputAction>("buy_in");
   const [amount, setAmount] = useState("");
   const [comment, setComment] = useState("");
@@ -307,13 +304,6 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
   };
 
-  const retrySheetBackup = () => {
-    syncMutation.mutate(undefined, {
-      onSuccess: setSnapshot,
-      onError: (error) => setFormError(apiErrorMessage(error)),
-    });
-  };
-
   const toggleHistory = () => {
     const willShow = !showHistory;
     setShowHistory(willShow);
@@ -322,15 +312,14 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
 
   const sessionStatus = snapshot?.sessionStatus;
   useEffect(() => {
-    if (clubSettings.isOriginal) return;
     let cancelled = false;
     accountApi.jackpot().then((value) => { if (!cancelled) setJackpot(value); }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [clubSettings.isOriginal, sessionStatus]);
+  }, [sessionStatus]);
 
   // Only a club that records to the database needs a choice; the original club's sheet backup keeps its old behaviour.
   const gapCents = snapshot ? Math.round(Math.abs(snapshot.totals.buyIns - snapshot.totals.cashOuts) * 100) : 0;
-  const needsChoice = Boolean(snapshot?.hasRecordedActivity) && !clubSettings.isOriginal && gapCents > 0;
+  const needsChoice = Boolean(snapshot?.hasRecordedActivity) && gapCents > 0;
   const ledgerIsOver = snapshot ? snapshot.totals.buyIns > snapshot.totals.cashOuts : false;
   useEffect(() => {
     if (!endPromptOpen || !needsChoice) return;
@@ -366,10 +355,8 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <PageIntro eyebrow="Live session ledger" title="Track tonight as it happens" description="Log buy-ins and cash-outs, check the balance, and keep a separate record of each session. Times use Melbourne time (AEST/AEDT)." count={`${snapshot.sessionStatus === "ended" ? "Closed" : snapshot.sessionStatus === "open" ? "Open" : "Not started"} · ${formatActivitySessionDate(snapshot.sessionDate)}`} compactOnMobile />
         <div className="flex shrink-0 items-center gap-2">
-          {clubSettings.isOriginal && <SyncBadge status={snapshot.syncStatus} lastSyncedAt={snapshot.lastSyncedAt} message={snapshot.syncMessage} compact />}
           <div className="hidden items-center gap-2 lg:flex">
             <button type="button" onClick={() => setShowQr((value) => !value)} aria-expanded={showQr} aria-controls={showQr ? "live-ledger-qr" : undefined} data-testid="button-toggle-live-qr" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold"><QrCode className="h-3.5 w-3.5" />{showQr ? "Hide QR" : "Share Live"}</button>
-            {snapshot.syncStatus !== "synced" && <button onClick={retrySheetBackup} disabled={syncMutation.isPending} data-testid="button-retry-live-sync" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold disabled:opacity-60"><RefreshCw className={syncMutation.isPending ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />{syncMutation.isPending ? "Retrying" : "Retry backup"}</button>}
           </div>
           <div className="lg:hidden">
             <DropdownMenu>
@@ -386,12 +373,6 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
                 >
                   <QrCode className="h-4 w-4" />{showQr ? "Hide QR code" : "Share live QR"}
                 </DropdownMenuItem>
-                {snapshot.syncStatus !== "synced" && (
-                  <DropdownMenuItem onSelect={retrySheetBackup} disabled={syncMutation.isPending} data-testid="menu-retry-live-sync">
-                    <RefreshCw className={syncMutation.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                    {syncMutation.isPending ? "Retrying backup…" : "Retry sheet backup"}
-                  </DropdownMenuItem>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -432,7 +413,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground sm:text-xs sm:leading-5">
             <span className="sm:hidden">
               {snapshot.sessionStatus === "ended"
-                ? clubSettings.isOriginal ? "Saved separately · excluded from historical results." : "Saved to the club's recorded nights."
+                ? "Saved to the club's recorded nights."
                 : snapshot.sessionStatus === "open"
                   ? `${snapshot.startedBy ?? "A member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}${snapshot.hasRecordedActivity ? "" : " · empty session"}`
                   : "Start when the game begins."}
@@ -575,11 +556,11 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             <div><p className="section-label">Close summary</p><h2 className={`mt-1 text-xl font-semibold ${snapshot.closeSummary.balanceStatus === "balanced" ? "text-foreground" : "text-amber-700 dark:text-amber-300"}`}>{snapshot.closeSummary.balanceStatus === "balanced" ? "Balanced" : "Unbalanced"}</h2></div>
             <span data-testid={`status-live-balance-${snapshot.closeSummary.balanceStatus}`} className="font-mono text-sm font-semibold">{snapshot.closeSummary.difference >= 0 ? "+" : "−"}{formatCurrency(Math.abs(snapshot.closeSummary.difference))} difference</span>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Closed {formatActivityTime(snapshot.closeSummary.closedAt)}. {clubSettings.isOriginal ? "Saved in ledger history only." : "Saved to ledger history and counted as a game on the leaderboard."}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Closed {formatActivityTime(snapshot.closeSummary.closedAt)}. "Saved to ledger history and counted as a game on the leaderboard."</p>
         </div>}
       </div>
 
-      {!clubSettings.isOriginal && jackpot && jackpot.total > 0 && <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
+      {jackpot && jackpot.total > 0 && <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
         <p className="section-label">Bad beat jackpot</p>
         <p className="mt-1 font-mono text-2xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
         <p className="mt-1 text-xs text-muted-foreground">Built from the surplus of {jackpot.nights} {jackpot.nights === 1 ? "night" : "nights"} that closed over.</p>
@@ -627,7 +608,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
                       <label className="flex cursor-pointer items-start gap-2"><input type="radio" name="balance-mode" checked={balanceMode === "none"} onChange={() => setBalanceMode("none")} className="mt-0.5 h-5 w-5 shrink-0" data-testid="radio-balance-none" /><span className="text-muted-foreground">Close anyway and leave the night out by {formatCurrency(gapCents / 100)}</span></label>
                     </fieldset>}
                     {snapshot.entries.length === 0 && <p>All activity rows were removed, but this used session will stay in ledger history.</p>}
-                    <p>{clubSettings.isOriginal ? "It stays in history and is not added to the historical Session Log." : "It is saved to ledger history and counted as a game on the leaderboard."}</p>
+                    <p>"It is saved to ledger history and counted as a game on the leaderboard."</p>
                   </>
                 ) : (
                   <p>It has no activity and will be removed completely rather than kept in ledger history.</p>
@@ -844,14 +825,6 @@ function LiveMetric({ label, compactLabel, value, detail, tone }: { label: strin
     <p className={`mt-1.5 truncate font-mono text-[18px] font-semibold tracking-[-0.045em] sm:mt-2 sm:text-2xl ${tone === "positive" ? "text-chart-1" : tone === "negative" ? "text-destructive" : "text-foreground"}`}>{value}</p>
     <p className="mt-1 hidden truncate text-[11px] text-muted-foreground sm:block sm:text-[11px]">{detail}</p>
   </article>;
-}
-
-function SyncBadge({ status, lastSyncedAt, message, compact = false }: { status: "synced" | "pending" | "error"; lastSyncedAt: string | null; message: string | null; compact?: boolean }) {
-  const label = status === "synced"
-    ? `Sheet backup current${lastSyncedAt ? ` · ${formatActivityTime(lastSyncedAt)}` : ""}`
-    : status === "pending" ? "Sheet backup pending" : "Sheet backup needs attention";
-  const compactLabel = status === "synced" ? "Synced" : status === "pending" ? "Backup pending" : "Attention";
-  return <span aria-label={label} title={message ?? label} data-testid="status-live-sync" className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${status === "synced" ? "border-chart-1/25 bg-chart-1/10 text-chart-1" : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}><span className={`h-1.5 w-1.5 rounded-full ${status === "synced" ? "bg-chart-1" : "bg-amber-500"}`} /><span className={compact ? "hidden lg:inline" : ""}>{label}</span>{compact && <span className="lg:hidden">{compactLabel}</span>}</span>;
 }
 
 function LiveActivityLoading() {

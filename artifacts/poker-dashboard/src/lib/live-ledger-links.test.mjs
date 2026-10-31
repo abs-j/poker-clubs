@@ -25,8 +25,8 @@ test("builds QR URLs using the app base path and no credentials", () => {
     "https://poker.example/dashboard?view=live",
   );
   assert.equal(
-    buildLiveLedgerUrl("https://poker.example", "/monash-poker"),
-    "https://poker.example/monash-poker/dashboard?view=live",
+    buildLiveLedgerUrl("https://poker.example", "/poker-club"),
+    "https://poker.example/poker-club/dashboard?view=live",
   );
 });
 
