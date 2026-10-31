@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -60,6 +61,8 @@ export const liveSessions = pgTable(
     totalCashOutCents: integer("total_cash_out_cents"),
     balanceDifferenceCents: integer("balance_difference_cents"),
     balanceStatus: varchar("balance_status", { length: 16 }),
+    /** What an admin chose to do about a gap before closing (see night-balance.ts). Null until chosen. */
+    balanceResolution: jsonb("balance_resolution"),
   },
   (table) => [
     index("live_sessions_status_idx").on(table.status),

@@ -6,7 +6,8 @@ import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubYears, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, undoImport } from "../lib/club-sessions";
+import { clubJackpot, clubYears, commitImport, deleteNight, listClubNights, loadNightsForExport, previewImport, setLedgerResolution, undoImport } from "../lib/club-sessions";
+import { parseResolution } from "../lib/night-balance";
 import { nightsToCsv } from "../lib/export-csv";
 import { getClubSettings } from "../lib/club-settings";
 import {
@@ -114,6 +115,27 @@ router.delete("/clubs/current/import/:batchId", requireAdminSession, async (req,
   const removed = await undoImport(adminClubId(res), batchId);
   await recordAdminAction("history_import_undone", `Undid an import (${removed} night(s) removed).`, req);
   res.json({ removed });
+});
+
+/** What to do with a gap in tonight's ledger. Applied when the ledger closes; admins only. */
+router.put("/clubs/current/ledger/resolution", requireAdminSession, async (req, res): Promise<void> => {
+  const resolution = parseResolution(req.body);
+  if (!resolution) {
+    res.status(400).json({ error: "Choose how to balance the ledger." });
+    return;
+  }
+  const result = await setLedgerResolution(adminClubId(res), resolution);
+  if (!result.ok) {
+    res.status(409).json({ error: result.error });
+    return;
+  }
+  await recordAdminAction("ledger_balanced", `Chose "${resolution.mode}" for a ledger out by ${(result.cents / 100).toFixed(2)} (${result.direction}).`, req);
+  res.json({ mode: resolution.mode, direction: result.direction, cents: result.cents });
+});
+
+/** The club's bad beat jackpot so far: surplus from balanced nights. */
+router.get("/clubs/current/jackpot", requireMemberSession, async (_req, res): Promise<void> => {
+  res.json(await clubJackpot(memberClubId(res)));
 });
 
 router.get("/clubs/current/sessions", requireAdminSession, async (_req, res): Promise<void> => {

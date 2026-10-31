@@ -132,6 +132,8 @@ export const clubSessions = pgTable(
     liveSessionKey: varchar("live_session_key", { length: 64 }),
     /** Groups the nights of one import so the whole import can be undone. */
     importBatch: varchar("import_batch", { length: 36 }),
+    /** Surplus from this night that went into the bad beat jackpot, in cents. */
+    jackpotCents: integer("jackpot_cents").notNull().default(0),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

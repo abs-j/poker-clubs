@@ -84,6 +84,7 @@ const AUDIT_LABELS: Record<string, string> = {
   history_import_undone: "Import undone",
   night_deleted: "Night deleted",
   tournament_deleted: "Tournament deleted",
+  ledger_balanced: "Ledger balanced",
   night_recorded: "Night recorded",
   settings_updated: "Settings changed",
   results_exported: "Results downloaded",

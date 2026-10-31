@@ -275,7 +275,7 @@ router.post("/poker/live-session/end", requireMemberSession, async (req, res): P
   } catch (error) {
     req.log.error({ err: error }, "Unable to end live poker session");
     const message = error instanceof Error ? error.message : "Unable to end live poker session.";
-    res.status(message.includes("Start the") || message.includes("Add at least") ? 400 : 502).json({
+    res.status(message.includes("Start the") || message.includes("Add at least") ? 400 : message.includes("out by") ? 409 : 502).json({
       error: message,
     });
   }

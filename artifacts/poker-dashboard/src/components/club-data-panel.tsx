@@ -560,9 +560,12 @@ function NightList({ nights, tournaments, onChanged }: { nights: NightRow[]; tou
             <div className="min-w-0">
               <p className="font-semibold">{night.date}</p>
               <p className="text-[11px] text-muted-foreground">
-                {plural(night.players, "player")} · ${night.totalBuyIn.toFixed(2)} in · {sourceLabel[night.source]}
+                {plural(night.players, "player")} · ${night.totalBuyIn.toFixed(2)} in · {sourceLabel[night.source]}{night.jackpot > 0 ? ` · $${night.jackpot.toFixed(2)} to the jackpot` : ""}
               </p>
             </div>
+            {night.source === "live" && (
+              <a href="/admin" className="shrink-0 text-xs text-muted-foreground underline hover:text-primary" data-testid={`link-delete-live-night-${night.id}`}>Delete in Admin</a>
+            )}
             {night.source !== "live" && (
               <button
                 type="button"

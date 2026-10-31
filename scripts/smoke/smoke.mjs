@@ -326,6 +326,32 @@ console.log("\nAccounts and clubs");
     expect(removal.status === 409, `live nights are removed from the ledger, got ${removal.status}`);
   });
 
+  await check("a ledger that does not balance needs an admin's choice before it closes", async () => {
+    const add = (action, amount, attributedPlayer) => api("/api/poker/live-activity", { jar: owner, method: "POST", body: { action, amount, attributedPlayer } });
+    const resolve = (jar, body) => api("/api/clubs/current/ledger/resolution", { jar, method: "PUT", body });
+    // Over: more went in than came out.
+    await api("/api/poker/live-session/start", { jar: owner, method: "POST" });
+    await add("buy_in", 10, "Smoke Guest");
+    await add("cash_out", 6, "Smoke Guest");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).status === 409, "an unbalanced ledger closed without a choice");
+    expect((await resolve(guest, { mode: "jackpot" })).status === 401, "a member could choose how to balance");
+    expect((await resolve(owner, { mode: "split" })).status === 409, "a shortfall option was accepted for a surplus");
+    expect((await resolve(owner, { mode: "jackpot" })).ok, "jackpot choice refused");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "ledger did not close after the choice");
+    const jackpot = await (await api("/api/clubs/current/jackpot", { jar: owner })).json();
+    expect(jackpot.total === 4 && jackpot.nights === 1, `jackpot ${JSON.stringify(jackpot)}`);
+    // Under: more came out than went in; it comes off one player.
+    await api("/api/poker/live-session/start", { jar: owner, method: "POST" });
+    await add("buy_in", 10, "Smoke Guest");
+    await add("cash_out", 12, "Smoke Guest");
+    expect((await resolve(owner, { mode: "jackpot" })).status === 409, "a surplus option was accepted for a shortfall");
+    expect((await resolve(owner, { mode: "player", name: "Nobody" })).status === 409, "an unknown player was accepted");
+    expect((await resolve(owner, { mode: "player", name: "Smoke Guest" })).ok, "player choice refused");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "ledger did not close");
+    const after = await (await api("/api/clubs/current/jackpot", { jar: owner })).json();
+    expect(after.total === 4, "a shortfall changed the jackpot");
+  });
+
   await check("an imported batch can be undone; members cannot import", async () => {
     const refused = await api("/api/clubs/current/import", { jar: guest, method: "POST", body: { text: history } });
     expect(refused.status === 401, `expected 401, got ${refused.status}`);
