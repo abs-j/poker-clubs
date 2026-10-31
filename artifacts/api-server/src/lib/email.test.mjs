@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
 import { devOutbox, emailMode, sendEmail } from "./email.ts";
-import { inviteMessage, resetPasswordMessage, verifyEmailMessage } from "./email-templates.ts";
+import { resetPasswordMessage, verifyEmailMessage } from "./email-templates.ts";
 
 const withEnv = async (env, fn) => {
   const saved = {};
@@ -78,8 +78,6 @@ test("templates carry the link in both versions and escape what people typed", (
   assert.match(reset.html, /token=abc&amp;x=1/);
   assert.match(reset.text, /Hi Sam,/);
   assert.match(verifyEmailMessage({ to: "a@example.com", name: "Al", url }).subject, /Confirm your email/);
-  const invite = inviteMessage({ to: "a@example.com", clubName: "<b>Bold</b> Club", inviterName: "Pat", url });
-  assert.doesNotMatch(invite.html, /<b>Bold<\/b>/);
-  assert.match(invite.html, /&lt;b&gt;Bold&lt;\/b&gt; Club/);
-  assert.match(invite.subject, /Pat invited you to <b>Bold<\/b> Club/);
+  const tricky = resetPasswordMessage({ to: "a@example.com", name: "<b>Bold</b>", url });
+  assert.doesNotMatch(tricky.html, /<b>Bold<\/b>/);
 });

@@ -5,7 +5,6 @@ import { Avatar } from "@/components/avatar";
 import { formatVisibleDuration } from "@/lib/member-usage";
 import { MetricCard, slug } from "./shared";
 
-const AdminAvatarsPanel = lazy(() => import("@/components/admin-avatars").then((m) => ({ default: m.AdminAvatarsPanel })));
 const AdminLedgerResetPanel = lazy(() => import("@/components/admin-ledger-reset").then((m) => ({ default: m.AdminLedgerResetPanel })));
 const AdminLedgerSessionsPanel = lazy(() => import("@/components/admin-ledger-sessions").then((m) => ({ default: m.AdminLedgerSessionsPanel })));
 
@@ -712,10 +711,6 @@ function AdminDashboard({
         <MembersPanel members={members} error={memberError} hiddenApi={hiddenApi} onRefresh={onRefresh} />
         <UsageSection usage={data?.usage ?? []} memberVisible={memberVisible} onRefresh={onRefresh} />
         <ActivityLog refreshKey={refreshKey} />
-
-        <Suspense fallback={<p className="mt-8 text-xs text-muted-foreground">Loading tools…</p>}>
-          <div className="mt-8"><AdminAvatarsPanel /></div>
-        </Suspense>
 
         <details data-testid="section-admin-danger" className="group mt-10 rounded-2xl border border-destructive/40 bg-destructive/[0.04]">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">

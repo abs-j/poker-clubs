@@ -108,7 +108,7 @@ test("a tournament without recorded places still produces a recap", () => {
 import { buildPersonalRecap, buildStandingsRecap } from "./recaps.ts";
 import { setClubFormat } from "./club-format.ts";
 
-setClubFormat({ name: "Friday Cards", hashtag: "fridaycards" });
+setClubFormat({ name: "Friday Cards" });
 
 test("any ranked table becomes a one-slide recap with a caption", () => {
   const pack = buildStandingsRecap({

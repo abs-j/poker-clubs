@@ -15,7 +15,6 @@ export type ClubSettings = {
   name: string;
   currency: string;
   timezone: string;
-  hashtag: string | null;
   guidelines: string | null;
   /** The original club keeps its built-in rules text and its sheet. */
   isOriginal: boolean;
@@ -37,7 +36,6 @@ export async function getClubSettings(clubId: number): Promise<ClubSettings> {
     name: row.name,
     currency: row.currency,
     timezone: row.timezone,
-    hashtag: row.hashtag,
     guidelines: row.guidelines,
     isOriginal: await isOriginalClub(row.id),
     points: resolveRules(row.pointsPreset, row.pointsRules),
@@ -55,7 +53,6 @@ export type SettingsPatch = Partial<{
   name: string;
   currency: string;
   timezone: string;
-  hashtag: string | null;
   guidelines: string | null;
   pointsPreset: string;
   pointsRules: PointsRules | null;

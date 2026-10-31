@@ -92,42 +92,7 @@ function VerifyEmailNotice({ email }: { email: string }) {
   );
 }
 
-function EmailInvite() {
-  const [email, setEmail] = useState("");
-  const [state, setState] = useState<{ kind: "idle" | "ok" | "error"; text: string }>({ kind: "idle", text: "" });
-  const [busy, setBusy] = useState(false);
-  const send = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setState({ kind: "idle", text: "" });
-    try {
-      await accountApi.emailInvite(email.trim());
-      setState({ kind: "ok", text: `Invite sent to ${email.trim()}.` });
-      setEmail("");
-    } catch (caught) {
-      setState({ kind: "error", text: caught instanceof AccountError ? caught.message : "Couldn't send the invite." });
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <form onSubmit={(event) => void send(event)} className="mt-3" data-testid="form-email-invite">
-      <div className="flex gap-2">
-        <input className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email an invite to a friend" data-testid="input-email-invite" />
-        <button type="submit" disabled={busy || !email.trim()} className={smallButton} data-testid="button-email-invite">
-          Send
-        </button>
-      </div>
-      {state.text && (
-        <p role={state.kind === "error" ? "alert" : "status"} data-testid="status-email-invite" className={`mt-2 text-xs ${state.kind === "error" ? "text-destructive" : "font-semibold"}`}>
-          {state.text}
-        </p>
-      )}
-    </form>
-  );
-}
 
-/** Which club you are in, who is in it, and (for admins) how to bring people in. */
 export function ClubPanel() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
@@ -240,7 +205,6 @@ export function ClubPanel() {
               New link
             </button>
           </div>
-          {me.options.email && <EmailInvite />}
           {invites.length > 0 && (
             <ul className="mt-3 space-y-2">
               {invites.map((invite) => (
