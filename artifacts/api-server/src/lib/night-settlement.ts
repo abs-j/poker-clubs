@@ -92,7 +92,7 @@ async function loadTrackedNights(clubId: number, onlyNightId?: number): Promise<
 }
 
 /** The position of each night in the Games list: nights are numbered by date, then by when they were recorded. */
-async function nightNumbers(clubId: number): Promise<Map<number, number>> {
+export async function recordedSessionNumbers(clubId: number): Promise<Map<number, number>> {
   const rows = await db
     .select({ id: clubSessions.id })
     .from(clubSessions)
@@ -103,7 +103,7 @@ async function nightNumbers(clubId: number): Promise<Map<number, number>> {
 
 /** What the viewer owes and is owed, plus how settled each tracked night is (for the Games list). */
 export async function loadSettleUp(clubId: number, viewerName: string) {
-  const [tracked, numbers] = await Promise.all([loadTrackedNights(clubId), nightNumbers(clubId)]);
+  const [tracked, numbers] = await Promise.all([loadTrackedNights(clubId), recordedSessionNumbers(clubId)]);
   const owed = mineUnsettled(tracked.map((night) => ({ nightId: night.nightId, date: night.date, bank: night.bank, lines: night.lines })), viewerName);
   const withNumber = <T extends { nightId: number }>(entries: T[]) => entries.map((entry) => ({ ...entry, sessionNumber: numbers.get(entry.nightId) ?? null }));
   const mine = { ...owed, owe: withNumber(owed.owe), owed: withNumber(owed.owed) };

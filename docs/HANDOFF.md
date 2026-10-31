@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run with S2 on top of S1: typecheck clean, API 135 tests, dashboard 99 tests, smoke 53/53.
+State as of 31 Oct 2026. Last local run with Games-tab edit and delete on top of S2: typecheck clean, API 138 tests, dashboard 99 tests, smoke 54/54.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -15,7 +15,7 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 ## Where work stopped
 
 L4 is done (jackpot payout, and tournaments started from the Live tab's New night menu). L3 (past nights and notes, no schema change), L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1 does not change the schema. Merging names does not either, so publishing S2 does not need a database push. The next structure step after S2 is admin edit and delete on the Games tab.
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). S1, merging names, and Games-tab edit and delete do not change the schema, so publishing them does not need a database push. Admin edit and delete on the Games tab is done. The next structure step is the platform admin page.
 
 ## How to work
 
@@ -86,7 +86,7 @@ Done. Schema: table `jackpot_payouts (club_id, player_id, cents, paid_at, paid_b
 ### S1. Me and Club admin
 Done. No schema change. The avatar menu opens **Me** (picture, record, trophies, password, theme, install, switch club, sign out, delete account). Club admin is no longer on that page.
 The **Club** tab has the rules, a collapsible Members list, the invite link (copy, share and QR) and the jackpot. Every member can read the member invite via `GET /api/clubs/current/invite` (scoped by `club_id`; admin-role invites are not included). Creating, revoking and resetting stay on the existing admin routes (`POST` and `DELETE /api/clubs/current/invites`, and the admin list `GET /api/clubs/current/invites`).
-Admins also see an **Admin** section on the Club tab: People (roles, emails, add a name), Setup (one-time history import and tournament CSV import, plus the night list that still lives there until the Games tab takes editing), Settings, and Danger (delete club, owner only, still confirmed by typing the name). Delete account stays on Me, behind Danger, and still asks for the password (or email) and a confirmation.
+Admins also see an **Admin** section on the Club tab: People (roles, emails, add a name), Setup (one-time history import and tournament CSV import), Settings, and Danger (delete club, owner only, still confirmed by typing the name). Delete account stays on Me, behind Danger, and still asks for the password (or email) and a confirmation. Recorded nights are edited and deleted from the Games tab.
 
 ### S2. Merge two names
 Done. No schema change, so no database push.
@@ -94,11 +94,21 @@ Done. No schema change, so no database push.
 - One transaction moves session results, ledger names (including who logged, edited or deleted an entry, and comments), tournament results, settle-up ticks, jackpot payouts, host, bank, started-by and ended-by, the balance choice when it names a player, the linked account, the profile picture, and usage rows. The removed name is deleted only after nothing still points at it.
 - Same night in a cash game: buy-ins and cash-outs are added. Same tournament: results are added and prizes written down as amounts, unless both names took a top-up or both had a free entry, in which case the merge is refused and nothing changes. Same settle-up night: the tick stays only when both names were already settled. Two linked accounts are refused.
 - The Club tab's Admin → People section (from S1) includes the merge form for an owner or admin: pick both names, preview what moves, then confirm. People starts collapsed. The preview says the merge cannot be undone.
-- API tests live in `merge-players.test.mjs` and need `DATABASE_URL` (CI's checks job provides Postgres). Smoke covers the preview and confirm on a phone. Last local run on top of S1: typecheck clean, API 135, dashboard 99, smoke 53/53.
+- API tests live in `merge-players.test.mjs` and need `DATABASE_URL` (CI's checks job provides Postgres). Smoke covers the preview and confirm on a phone.
 
-Next structure step: **admin edit and delete on the Games tab** (admins and hosts edit, reopen or delete a night from Games). Do not start the platform admin page or the Privacy change in that step.
+### S3. Admin edit and delete on the Games tab
+Done. No schema change, so no database push.
+- The night list is gone from Club admin Setup. Setup is the one-time history import and the tournament CSV import. The copy there points people to the Games tab.
+- `GET /api/clubs/current/game-tools` is for any signed-in member. It returns `{ admin, canReopen, reopenSessionNumber, nights }`. Night ids are included only for a club owner or admin. Session numbers match the Games cards (date, then id).
+- `PATCH /api/clubs/current/sessions/:id` is admin-only. An imported or hand-entered night can change its date, names, buy-ins and cash-outs. A live-ledger night returns 409 and tells the caller to reopen it. A night in another club, or one that is already gone, is 404. A signed-in member gets 403. Signed out is 401.
+- `DELETE /api/clubs/current/sessions/:id` is admin-only and returns 204. The UI asks first and says it cannot be undone. One transaction removes the night, its session results and its settle-up ticks. A live-ledger night also loses its ledger session, events and comments, so closing is not recorded again. If this night added money to the jackpot and deleting it would leave the pot short of what has already been paid out, the delete returns 409 and nothing is removed.
+- `GET`, `PATCH` and `DELETE /api/clubs/current/tournaments/:id` are admin-only. Edit reuses the record form, including the fields the card does not show. Delete removes the results and the tournament in one transaction. Another club's id is 404.
+- On the Games cards, an admin sees Edit and Delete. Reopen stays the existing host-or-admin flow (`POST /api/poker/live-session/reopen`) and is offered on the latest closed live night. Older live nights can be deleted, not reopened from the card.
+- API tests are in `game-edits.test.mjs` (permissions, club scoping, cash totals, jackpot and settle-up, tournaments). Smoke covers the phone Games tab: edit a cash night, the irreversible delete for a night and a tournament, the night list gone from Setup, reopen landing on Live, plus a member seeing no edit or delete and another club getting 404. Last local run: typecheck clean, API 138, dashboard 99, smoke 54/54.
+
+Next structure step: **the platform admin page** (an email allow-list, view-only usage across clubs) replacing `/admin`, and the Privacy note that usage is for the platform owner only. Do not start the Leaderboard label or Home changes in that step.
 
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
-- Not done: edit a recorded night from the Games tab (the reopen step covers the ledger side), jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin) is done. Merging two names is done (S2). Still ahead: Games-tab edit tools, the platform admin page replacing `/admin`, and the Privacy note that usage is for the platform owner only.
+- Not done: jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. S1 (Me vs Club admin), merging two names (S2) and Games-tab edit and delete (S3) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only. Still ahead: the platform admin page replacing `/admin`, and the Privacy note that usage is for the platform owner only.

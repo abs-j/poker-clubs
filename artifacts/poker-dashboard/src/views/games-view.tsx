@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { SessionCard, SessionsView } from "./sessions-view";
 import { TournamentCard, TournamentsView } from "./tournaments-view";
 import { EmptyPanel, PageIntro, formatCurrency } from "./shared";
+import { accountApi } from "@/lib/account-api";
+import { CashGameActions, TournamentGameActions, useRefreshGames } from "@/components/game-actions";
 import type { PerformanceScope, DashboardSession as Session, TournamentEvent } from "@/lib/earnings-analytics";
 
 export type GamesMode = "all" | "cash" | "tournaments";
@@ -18,6 +21,8 @@ type GamesViewProps = {
   selectedTournament: string | null;
   onSelectTournament: (id: string | null) => void;
   onOpenPlayer: (name: string) => void;
+  cashFooter?: (session: Session) => React.ReactNode;
+  tournamentFooter?: (event: TournamentEvent) => React.ReactNode;
 };
 
 function Tile({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -81,6 +86,7 @@ function AllGames(props: GamesViewProps) {
                   props.onSelectSession(props.selectedSession === item.session.sessionNumber ? null : item.session.sessionNumber)
                 }
                 onOpenPlayer={props.onOpenPlayer}
+                footer={props.cashFooter?.(item.session)}
               />
             </div>
           ) : (
@@ -92,6 +98,7 @@ function AllGames(props: GamesViewProps) {
                   props.onMode("tournaments");
                   props.onSelectTournament(item.event.id);
                 }}
+                footer={props.tournamentFooter?.(item.event)}
               />
             </div>
           ),
@@ -104,6 +111,26 @@ function AllGames(props: GamesViewProps) {
 /** Games: everything by default, or just cash games or just tournaments. */
 export function GamesView(props: GamesViewProps) {
   const [query, setQuery] = useState("");
+  const [notice, setNotice] = useState("");
+  const tools = useQuery({ queryKey: ["game-tools"], queryFn: () => accountApi.gameTools() });
+  const refresh = useRefreshGames();
+  const roster = useMemo(() => {
+    const names = new Set<string>();
+    for (const session of props.cashSessions) for (const player of session.players) names.add(player.player);
+    for (const event of props.tournaments) for (const result of event.results) names.add(result.player);
+    return [...names].sort((left, right) => left.localeCompare(right));
+  }, [props.cashSessions, props.tournaments]);
+  const cashFooter = (session: Session) => (
+    <CashGameActions
+      session={session}
+      tools={tools.data}
+      onChanged={refresh}
+      onReopened={() => setNotice("Night reopened. Change the entries on the Live tab, then close it again.")}
+    />
+  );
+  const tournamentFooter = (event: TournamentEvent) => (
+    <TournamentGameActions event={event} tools={tools.data} roster={roster} onChanged={refresh} />
+  );
   const needle = query.trim().toLocaleLowerCase();
   // Searching narrows every mode to the games that player was in.
   const cashSessions = useMemo(
@@ -120,7 +147,7 @@ export function GamesView(props: GamesViewProps) {
         : props.tournaments,
     [props.tournaments, needle],
   );
-  const view = { ...props, cashSessions, tournaments };
+  const view = { ...props, cashSessions, tournaments, cashFooter, tournamentFooter };
 
   const choices: Array<{ value: GamesMode; label: string; count: number }> = [
     { value: "all", label: "All", count: cashSessions.length + tournaments.length },
@@ -136,6 +163,7 @@ export function GamesView(props: GamesViewProps) {
         count={`${cashSessions.length + tournaments.length} in view`}
         compactOnMobile
       />
+      {notice && <p data-testid="status-games-notice" className="rounded-xl border border-border bg-card px-4 py-3 text-sm">{notice}</p>}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div role="group" aria-label="Game type" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-secondary/55 p-1">
           {choices.map((choice) => (
@@ -177,6 +205,7 @@ export function GamesView(props: GamesViewProps) {
           onSelectSession={props.onSelectSession}
           onOpenPlayer={props.onOpenPlayer}
           hideIntro
+          footer={cashFooter}
         />
       ) : (
         <TournamentsView
@@ -185,6 +214,7 @@ export function GamesView(props: GamesViewProps) {
           selectedId={props.selectedTournament}
           onSelect={props.onSelectTournament}
           onOpenPlayer={props.onOpenPlayer}
+          footer={tournamentFooter}
         />
       )}
     </div>

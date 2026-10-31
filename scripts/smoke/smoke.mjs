@@ -254,8 +254,17 @@ console.log("\nAccounts and clubs");
     const nights = await (await api("/api/clubs/current/sessions", { jar: owner })).json();
     const liveNight = nights.sessions.find((n) => n.source === "live");
     expect(liveNight, "no live night recorded");
+    expect((await api(`/api/clubs/current/sessions/${liveNight.id}`, { jar: guest, method: "DELETE" })).status === 403, "a member deleted a night");
+    expect((await api(`/api/clubs/current/sessions/${liveNight.id}`, { jar: rival, method: "DELETE" })).status === 404, "another club deleted the night");
+    const beforeDelete = await (await api("/api/poker/dashboard", { jar: owner })).json();
     const removal = await api(`/api/clubs/current/sessions/${liveNight.id}`, { jar: owner, method: "DELETE" });
-    expect(removal.status === 409, `live nights are removed from the ledger, got ${removal.status}`);
+    expect(removal.status === 204, `admin delete of a live night ${removal.status} ${await removal.text()}`);
+    const afterDelete = await (await api("/api/poker/dashboard", { jar: owner })).json();
+    expect(afterDelete.sessions.length === beforeDelete.sessions.length - 1, "deleting the live night left it on the Games list");
+    expect(!afterDelete.leaderboard.some((p) => p.name === "Smoke Guest"), "the deleted night's guest stayed on the leaderboard");
+    const again = await (await api("/api/poker/dashboard", { jar: owner })).json();
+    expect(again.sessions.length === afterDelete.sessions.length, "the deleted live night was recorded again");
+    expect((await api(`/api/clubs/current/sessions/${liveNight.id}`, { jar: owner, method: "DELETE" })).status === 404, "deleting the night twice should be 404");
   });
 
   await check("a ledger that does not balance needs an admin's choice before it closes", async () => {
@@ -821,7 +830,7 @@ await check("Games has one heading and a player search that narrows the list", a
 
 await check("a tournament opens its detail with results", async () => {
   if (dashboard.tournaments.length === 0) return "no tournaments to open";
-  await page.evaluate(() => document.querySelector('[data-testid^="card-tournament-club-"]')?.click());
+  await page.evaluate(() => document.querySelector('[data-testid^="card-tournament-club-"] button')?.click());
   await visible('[data-testid="section-tournament-detail"]');
   const rows = await page.evaluate(() => document.querySelectorAll('[data-testid="list-tournament-results"] li').length);
   expect(rows > 0, "no result rows");
@@ -1314,6 +1323,163 @@ await check("an admin can preview and merge two names; a member cannot, and anot
   expect(profit(after, "Ann") === 0 && profit(after, "Ann Typo") === null && profit(after, "Nia Merge") === 0, `profits after merge ${JSON.stringify(after.leaderboard.map((player) => [player.name, player.profitTotal]))}`);
   const rivalBoard = await (await api("/api/poker/dashboard", { jar: rival })).json();
   expect(rivalBoard.leaderboard.length === 0, "the other club should still be empty");
+});
+
+await check("an admin edits and deletes games from the Games tab; a member cannot", async () => {
+  const origin = { origin: BASE };
+  const secret = "smoke-test-pass-9";
+  const stamp = Date.now();
+  const owner = cookieJar();
+  const member = cookieJar();
+  const rival = cookieJar();
+  const ownerEmail = `games-${stamp}@example.com`;
+  const memberEmail = `games-member-${stamp}@example.com`;
+  expect((await api("/api/identity/sign-up/email", { jar: owner, method: "POST", headers: origin, body: { name: "Ada Games", email: ownerEmail, password: secret } })).ok, "owner sign-up failed");
+  expect((await api("/api/clubs", { jar: owner, method: "POST", body: { name: `Games Club ${stamp}`, playerName: "Ada Games" } })).status === 201, "club not created");
+  expect((await api("/api/identity/sign-up/email", { jar: member, method: "POST", headers: origin, body: { name: "Bo Games", email: memberEmail, password: secret } })).ok, "member sign-up failed");
+  const invite = await api("/api/clubs/current/invites", { jar: owner, method: "POST", body: {} });
+  expect(invite.status === 201, `invite ${invite.status}`);
+  expect((await api(`/api/invites/${(await invite.json()).invite.code}/accept`, { jar: member, method: "POST", body: { name: "Bo Games" } })).ok, "member could not join");
+  expect((await api("/api/identity/sign-up/email", { jar: rival, method: "POST", headers: origin, body: { name: "Rival Games", email: `games-rival-${stamp}@example.com`, password: secret } })).ok, "rival sign-up failed");
+  expect((await api("/api/clubs", { jar: rival, method: "POST", body: { name: `Rival Games ${stamp}`, playerName: "Rival Games" } })).status === 201, "rival club not created");
+
+  const history = ["Date,Player,Buy-in,Cash-out", "2026-04-04,Ada Games,20,30", ",Bo Games,10,0"].join("\n");
+  const imported = await api("/api/clubs/current/import", { jar: owner, method: "POST", body: { text: history } });
+  expect(imported.status === 201, `import ${imported.status} ${await imported.text()}`);
+  const tournament = await api("/api/clubs/current/tournaments", { jar: owner, method: "POST", body: {
+    date: "2026-04-14", title: "Friday Freezeout", buyIn: 10,
+    players: [{ name: "Ada Games", finishPlace: 1, entries: 1, knockouts: 0 }, { name: "Bo Games", finishPlace: 2, entries: 1, knockouts: 0 }],
+  } });
+  const tournamentText = await tournament.text();
+  expect(tournament.status === 201, `tournament ${tournament.status} ${tournamentText}`);
+  const tournamentId = JSON.parse(tournamentText).id;
+  const listed = await (await api("/api/clubs/current/sessions", { jar: owner })).json();
+  const night = listed.sessions.find((row) => row.date === "2026-04-04");
+  expect(night, "imported night missing");
+  const editedBody = { date: "2026-04-04", players: [{ name: "Ada Games", buyIn: "25", cashOut: "30" }, { name: "Bo Games", buyIn: "10", cashOut: "0" }] };
+  expect((await api(`/api/clubs/current/sessions/${night.id}`, { method: "PATCH", body: editedBody })).status === 401, "signed-out edit should be 401");
+  expect((await api(`/api/clubs/current/sessions/${night.id}`, { jar: member, method: "PATCH", body: editedBody })).status === 403, "a member edited a night");
+  expect((await api(`/api/clubs/current/sessions/${night.id}`, { jar: member, method: "DELETE" })).status === 403, "a member deleted a night");
+  expect((await api(`/api/clubs/current/sessions/${night.id}`, { jar: rival, method: "PATCH", body: editedBody })).status === 404, "another club edited the night");
+  expect((await api(`/api/clubs/current/sessions/${night.id}`, { jar: rival, method: "DELETE" })).status === 404, "another club deleted the night");
+  expect((await api(`/api/clubs/current/tournaments/${tournamentId}`, { jar: member, method: "DELETE" })).status === 403, "a member deleted a tournament");
+  expect((await api(`/api/clubs/current/tournaments/${tournamentId}`, { jar: rival, method: "DELETE" })).status === 404, "another club deleted the tournament");
+
+  const context = await browser.createBrowserContext();
+  const phone = await context.newPage();
+  const memberContext = await browser.createBrowserContext();
+  const memberPhone = await memberContext.newPage();
+  try {
+    const wire = (page) => {
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      page.on("response", (response) => { if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`); });
+    };
+    wire(phone);
+    wire(memberPhone);
+    await phone.setViewport(PHONE);
+    await memberPhone.setViewport(PHONE);
+    const pressOn = (page) => async (selector) => {
+      await page.waitForSelector(selector, { timeout: 15000 });
+      await page.evaluate((sel) => {
+        const node = document.querySelector(sel);
+        node.scrollIntoView({ block: "center" });
+        const bar = document.querySelector('[data-testid="nav-bottom-tabs"]');
+        const rect = node.getBoundingClientRect();
+        const limit = bar ? bar.getBoundingClientRect().top - 16 : window.innerHeight - 16;
+        if (rect.bottom > limit) window.scrollBy(0, rect.bottom - limit);
+      }, selector);
+      try {
+        await page.tap(selector);
+      } catch {
+        await page.$eval(selector, (node) => node.click());
+      }
+    };
+    const signIn = async (page, email) => {
+      const press = pressOn(page);
+      await page.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+      await page.waitForSelector('[data-testid="input-email"]', { timeout: 15000 });
+      await page.type('[data-testid="input-email"]', email);
+      await page.type('[data-testid="input-password"]', secret);
+      await press('[data-testid="button-account-submit"]');
+      await page.waitForSelector('[data-testid="section-home-overview"]', { timeout: 15000 });
+      await press('[data-testid="tab-sessions"]');
+      await page.waitForSelector('[data-testid="card-session-1"]', { timeout: 15000 });
+    };
+
+    await signIn(memberPhone, memberEmail);
+    await sleep(600);
+    const memberButtons = await memberPhone.$$('[data-testid="button-edit-night-1"], [data-testid="button-delete-night-1"], [data-testid^="button-delete-tournament-"]');
+    expect(memberButtons.length === 0, "a member saw edit or delete on Games");
+    await memberPhone.screenshot({ path: `${OUT}/games-member.png`, fullPage: true });
+
+    const press = pressOn(phone);
+    await signIn(phone, ownerEmail);
+    await phone.waitForSelector('[data-testid="button-edit-night-1"]', { timeout: 15000 });
+    await press('[data-testid="button-edit-night-1"]');
+    await phone.waitForSelector('[data-testid="form-edit-night-1"]', { timeout: 15000 });
+    const buyInSelector = await phone.evaluate(() => {
+      const names = [...document.querySelectorAll('[data-testid^="input-edit-night-name-1-"]')];
+      const match = names.find((node) => node.value === "Ada Games");
+      return match ? match.getAttribute("data-testid").replace("input-edit-night-name-", "input-edit-night-buyin-") : "";
+    });
+    expect(buyInSelector.startsWith("input-edit-night-buyin-1-"), `Ada's buy-in field was "${buyInSelector}"`);
+    await phone.$eval(`[data-testid="${buyInSelector}"]`, (node, next) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(node, next);
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+    }, "25");
+    await press('[data-testid="button-save-night-1"]');
+    await phone.waitForFunction(() => /35\.00/.test(document.querySelector('[data-testid="card-session-1"]')?.innerText ?? ""), { timeout: 15000 });
+    const saved = await (await api("/api/poker/dashboard", { jar: owner })).json();
+    const savedNight = saved.sessions.find((row) => row.date === "2026-04-04");
+    expect(savedNight && savedNight.totalBuyIn === 35, `edited pot ${savedNight?.totalBuyIn}`);
+    await phone.screenshot({ path: `${OUT}/games-edited.png`, fullPage: true });
+
+    await press('[data-testid="button-delete-night-1"]');
+    await phone.waitForSelector('[data-testid="text-delete-night-irreversible-1"]', { timeout: 15000 });
+    const nightWarning = await phone.$eval('[data-testid="text-delete-night-irreversible-1"]', (node) => node.innerText);
+    expect(/cannot be undone/i.test(nightWarning), `night delete should say it cannot be undone, saw "${nightWarning}"`);
+    await phone.screenshot({ path: `${OUT}/games-delete-night.png`, fullPage: true });
+    await press('[data-testid="button-confirm-delete-night-1"]');
+    await phone.waitForFunction(() => !document.querySelector('[data-testid="card-session-1"]'), { timeout: 15000 });
+
+    await press(`[data-testid="button-delete-tournament-${tournamentId}"]`);
+    await phone.waitForSelector(`[data-testid="text-delete-tournament-irreversible-${tournamentId}"]`, { timeout: 15000 });
+    const tournamentWarning = await phone.$eval(`[data-testid="text-delete-tournament-irreversible-${tournamentId}"]`, (node) => node.innerText);
+    expect(/cannot be undone/i.test(tournamentWarning), `tournament delete should say it cannot be undone, saw "${tournamentWarning}"`);
+    await phone.screenshot({ path: `${OUT}/games-delete-tournament.png`, fullPage: true });
+    await press(`[data-testid="button-confirm-delete-tournament-${tournamentId}"]`);
+    await phone.waitForFunction((id) => !document.querySelector(`[data-testid="card-tournament-club-${id}"]`), { timeout: 15000 }, tournamentId);
+
+    await press('[data-testid="tab-guidelines"]');
+    await phone.waitForSelector('[data-testid="section-admin-setup"]', { timeout: 15000 });
+    const nightList = await phone.$('[data-testid="section-night-list"]');
+    expect(nightList === null, "the night list should be gone from Club admin Setup");
+    await phone.waitForSelector('[data-testid="section-import"]', { timeout: 15000 });
+
+    expect((await api("/api/poker/live-session/start", { jar: owner, method: "POST" })).ok, "could not start a night to reopen");
+    expect((await api("/api/poker/live-activity", { jar: owner, method: "POST", body: { action: "buy_in", amount: 10 } })).ok, "buy-in failed");
+    expect((await api("/api/poker/live-activity", { jar: owner, method: "POST", body: { action: "cash_out", amount: 10 } })).ok, "cash-out failed");
+    expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close the night to reopen");
+    await phone.reload({ waitUntil: "networkidle2" });
+    await press('[data-testid="tab-sessions"]');
+    await press('[data-testid="button-reopen-night-1"]');
+    await phone.waitForSelector('[data-testid="status-games-notice"]', { timeout: 15000 });
+    const notice = await phone.$eval('[data-testid="status-games-notice"]', (node) => node.innerText);
+    expect(/Night reopened/.test(notice), `reopen notice was "${notice}"`);
+    await press('[data-testid="tab-live"]');
+    await phone.waitForSelector('[data-testid="button-end-live-session"]', { timeout: 15000 });
+    const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(sideways <= 1, `Games scrolls sideways on a phone (${sideways}px)`);
+    await phone.screenshot({ path: `${OUT}/games-reopened.png`, fullPage: true });
+  } catch (error) {
+    await phone.screenshot({ path: `${OUT}/games-edit-failed.png`, fullPage: true }).catch(() => undefined);
+    const where = await phone.evaluate(() => document.body.innerText.slice(0, 600)).catch(() => "");
+    throw new Error(`${error.message}\n${where}`);
+  } finally {
+    await context.close();
+    await memberContext.close();
+  }
 });
 
 await check("terms and privacy are readable without signing in, and sign-up asks for agreement", async () => {

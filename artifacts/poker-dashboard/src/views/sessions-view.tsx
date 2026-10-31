@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { type PerformanceScope, type DashboardSession as Session } from "@/lib/earnings-analytics";
 import { ArrowDown, ChevronDown, Trophy } from "lucide-react";
 import { plural } from "@/lib/utils";
@@ -13,6 +13,8 @@ type SessionsViewProps = {
   onOpenPlayer: (name: string) => void;
   /** Games supplies its own page heading. */
   hideIntro?: boolean;
+  /** Edit, reopen and delete, rendered under each card. */
+  footer?: (session: Session) => ReactNode;
 };
 
 function SummaryTile({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -25,7 +27,7 @@ function SummaryTile({ label, value, detail }: { label: string; value: string; d
   );
 }
 
-export function SessionsView({ sessions, scope, selectedSession, onSelectSession, onOpenPlayer, hideIntro = false }: SessionsViewProps) {
+export function SessionsView({ sessions, scope, selectedSession, onSelectSession, onOpenPlayer, hideIntro = false, footer }: SessionsViewProps) {
   const sorted = useMemo(
     () => sessions.slice().sort((a, b) => b.date.localeCompare(a.date) || b.sessionNumber - a.sessionNumber),
     [sessions],
@@ -78,6 +80,7 @@ export function SessionsView({ sessions, scope, selectedSession, onSelectSession
                 expanded={selectedSession === session.sessionNumber}
                 onToggle={() => onSelectSession(selectedSession === session.sessionNumber ? null : session.sessionNumber)}
                 onOpenPlayer={onOpenPlayer}
+                footer={footer?.(session)}
               />
             </div>
           ))}
@@ -89,7 +92,7 @@ export function SessionsView({ sessions, scope, selectedSession, onSelectSession
   );
 }
 
-export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { session: Session; expanded: boolean; onToggle: () => void; onOpenPlayer: (name: string) => void }) {
+export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer }: { session: Session; expanded: boolean; onToggle: () => void; onOpenPlayer: (name: string) => void; footer?: ReactNode }) {
   const isTournament = session.eventType === "tournament";
   return <article data-testid={`card-session-${session.sessionNumber}`} className={`group soft-shadow overflow-hidden rounded-2xl border bg-card transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${expanded ? "border-primary/60" : "border-border hover:border-primary/35"}`}>
     <button onClick={onToggle} aria-expanded={expanded} data-testid={`button-expand-session-${session.sessionNumber}`} className="w-full text-left">
@@ -144,5 +147,6 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer }: { ses
         {!isTournament && <SettleForSession sessionNumber={session.sessionNumber} />}
       </div>
     )}
+    {footer}
   </article>;
 }

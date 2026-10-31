@@ -78,6 +78,35 @@ export type NightRow = {
 };
 
 export type TournamentRow = { id: number; date: string; title: string; players: number; entries: number };
+export type TournamentDraft = {
+  id: string;
+  date: string;
+  title: string;
+  venue: string | null;
+  notes: string | null;
+  buyIn: number;
+  topUp: number;
+  bounty: number;
+  startingStack: number;
+  winnerKeepsBounty: boolean;
+  shares: { first: number; second: number; third: number };
+  players: Array<{
+    name: string;
+    finishPlace: number | null;
+    entries: number;
+    topUp: boolean;
+    freeEntry: boolean;
+    knockouts: number;
+    payout: number | null;
+  }>;
+};
+export type GameNightRef = { id: number; sessionNumber: number; date: string; source: "live" | "import" | "manual" };
+export type GameTools = {
+  admin: boolean;
+  canReopen: boolean;
+  reopenSessionNumber: number | null;
+  nights: GameNightRef[];
+};
 export type TournamentFormInput = {
   date: string;
   title: string;
@@ -277,6 +306,10 @@ export const accountApi = {
     ),
   undoImport: (batchId: string) => request<{ removed: number }>(`/api/clubs/current/import/${batchId}`, { method: "DELETE" }),
   nights: () => request<{ sessions: NightRow[] }>("/api/clubs/current/sessions", { cache: "no-store" }),
+  /** Edit and delete targets for Games cards, and whether this person can reopen the latest night. */
+  gameTools: () => request<GameTools>("/api/clubs/current/game-tools", { cache: "no-store" }),
+  updateNight: (id: number, input: { date: string; players: Array<{ name: string; buyIn: string; cashOut: string }> }) =>
+    request<{ id: number; date: string; players: number }>(`/api/clubs/current/sessions/${id}`, send("PATCH", input)),
   deleteNight: (id: number) => request<void>(`/api/clubs/current/sessions/${id}`, { method: "DELETE" }),
   tournaments: () => request<{ tournaments: TournamentRow[] }>("/api/clubs/current/tournaments", { cache: "no-store" }),
   recordTournament: (input: TournamentFormInput) =>
@@ -293,6 +326,12 @@ export const accountApi = {
     request<LiveActivitySnapshot>("/api/poker/live-session/notes", send("POST", { players })),
   readNotesImage: (image: { data: string; mediaType: string }) =>
     request<{ text: string }>("/api/clubs/current/sessions/notes-image", send("POST", image)),
+  getTournament: (id: number) => request<TournamentDraft>(`/api/clubs/current/tournaments/${id}`, { cache: "no-store" }),
+  updateTournament: (id: number, input: object) =>
+    request<{ id: number; players: number; totalCollected: number; mainPrizePool: number; dataCheck: string }>(
+      `/api/clubs/current/tournaments/${id}`,
+      send("PATCH", input),
+    ),
   deleteTournament: (id: number) => request<void>(`/api/clubs/current/tournaments/${id}`, { method: "DELETE" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<unknown>("/api/identity/change-password", send("POST", { currentPassword, newPassword, revokeOtherSessions: true })),

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { ArrowLeft, Crown, Swords, Trophy } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { usePoints } from "@/components/points-context";
@@ -22,6 +22,7 @@ type TournamentsViewProps = {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onOpenPlayer: (name: string) => void;
+  footer?: (event: TournamentEvent) => ReactNode;
 };
 
 function Tile({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -88,7 +89,7 @@ function ResultsList({ event, viewer, onOpenPlayer }: { event: TournamentEvent; 
   );
 }
 
-function TournamentDetail({ event, viewer, onBack, onOpenPlayer }: { event: TournamentEvent; viewer: string; onBack: () => void; onOpenPlayer: (name: string) => void }) {
+function TournamentDetail({ event, viewer, onBack, onOpenPlayer, footer }: { event: TournamentEvent; viewer: string; onBack: () => void; onOpenPlayer: (name: string) => void; footer?: ReactNode }) {
   const payouts = useMemo(() => payoutRows(event), [event]);
   const hunters = useMemo(() => knockoutLeaders(event), [event]);
   const fullOrder = hasFullOrder(event);
@@ -110,6 +111,7 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer }: { event: Tour
             <p className="mt-2 text-xs text-muted-foreground">{rulesSummary(event)}</p>
           </div>
         </div>
+        {footer && <div className="-mx-5 mt-4 sm:-mx-6">{footer}</div>}
         {!dataCheckPasses(event) && (
           <p role="status" className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
             The sheet flagged this event: {event.dataCheck}. Some figures may not add up yet.
@@ -183,14 +185,17 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer }: { event: Tour
   );
 }
 
-export function TournamentCard({ event, viewer, onOpen }: { event: TournamentEvent; viewer: string; onOpen: () => void }) {
+export function TournamentCard({ event, viewer, onOpen, footer }: { event: TournamentEvent; viewer: string; onOpen: () => void; footer?: ReactNode }) {
   const mine = event.results.find((result) => nameKey(result.player) === nameKey(viewer));
   return (
+    <article
+      data-testid={`card-tournament-${slug(event.id)}`}
+      className="group soft-shadow w-full overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-200 hover:-translate-y-1 hover:border-primary/35 hover:shadow-xl"
+    >
     <button
       type="button"
       onClick={onOpen}
-      data-testid={`card-tournament-${slug(event.id)}`}
-      className="group soft-shadow w-full overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-200 hover:-translate-y-1 hover:border-primary/35 hover:shadow-xl"
+      className="w-full text-left"
     >
       <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
         <div className="min-w-0">
@@ -232,16 +237,18 @@ export function TournamentCard({ event, viewer, onOpen }: { event: TournamentEve
         )}
       </div>
     </button>
+    {footer}
+    </article>
   );
 }
 
-export function TournamentsView({ tournaments, viewer, selectedId, onSelect, onOpenPlayer }: TournamentsViewProps) {
+export function TournamentsView({ tournaments, viewer, selectedId, onSelect, onOpenPlayer, footer }: TournamentsViewProps) {
   const totals = useMemo(() => tournamentTotals(tournaments), [tournaments]);
   const board = useMemo(() => tournamentLeaderboard(tournaments).slice(0, 10), [tournaments]);
   const selected = selectedId ? tournaments.find((event) => event.id === selectedId) ?? null : null;
 
   if (selected) {
-    return <TournamentDetail event={selected} viewer={viewer} onBack={() => onSelect(null)} onOpenPlayer={onOpenPlayer} />;
+    return <TournamentDetail event={selected} viewer={viewer} onBack={() => onSelect(null)} onOpenPlayer={onOpenPlayer} footer={footer?.(selected)} />;
   }
   if (tournaments.length === 0) {
     return <EmptyPanel title="No tournaments in this selection" description="Try another month or quarter, or choose All time." />;
@@ -258,7 +265,7 @@ export function TournamentsView({ tournaments, viewer, selectedId, onSelect, onO
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {tournaments.map((event) => (
-          <TournamentCard key={event.id} event={event} viewer={viewer} onOpen={() => onSelect(event.id)} />
+          <TournamentCard key={event.id} event={event} viewer={viewer} onOpen={() => onSelect(event.id)} footer={footer?.(event)} />
         ))}
       </div>
 
