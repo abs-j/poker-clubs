@@ -7,7 +7,7 @@ import { APP_NAME } from "@/lib/account-api";
 // relying on it as legal advice: it is a starting point, not a substitute for a lawyer.
 
 const CONTACT = (import.meta.env.VITE_CONTACT_EMAIL as string | undefined) || "";
-const UPDATED = "19 October 2026";
+const UPDATED = "31 October 2026";
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -51,7 +51,7 @@ export function TermsPage() {
       </Section>
       <Section title="Accounts and clubs">
         <p>Keep your password to yourself and tell us if you think someone else has your account. One person per account.</p>
-        <p>Each club is run by its owner and admins. They can add or remove members, record, import and delete nights, and delete the club and everything in it. Club owners and admins can see the email addresses of their club&apos;s members and how members use the site.</p>
+        <p>Each club is run by its owner and admins. They can add or remove members, record, import and delete nights, and delete the club and everything in it. Club owners and admins can see the email addresses of their club&apos;s members. Usage of the site is visible only to the platform owner.</p>
       </Section>
       <Section title="What you enter">
         <p>You keep ownership of what you put in, such as names, results and pictures. You allow us to store it and show it to the other members of your club so the site works. Only enter things you have the right to share, and don&apos;t put other people&apos;s private details in.</p>
@@ -75,11 +75,11 @@ export function PrivacyPage() {
       <Section title="What we collect">
         <p><strong className="text-foreground">Your account:</strong> your name, email address and a scrambled (hashed) version of your password. If you sign in with Google, we get your name and email from Google. We also keep sign-in records (when, device type and IP address) to keep accounts secure.</p>
         <p><strong className="text-foreground">Your club&apos;s records:</strong> the name you play under, buy-ins, cash-outs, results, tournaments, and an optional profile picture.</p>
-        <p><strong className="text-foreground">How the site is used:</strong> which sections you open and for how long, so club admins can see what is useful.</p>
+        <p><strong className="text-foreground">How the site is used:</strong> which sections you open and for how long, and when you sign in. Usage is visible only to the platform owner.</p>
         <p><strong className="text-foreground">Invites:</strong> if an admin emails someone an invite, we use that address to send it and keep it with the invite.</p>
       </Section>
       <Section title="Who can see it">
-        <p>Members of your club see the names and results in that club. Club owners and admins also see members&apos; email addresses and usage. People in other clubs see nothing of yours. We don&apos;t sell your data or show ads.</p>
+        <p>Members of your club see the names and results in that club. Club owners and admins also see members&apos; email addresses. Usage is visible only to the platform owner, the person who runs this site. People in other clubs see nothing of yours. We don&apos;t sell your data or show ads.</p>
       </Section>
       <Section title="Who handles it for us">
         <p>Email is sent through Resend. If a club admin uploads a screenshot of results, the picture is sent to Anthropic (the maker of Claude) to read the text, and we don&apos;t keep the picture. The site and its database are hosted on Replit. If you choose Google sign-in, Google handles that sign-in. These providers only get what they need to do those jobs.</p>

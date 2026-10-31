@@ -15,26 +15,6 @@ tags:
   - name: admin
     description: Protected administration operations
 paths:
-  /admin/visits:
-    get:
-      operationId: getAdminVisits
-      tags: [admin]
-      summary: Get member sign-in and usage summaries
-      security:
-        - AdminSessionCookie: []
-      responses:
-        "200":
-          description: Sign-ins and aggregated dashboard usage by member and section
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminVisitsResponse"
-        "401":
-          description: Admin authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /poker/usage:
     post:
       operationId: recordMemberUsage
@@ -1575,61 +1555,6 @@ components:
         - months
         - quarters
         - sessions
-    AdminVisitsResponse:
-      type: object
-      properties:
-        totalVisits:
-          type: number
-        uniqueMembers:
-          type: number
-        memberCounts:
-          type: array
-          items:
-            $ref: "#/components/schemas/AdminMemberVisitCount"
-        visits:
-          type: array
-          items:
-            $ref: "#/components/schemas/AdminVisit"
-        usage:
-          type: array
-          items:
-            $ref: "#/components/schemas/AdminMemberUsageSection"
-      required: [totalVisits, uniqueMembers, memberCounts, visits, usage]
-    AdminMemberVisitCount:
-      type: object
-      properties:
-        memberName:
-          type: string
-        visits:
-          type: number
-      required: [memberName, visits]
-    AdminVisit:
-      type: object
-      properties:
-        id:
-          type: number
-        memberName:
-          type: string
-        visitedAt:
-          type: string
-          format: date-time
-      required: [id, memberName, visitedAt]
-    AdminMemberUsageSection:
-      type: object
-      properties:
-        memberName:
-          type: string
-        section:
-          type: string
-          enum: [overview, sessions, live, months, head-to-head, players, guidelines, account]
-        pageViews:
-          type: number
-        activeSeconds:
-          type: number
-        lastActiveAt:
-          type: string
-          format: date-time
-      required: [memberName, section, pageViews, activeSeconds, lastActiveAt]
     MemberUsageInput:
       type: object
       properties:

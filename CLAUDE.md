@@ -26,6 +26,10 @@ history exists only on the local branch `full-history` (it contains Monash scree
 Node 24 (`fnm use 24`), pnpm, Postgres. Copy `.env.local.example` to `.env.local`, then `./scripts/dev-local.sh`
 (API :8080, site :5173). With no mail key emails go to the server log and `GET /api/dev/emails`.
 
+`PLATFORM_ADMIN_EMAILS` is a comma-separated list of account emails that may open the view-only platform usage page
+(`/admin`: sign-ins, time on site and sections opened, across every club). Unset or empty means nobody. Set it in
+Replit Secrets; the page does not change club data. Club admins do not see usage.
+
 ## Verify changes
 
 ```sh
@@ -39,7 +43,7 @@ End-to-end: `scripts/smoke/smoke.mjs` (run it from a folder with `puppeteer-core
 site running against an empty or throwaway database; it creates its own accounts and clubs:
 `SMOKE_BASE_URL=http://localhost:5173 CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs`.
 CI (`.github/workflows/ci.yml`) does this on every push.
-Last local run (31 Oct 2026): 115 API tests, 96 dashboard tests, typecheck clean, smoke 44/44.
+Last local run (31 Oct 2026): 141 API tests, 99 dashboard tests, typecheck clean, smoke 55/55.
 
 ## Things that bit before
 

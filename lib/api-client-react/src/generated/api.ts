@@ -25,7 +25,6 @@ import type {
   AdminLiveLedgerResetInput,
   AdminLiveLedgerSessionDeleteInput,
   AdminLiveLedgerSessionDeletion,
-  AdminVisitsResponse,
   Error,
   HealthStatus,
   LiveActivityCommentInput,
@@ -65,83 +64,6 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
-
-export const getGetAdminVisitsUrl = () => {
-
-
-
-
-  return `/api/admin/visits`
-}
-
-/**
- * @summary Get member sign-in and usage summaries
- */
-export const getAdminVisits = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminVisitsResponse> => {
-
-  return customFetch<AdminVisitsResponse>(getGetAdminVisitsUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetAdminVisitsQueryKey = () => {
-    return [
-    `/api/admin/visits`
-    ] as const;
-    }
-
-
-export const getGetAdminVisitsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminVisits>>, TError = ErrorType<Error>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminVisits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetAdminVisitsQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminVisits>>> = ({ signal }) => getAdminVisits({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminVisits>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetAdminVisitsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminVisits>>>
-export type GetAdminVisitsQueryError = ErrorType<Error>
-
-
-/**
- * @summary Get member sign-in and usage summaries
- */
-
-export function useGetAdminVisits<TData = Awaited<ReturnType<typeof getAdminVisits>>, TError = ErrorType<Error>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminVisits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetAdminVisitsQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
 
 export const getRecordMemberUsageUrl = () => {
 

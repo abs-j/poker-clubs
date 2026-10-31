@@ -75,7 +75,8 @@ await check("health endpoint answers", async () => {
 
 await check("results and admin tools need a sign-in, and the old sign-in routes are gone", async () => {
   expect((await api("/api/poker/dashboard")).status === 401, "dashboard should need a sign-in");
-  expect((await api("/api/admin/visits")).status === 401, "admin visits should need a sign-in");
+  expect((await api("/api/admin/visits")).status === 404, "the old usage route should be gone");
+  expect((await api("/api/platform/usage")).status === 401, "platform usage should need a sign-in");
   expect((await api("/api/auth/member/login", { method: "POST", body: { code: "x" } })).status === 404, "access-code sign-in should be gone");
   expect((await api("/api/poker/public-summary")).status === 404, "the public snapshot should be gone");
 });
@@ -153,10 +154,11 @@ console.log("\nAccounts and clubs");
     expect(memberInvite.status === 401, `expected 401, got ${memberInvite.status}`);
     const memberList = await api("/api/clubs/current/invites", { jar: guest });
     expect(memberList.status === 401, `the admin invite list should stay admin-only, got ${memberList.status}`);
-    const memberVisits = await api("/api/admin/visits", { jar: guest });
-    expect(memberVisits.status === 401, `expected 401, got ${memberVisits.status}`);
-    const ownerVisits = await api("/api/admin/visits", { jar: owner });
-    expect(ownerVisits.ok, `owner admin visits ${ownerVisits.status}`);
+    const memberUsage = await api("/api/platform/usage", { jar: guest });
+    expect(memberUsage.status === 403, `a member should not see usage, got ${memberUsage.status}`);
+    const ownerUsage = await api("/api/platform/usage", { jar: owner });
+    expect(ownerUsage.status === 403, `a club owner should not see usage, got ${ownerUsage.status}`);
+    expect((await api("/api/admin/visits", { jar: owner })).status === 404, "the old usage route should be gone");
   });
 
   await check("any member can read the invite link, and only an admin can reset it", async () => {
@@ -984,31 +986,104 @@ await check("a member sees Members and the invite, and cannot reset it or see Ad
   await context.close();
 });
 
-await check("the admin page opens for the club owner and keeps the danger zone closed", async () => {
-  const adminPage = await newPage({ width: 1280, height: 900 });
-  await adminPage.goto(`${BASE}/admin`, { waitUntil: "networkidle2" });
-  await adminPage.evaluate(
-    async ({ email, password }) => {
-      await fetch("/api/identity/sign-in/email", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-    },
-    { email: viewerEmail, password: viewerPassword },
-  );
-  await adminPage.goto(`${BASE}/admin`, { waitUntil: "networkidle2" });
-  await adminPage.waitForSelector('[data-testid="section-admin-health"]', { timeout: 15000 });
-  const state = await adminPage.evaluate(() => ({
-    members: !!document.querySelector('[data-testid="section-admin-members"]'),
-    audit: !!document.querySelector('[data-testid="section-admin-audit"]'),
-    dangerOpen: document.querySelector('[data-testid="section-admin-danger"]')?.hasAttribute("open"),
-    h1: document.querySelectorAll("h1").length,
+await check("a club owner does not see site usage, and the old admin page is gone", async () => {
+  const context = await browser.createBrowserContext();
+  const adminPage = await context.newPage();
+  await adminPage.setViewport({ width: 1280, height: 900 });
+  adminPage.on("pageerror", (error) => pageErrors.push(error.message));
+  try {
+    await adminPage.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+    await adminPage.waitForSelector('[data-testid="input-email"]');
+    await adminPage.type('[data-testid="input-email"]', viewerEmail);
+    await adminPage.type('[data-testid="input-password"]', viewerPassword);
+    await adminPage.click('[data-testid="button-account-submit"]');
+    await adminPage.waitForSelector('[data-testid="button-open-account"]', { timeout: 15000 });
+    const link = await adminPage.$('[data-testid="link-platform-usage"]');
+    expect(!link, "a club owner should not see the usage link");
+    await adminPage.goto(`${BASE}/admin`, { waitUntil: "networkidle2" });
+    await adminPage.waitForSelector("h1", { timeout: 15000 });
+    const state = await adminPage.evaluate(() => ({
+      text: document.body.innerText,
+      usage: !!document.querySelector('[data-testid="section-platform-usage"]'),
+      health: !!document.querySelector('[data-testid="section-admin-health"]'),
+      danger: !!document.querySelector('[data-testid="section-admin-danger"]'),
+    }));
+    expect(/404/.test(state.text), "a club owner should get a not-found page");
+    expect(!state.usage && !state.health && !state.danger, "the old admin page is still there");
+    await adminPage.screenshot({ path: `${OUT}/admin-denied.png` });
+  } finally {
+    await context.close();
+  }
+});
+
+await check("the platform owner sees usage across clubs and cannot change them from the page", async () => {
+  const platformEmail = (process.env.PLATFORM_ADMIN_EMAILS ?? "").split(",")[0].trim().toLowerCase();
+  expect(platformEmail.includes("@"), "start the API with PLATFORM_ADMIN_EMAILS set, and pass the same value to smoke");
+  const origin = { origin: BASE };
+  const password = "smoke-test-pass-9";
+  const viewer = cookieJar();
+  expect((await api("/api/identity/sign-in/email", { jar: viewer, method: "POST", headers: origin, body: { email: viewerEmail, password: viewerPassword } })).ok, "viewer sign-in failed");
+  expect((await api("/api/poker/usage", { jar: viewer, method: "POST", body: { section: "live", pageView: true, activeSeconds: 15 } })).status === 202, "could not record usage");
+
+  const owner = cookieJar();
+  const signedUp = await api("/api/identity/sign-up/email", {
+    jar: owner, method: "POST", headers: origin,
+    body: { name: "Platform Owner", email: platformEmail, password },
+  });
+  if (!signedUp.ok) {
+    expect((await api("/api/identity/sign-in/email", { jar: owner, method: "POST", headers: origin, body: { email: platformEmail, password } })).ok, `platform sign-in ${signedUp.status}`);
+  }
+  const mine = await api("/api/clubs/me", { jar: owner });
+  const hasClub = mine.ok && ((await mine.clone().json()).clubs ?? []).length > 0;
+  if (!hasClub) {
+    expect((await api("/api/clubs", { jar: owner, method: "POST", body: { name: "Platform Club", playerName: "Platform Owner" } })).status === 201, "platform club not created");
+  }
+  const usage = await api("/api/platform/usage", { jar: owner });
+  expect(usage.status === 200, `platform usage ${usage.status}`);
+  const payload = await usage.json();
+  expect(payload.clubs.some((club) => club.name === "Browse Club"), "usage did not include the other club");
+  expect(!JSON.stringify(payload).includes("@"), "usage included an email address");
+  const browse = payload.clubs.find((club) => club.name === "Browse Club");
+  const vera = browse.members.find((member) => member.name === "Vera Viewer");
+  expect(vera && vera.sections.some((section) => section.section === "live" && section.activeSeconds >= 15), "the other club's Live time is missing");
+
+  const context = await browser.createBrowserContext();
+  const phone = await context.newPage();
+  await phone.setViewport(PHONE);
+  phone.on("pageerror", (error) => pageErrors.push(error.message));
+  try {
+  await phone.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+  await phone.waitForSelector('[data-testid="input-email"]');
+  await phone.type('[data-testid="input-email"]', platformEmail);
+  await phone.type('[data-testid="input-password"]', password);
+  await phone.tap('[data-testid="button-account-submit"]');
+  await phone.waitForSelector('[data-testid="link-platform-usage"], [data-testid="button-mobile-dashboard-menu"]', { timeout: 15000 });
+  if (await phone.$('[data-testid="button-mobile-dashboard-menu"]')) {
+    await phone.tap('[data-testid="button-mobile-dashboard-menu"]');
+    await phone.waitForSelector('[data-testid="menu-platform-usage"]');
+  } else {
+    expect(await phone.$('[data-testid="link-platform-usage"]'), "an empty club should still show the usage link");
+  }
+  await phone.goto(`${BASE}/admin`, { waitUntil: "networkidle2" });
+  await phone.waitForSelector('[data-testid="section-platform-usage"]', { timeout: 15000 });
+  const pageState = await phone.evaluate(() => ({
+    clubs: [...document.querySelectorAll("[data-testid^=text-platform-club-]")].map((node) => node.textContent),
+    note: document.querySelector('[data-testid="text-platform-readonly"]')?.textContent ?? "",
+    forms: document.querySelectorAll("form").length,
+    buttons: [...document.querySelectorAll("button")].map((node) => node.textContent ?? ""),
+    danger: !!document.querySelector('[data-testid="section-admin-danger"]'),
+    text: document.body.innerText,
   }));
-  expect(state.members && state.audit, "members or activity log missing");
-  expect(state.dangerOpen === false, "the danger zone should start collapsed");
-  expect(state.h1 === 1, `expected one h1, found ${state.h1}`);
-  await adminPage.screenshot({ path: `${OUT}/admin.png` });
+  expect(pageState.clubs.includes("Browse Club"), `clubs on the page: ${pageState.clubs.join(", ")}`);
+  expect(/View only/.test(pageState.note), "the page should say it is view only");
+  expect(pageState.text.includes("Vera Viewer") && /Live/.test(pageState.text), "the other club's member and section are missing");
+  expect(!pageState.text.includes(viewerEmail), "the page shows an email address");
+  expect(pageState.forms === 0 && !pageState.danger, "the usage page still has the old admin tools");
+  expect(!pageState.buttons.some((label) => /delete|reset|save|merge|import/i.test(label)), `unexpected controls: ${pageState.buttons.join(" | ")}`);
+  await phone.screenshot({ path: `${OUT}/platform-usage.png`, fullPage: true });
+  } finally {
+    await context.close();
+  }
 });
 
 await check("settle-up shows on Home, in Live and on the Games card, and ticking updates all three", async () => {
@@ -1303,6 +1378,7 @@ await check("an admin can preview and merge two names; a member cannot, and anot
     await wait('[data-testid="status-merge-done"]');
     const done = await phone.$eval('[data-testid="status-merge-done"]', (node) => node.innerText);
     expect(/Ann Typo is now part of Ann/.test(done), `done message was "${done}"`);
+    await phone.waitForFunction(() => ![...document.querySelectorAll('[data-testid="select-merge-into"] option')].some((node) => node.value === "Ann Typo"), { timeout: 15000 });
     const options = await phone.$$eval('[data-testid="select-merge-into"] option', (nodes) => nodes.map((node) => node.value));
     expect(!options.includes("Ann Typo"), "the merged name should leave the list");
     const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -1493,6 +1569,9 @@ await check("terms and privacy are readable without signing in, and sign-up asks
     expect(h1 && h1.length > 3, `${path} has no heading`);
     const text = await visitor.evaluate(() => document.body.innerText);
     expect(/18/.test(text) || path === "/privacy", `${path} should mention the age requirement`);
+    if (path === "/privacy") {
+      expect(/usage is visible only to the platform owner/i.test(text), "privacy should say usage is for the platform owner only");
+    }
   }
   await visitor.goto(`${BASE}/`, { waitUntil: "networkidle2" });
   await visitor.waitForSelector('[data-testid="tab-signup"]', { timeout: 15000 });
