@@ -3,9 +3,7 @@ import { and, count, desc, eq, gte, max, sql } from "drizzle-orm";
 import { adminAuditLog, db, memberAvatars, memberUsage, memberUsageActivity, players, siteVisits } from "@workspace/db";
 import { adminClubId, requireAdminSession } from "../lib/auth";
 import { recentAdminActions } from "../lib/admin-audit";
-import { isOriginalClub } from "../lib/club-settings";
 import { getLiveActivitySnapshot } from "../lib/live-activity";
-import { fetchPokerDashboard } from "../lib/poker-sheet";
 
 const router: IRouter = Router();
 const key = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -89,43 +87,22 @@ router.get("/admin/audit", requireAdminSession, async (_req, res): Promise<void>
   });
 });
 
-// A few facts an admin checks before anything else: is the sheet fresh, is a game live,
-// is the ledger backed up.
+// A few facts an admin checks before anything else: is a game live, is the ledger backed up.
 router.get("/admin/health", requireAdminSession, async (_req, res): Promise<void> => {
   const clubId = adminClubId(res);
-  // The sheet belongs to the original club; other clubs have none linked.
-  const sheetLinked = await isOriginalClub(clubId);
-  const noSheet = Promise.reject(new Error("No Google Sheet is linked to this club."));
-  noSheet.catch(() => undefined);
-  const [sheet, live, lastBackup, lastLogin, tournaments] = await Promise.all([
-    (sheetLinked ? fetchPokerDashboard() : noSheet)
-      .then((dashboard) => ({ ok: true as const, lastUpdated: dashboard.lastUpdated ?? null, isStale: Boolean(dashboard.isStale) }))
-      .catch((error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : "Unavailable" })),
+  const [live, lastBackup, lastLogin] = await Promise.all([
     getLiveActivitySnapshot(clubId)
       .then((snapshot) => ({
         ok: true as const,
         sessionStatus: snapshot.sessionStatus,
-        syncStatus: snapshot.syncStatus,
-        lastSyncedAt: snapshot.lastSyncedAt,
         entries: snapshot.entries.length,
       }))
       .catch((error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : "Unavailable" })),
     db.select({ at: adminAuditLog.createdAt }).from(adminAuditLog).where(and(eq(adminAuditLog.clubId, clubId), eq(adminAuditLog.action, "ledger_backup"))).orderBy(desc(adminAuditLog.createdAt)).limit(1),
     db.select({ at: siteVisits.visitedAt }).from(siteVisits).where(eq(siteVisits.clubId, clubId)).orderBy(desc(siteVisits.visitedAt)).limit(1),
-    // How many tournaments the site read, and how many the sheet itself flagged.
-    (sheetLinked ? fetchPokerDashboard() : noSheet)
-      .then((dashboard) => ({
-        count: dashboard.tournaments.length,
-        flagged: dashboard.tournaments
-          .filter((event) => event.dataCheck && !/ok/i.test(event.dataCheck))
-          .map((event) => event.date),
-      }))
-      .catch(() => ({ count: 0, flagged: [] as string[] })),
   ]);
   res.json({
-    sheet,
     live,
-    tournaments,
     lastBackupAt: lastBackup[0]?.at.toISOString() ?? null,
     lastMemberSignInAt: lastLogin[0]?.at.toISOString() ?? null,
   });

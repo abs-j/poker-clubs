@@ -8,7 +8,7 @@ const row = (player, o = {}) => ({
   invested: 10, bountiesWon: 0, mainPrize: 0, totalReturn: 0, netProfit: -10, inTheMoney: false, ...o,
 });
 const event = (id, date, results, o = {}) => ({
-  id, date, title: "Monash Poker Tournament", status: "Completed", format: "", startTime: null, venue: null,
+  id, date, title: "Poker Club Tournament", status: "Completed", format: "", startTime: null, venue: null,
   buyIn: 10, topUp: 10, bounty: 2.5, bountyBasis: "Per entry", startingStack: 10000, topUpStack: 10000,
   shares: { first: 50, second: 33.3, third: 16.7 }, players: results.length, entries: results.length, rebuys: 0,
   topUps: 0, freeEntries: 0, knockouts: 5, totalCollected: 100, bountyPool: 10, mainPrizePool: 90, winner: "Ana",

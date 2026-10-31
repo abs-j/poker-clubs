@@ -36,8 +36,7 @@ import type {
   LiveSessionEndResult,
   MemberUsageAccepted,
   MemberUsageInput,
-  PokerDashboard,
-  PublicPokerSummary
+  PokerDashboard
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -603,7 +602,7 @@ export const getGetPokerDashboardUrl = () => {
 }
 
 /**
- * Reads Player Totals, Cumulative Profit, Legends, the latest-game-date helper, and the monthly Session Log tabs. It returns dated sessions, quarterly and monthly summaries, player results, and standings for the Monash Poker analytics hub.
+ * The signed-in club's results, built from its recorded nights and tournaments. It returns dated sessions, quarterly and monthly summaries, player results, and standings.
  * @summary Get the live poker dashboard
  */
 export const getPokerDashboard = async ( options?: Parameters<typeof customFetch>[1]): Promise<PokerDashboard> => {
@@ -660,84 +659,6 @@ export function useGetPokerDashboard<TData = Awaited<ReturnType<typeof getPokerD
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPokerDashboardQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export const getGetPublicPokerSummaryUrl = () => {
-
-
-
-
-  return `/api/poker/public-summary`
-}
-
-/**
- * Returns only non-monetary aggregate activity for the public club snapshot. It does not include player identities, rankings, money totals, spreadsheet links, or session records.
- * @summary Get the public poker activity snapshot
- */
-export const getPublicPokerSummary = async ( options?: Parameters<typeof customFetch>[1]): Promise<PublicPokerSummary> => {
-
-  return customFetch<PublicPokerSummary>(getGetPublicPokerSummaryUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetPublicPokerSummaryQueryKey = () => {
-    return [
-    `/api/poker/public-summary`
-    ] as const;
-    }
-
-
-export const getGetPublicPokerSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getPublicPokerSummary>>, TError = ErrorType<Error>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicPokerSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetPublicPokerSummaryQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicPokerSummary>>> = ({ signal }) => getPublicPokerSummary({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicPokerSummary>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetPublicPokerSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicPokerSummary>>>
-export type GetPublicPokerSummaryQueryError = ErrorType<Error>
-
-
-/**
- * @summary Get the public poker activity snapshot
- */
-
-export function useGetPublicPokerSummary<TData = Awaited<ReturnType<typeof getPublicPokerSummary>>, TError = ErrorType<Error>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicPokerSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetPublicPokerSummaryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -976,78 +897,6 @@ export function useGetPokerLiveActivityHistory<TData = Awaited<ReturnType<typeof
 
 
 
-
-export const getSyncPokerLiveActivityUrl = () => {
-
-
-
-
-  return `/api/poker/live-activity/sync`
-}
-
-/**
- * Retries the Live Activity sheet mirror while keeping the database-backed ledger available.
- * @summary Retry the live ledger sheet backup
- */
-export const syncPokerLiveActivity = async ( options?: Parameters<typeof customFetch>[1]): Promise<LiveActivitySnapshot> => {
-
-  return customFetch<LiveActivitySnapshot>(getSyncPokerLiveActivityUrl(),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getSyncPokerLiveActivityMutationOptions = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncPokerLiveActivity>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof syncPokerLiveActivity>>, TError,void, TContext> => {
-
-const mutationKey = ['syncPokerLiveActivity'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncPokerLiveActivity>>, void> = () => {
-
-
-          return  syncPokerLiveActivity(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type SyncPokerLiveActivityMutationResult = NonNullable<Awaited<ReturnType<typeof syncPokerLiveActivity>>>
-
-    export type SyncPokerLiveActivityMutationError = ErrorType<Error>
-
-    /**
- * @summary Retry the live ledger sheet backup
- */
-export const useSyncPokerLiveActivity = <TError = ErrorType<Error>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncPokerLiveActivity>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof syncPokerLiveActivity>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getSyncPokerLiveActivityMutationOptions(options));
-    }
 
 export const getUpdatePokerLiveActivityUrl = (eventId: string,) => {
 

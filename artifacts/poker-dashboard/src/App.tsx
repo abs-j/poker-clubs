@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { getPokerDashboard, getGetPokerLiveActivityQueryKey, useGetPokerDashboard, useGetPokerLiveActivity, useGetPublicPokerSummary } from "@workspace/api-client-react";
+import { getPokerDashboard, getGetPokerLiveActivityQueryKey, useGetPokerDashboard, useGetPokerLiveActivity } from "@workspace/api-client-react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HomeOverview } from "@/components/home-overview";
 import { BottomTabBar, PlayersSubnav, TopTabs } from "@/components/app-nav";
@@ -27,7 +27,7 @@ import { plural } from "@/lib/utils";
 import { ClubSettingsProvider, useClubSettings } from "@/components/club-settings-context";
 import { YearPicker } from "@/components/year-picker";
 import type { GamesMode } from "./views/games-view";
-import { browserSessionDeps, checkMemberSession, landingPathForSessions, type MemberAuthSession } from "@/lib/member-session";
+import { browserSessionDeps, checkMemberSession, type MemberAuthSession } from "@/lib/member-session";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -51,7 +51,7 @@ const GamesView = lazy(() => import("./views/games-view").then((m) => ({ default
 const PointsLeaderboard = lazy(() => import("./views/points-leaderboard").then((m) => ({ default: m.PointsLeaderboard })));
 const PeriodLeaderboards = lazy(() => import("./views/period-leaderboards").then((m) => ({ default: m.PeriodLeaderboards })));
 const PlayersView = lazy(() => import("./views/players-view").then((m) => ({ default: m.PlayersView })));
-import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, FileSpreadsheet, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
 
 import { Route, Router as WouterRouter, Switch } from "wouter";
 import { EmptyPanel, MetricCard, MonthFilter, PageIntro, QuarterFilter, buildRankMovementMap, buildScopedPlayers, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency, slug } from "./views/shared";
@@ -214,10 +214,7 @@ function Home() {
   }, [unreachable]);
 
   const handleLogout = async () => {
-    await Promise.all([
-      fetch("/api/auth/member/logout", { method: "POST", credentials: "include" }),
-      accountApi.signOut(),
-    ]);
+    await accountApi.signOut();
     queryClient.clear();
     setMemberSession(null);
   };
@@ -248,134 +245,6 @@ function Home() {
       <DashboardHome memberName={memberSession.memberName ?? "Member"} onLogout={handleLogout} />
     </ClubSettingsProvider>
   );
-}
-
-function RootLandingPage() {
-  const [checkingSession, setCheckingSession] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const fetchSession = (path: string) =>
-        fetch(path, {
-          credentials: "include",
-          cache: "no-store",
-        }).catch(() => null);
-      const [memberResponse, adminResponse] = await Promise.all([
-        fetchSession("/api/auth/member/session"),
-        fetchSession("/api/auth/admin/session"),
-      ]);
-      const isAuthenticated = async (response: Response | null) => {
-        if (!response?.ok) return false;
-        try {
-          return Boolean(((await response.json()) as { authenticated?: boolean }).authenticated);
-        } catch {
-          return false;
-        }
-      };
-      const [memberAuthenticated, adminAuthenticated] = await Promise.all([
-        isAuthenticated(memberResponse),
-        isAuthenticated(adminResponse),
-      ]);
-      const landingPath = landingPathForSessions(memberAuthenticated, adminAuthenticated);
-      if (landingPath) {
-        window.location.replace(landingPath);
-        return;
-      }
-      if (!cancelled) setCheckingSession(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (checkingSession) return <AuthLoadingState />;
-  return <PublicSnapshotPage />;
-}
-
-function PublicSnapshotPage() {
-  const { data: summary, isLoading, isError, refetch } = useGetPublicPokerSummary();
-
-  if (isLoading) return <PublicSnapshotLoading />;
-  if (isError || !summary) return <PublicSnapshotError onRetry={() => void refetch()} />;
-
-  const latestActivity = summary.latestGameDate ? formatDate(summary.latestGameDate) : "No sessions recorded yet";
-  const visibleMonths = summary.monthlyGames.filter((month) => month.gameCount > 0);
-  let cumulativeGames = 0;
-  const gamesGrowth = [
-    ...visibleMonths.map((month) => {
-      cumulativeGames += month.gameCount;
-      return {
-        month: month.month,
-        label: month.label,
-        cumulativeGames,
-      };
-    }),
-  ];
-
-  return (
-    <div className="min-h-[100dvh] bg-background text-foreground">
-      <main className="mx-auto max-w-[1100px] px-5 py-6 sm:px-8 lg:px-10 lg:py-10">
-        <header className="flex flex-col gap-6 border-b border-border pb-7 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]"><CalendarDays className="h-5 w-5" /></div>
-            <div>
-              <p className="text-lg font-semibold tracking-tight">Monash Poker Society</p>
-               <p className="mt-1 text-xs text-muted-foreground">Public snapshot</p>
-            </div>
-          </div>
-          <a href="/dashboard" data-testid="link-public-member-login" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground transition-transform hover:-translate-y-0.5">Member sign in<ChevronRight className="h-4 w-4" /></a>
-        </header>
-
-        <section className="max-w-2xl py-10 sm:py-14">
-          <p className="section-label text-primary">Poker, at a glance</p>
-           <h1 data-testid="text-public-snapshot-title" className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">See the club’s season at a glance.</h1>
-          <p className="mt-4 text-sm leading-7 text-muted-foreground sm:text-base">This public snapshot shows high-level activity from the Monash Poker Society. Member sign-in unlocks the complete private dashboard with detailed standings and session history.</p>
-        </section>
-
-        <section data-testid="section-public-summary-metrics" className="grid gap-3 sm:grid-cols-3">
-          <PublicSnapshotMetric label="Recorded sessions" value={String(summary.totalSessions)} detail="Poker nights logged" icon={<CalendarDays />} />
-          <PublicSnapshotMetric label="Total players" value={String(summary.totalPlayers)} detail="Players with recorded games" icon={<Users />} />
-          <PublicSnapshotMetric label="Latest activity" value={latestActivity} detail={summary.isStale ? "Last successful update" : "Most recent recorded night"} icon={<BarChart3 />} />
-        </section>
-
-        <section data-testid="section-public-games-growth" className="mt-5 rounded-2xl border border-border bg-card p-5 soft-shadow sm:p-7">
-          <div className="flex flex-col gap-2 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
-            <div><p className="section-label text-primary">Growth over time</p><h2 className="mt-1 text-xl font-semibold tracking-tight">Total individual games played</h2></div>
-            <p className="text-xs text-muted-foreground">Cumulative player game records · no player or money details</p>
-          </div>
-          <div className="mt-6 h-[260px]" data-testid="chart-public-games-growth">
-            <Suspense fallback={<div className="h-full skeleton rounded-xl" />}>
-              <PublicGamesGrowthChart data={gamesGrowth} />
-            </Suspense>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">Each point adds the individual games recorded during that month.</p>
-        </section>
-
-        <section className="mt-5 flex flex-col gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <div><p className="text-sm font-semibold">Want the full picture?</p><p className="mt-1 text-sm leading-6 text-muted-foreground">Members can sign in to view the complete private dashboard and club guidelines.</p></div>
-          <a href="/dashboard" data-testid="link-public-member-login-secondary" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-background px-4 py-2.5 text-xs font-semibold text-primary hover:bg-primary/10">Open member dashboard<ChevronRight className="h-4 w-4" /></a>
-        </section>
-
-        <footer className="mt-8 border-t border-border pt-5 text-xs text-muted-foreground">
-          <span>High-level activity sourced from the club session log.</span>
-          <span className="ml-2">Updated {formatSyncTime(summary.lastUpdated)}.</span>
-        </footer>
-      </main>
-    </div>
-  );
-}
-
-function PublicSnapshotMetric({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: ReactNode }) {
-  return <article className="rounded-2xl border border-border bg-card p-5 soft-shadow"><div className="flex items-start justify-between gap-3"><div><p className="section-label">{label}</p><p className="mt-3 font-mono text-2xl font-semibold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">{icon}</span></div></article>;
-}
-
-function PublicSnapshotLoading() {
-  return <div data-testid="state-public-snapshot-loading" className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div className="text-center"><div className="mx-auto flex h-11 w-11 animate-pulse items-center justify-center rounded-xl bg-primary/15 text-primary"><CalendarDays className="h-5 w-5" /></div><p className="mt-4 text-sm font-semibold">Loading club snapshot…</p></div></div>;
-}
-
-function PublicSnapshotError({ onRetry }: { onRetry: () => void }) {
-  return <div data-testid="state-public-snapshot-error" className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div className="w-full max-w-md rounded-2xl border border-border bg-card p-7 text-center soft-shadow"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Activity className="h-5 w-5" /></div><h1 className="mt-4 text-xl font-semibold">The public snapshot is unavailable</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">The club activity summary could not be loaded right now.</p><div className="mt-5 flex justify-center gap-2"><button onClick={onRetry} data-testid="button-retry-public-snapshot" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground">Try again</button><a href="/dashboard" className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold">Member sign in</a></div></div></div>;
 }
 
 function AuthLoadingState() {
@@ -679,7 +548,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open my account" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
                 <button onClick={() => void onLogout()} data-testid="button-member-logout" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><LogOut className="h-4 w-4" />Sign out</button>
                 <button onClick={handleRefresh} disabled={refreshing} data-testid="button-refresh-dashboard" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-60"><Activity className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />{refreshing ? "Checking" : "Refresh"}</button>
-                {dashboard.spreadsheetUrl && <a href={dashboard.spreadsheetUrl} target="_blank" rel="noreferrer" data-testid="link-open-spreadsheet" className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-transform hover:-translate-y-0.5"><FileSpreadsheet className="h-4 w-4" />Open sheet<ExternalLink className="h-3 w-3 opacity-60" /></a>}
                 {canInstall && <button onClick={() => void install()} data-testid="button-install-app" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><Download className="h-4 w-4" />Install app</button>}
                 <button onClick={toggleTheme} data-testid="button-toggle-theme" className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground" aria-label="Toggle dark mode">{isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
               </div>
@@ -700,13 +568,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                     <DropdownMenuItem onSelect={() => void handleRefresh()} disabled={refreshing} data-testid="menu-refresh-dashboard">
                       <Activity className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />{refreshing ? "Refreshing…" : "Refresh dashboard"}
                     </DropdownMenuItem>
-                    {dashboard.spreadsheetUrl && (
-                    <DropdownMenuItem asChild>
-                      <a href={dashboard.spreadsheetUrl} target="_blank" rel="noreferrer" data-testid="menu-open-spreadsheet">
-                        <FileSpreadsheet className="h-4 w-4" />Open spreadsheet
-                      </a>
-                    </DropdownMenuItem>
-                    )}
                     {canInstall && (
                       <DropdownMenuItem onSelect={() => void install()} data-testid="menu-install-app">
                         <Download className="h-4 w-4" />Install app
@@ -856,7 +717,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 onToggleTheme={toggleTheme}
                 canInstall={canInstall}
                 onInstall={() => void install()}
-                spreadsheetUrl={dashboard.spreadsheetUrl ?? null}
                 onLogout={() => void onLogout()}
                 onOpenProfile={() => openPlayer(memberName)}
               />
@@ -867,7 +727,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
           </div>
           <footer className="mt-8 grid gap-4 border-t border-border py-7 text-xs text-muted-foreground sm:grid-cols-[1fr_auto_auto] sm:items-end">
              <div className="space-y-1"><p className="font-mono text-[11px] uppercase tracking-[0.14em] text-foreground">{sessions.length} cash games{tournamentSessions.length ? ` · ${tournamentSessions.length} ${tournamentSessions.length === 1 ? "tournament" : "tournaments"}` : ""} · {dashboard.totals.totalRecords} player results</p><p data-testid="text-footer-latest">{dashboard.totals.latestSession ? `Latest game #${dashboard.totals.latestSession}` : "Season in progress"}</p></div>
-            <span className="font-mono text-[11px] uppercase tracking-[0.14em]">{dashboard.spreadsheetUrl ? "Numbers sourced from the club sheet" : "Numbers from the nights this club has recorded"}</span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em]">Numbers from the nights this club has recorded</span>
           </footer>
         </div>
       </main>
@@ -936,7 +796,7 @@ function DashboardSkeleton() { return <div data-testid="state-dashboard-loading"
 function formatSyncTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "recently"; return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
 function quarterForMonth(value: string): string { const month = Number(value); return month <= 3 ? "Q1" : month <= 6 ? "Q2" : month <= 9 ? "Q3" : "Q4"; }
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><AdminPage /></Suspense></Route><Route path="/dashboard" component={Home} />{import.meta.env.VITE_LEGACY_PUBLIC_PAGE === "true" && <Route path="/public" component={PublicSnapshotPage} />}<Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><AdminPage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
 }
 
 export default App;

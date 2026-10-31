@@ -3,12 +3,6 @@
 
 export type MemberAuthSession = { authenticated: boolean; memberName?: string };
 
-export function landingPathForSessions(memberAuthenticated: boolean, adminAuthenticated: boolean): "/dashboard" | "/admin" | null {
-  if (memberAuthenticated) return "/dashboard";
-  if (adminAuthenticated) return "/admin";
-  return null;
-}
-
 export type SessionCheckDeps = {
   fetchSession: () => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
   wait: (ms: number) => Promise<void>;

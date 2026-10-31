@@ -1,12 +1,5 @@
 import { eq } from "drizzle-orm";
 import { clubs, db } from "@workspace/db";
-import { getDefaultClubId } from "./club-context";
-
-/** True only for the legacy original club, and only when legacy mode is on. */
-export async function isOriginalClub(clubId: number): Promise<boolean> {
-  const original = await getDefaultClubId();
-  return original !== null && clubId === original;
-}
 import { PRESETS, resolveRules, type PointsRules, type PresetChoice } from "./points-rules";
 
 export type ClubSettings = {
@@ -16,8 +9,6 @@ export type ClubSettings = {
   currency: string;
   timezone: string;
   guidelines: string | null;
-  /** The original club keeps its built-in rules text and its sheet. */
-  isOriginal: boolean;
   points: { preset: PresetChoice; rules: PointsRules };
 };
 
@@ -37,7 +28,6 @@ export async function getClubSettings(clubId: number): Promise<ClubSettings> {
     currency: row.currency,
     timezone: row.timezone,
     guidelines: row.guidelines,
-    isOriginal: await isOriginalClub(row.id),
     points: resolveRules(row.pointsPreset, row.pointsRules),
   };
   cache.set(clubId, { at: Date.now(), value });

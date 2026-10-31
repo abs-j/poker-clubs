@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ChevronRight, LoaderCircle, Spade } from "lucide-react";
-import { MemberLogin } from "./member-login";
 import type { MemberAuthSession } from "@/lib/member-session";
 import { APP_NAME, AccountError, accountApi, extractInviteCode, type InvitePreview, type MeResponse } from "@/lib/account-api";
 
@@ -326,7 +325,6 @@ function Onboarding({ user, onDone }: { user: { name: string }; onDone: () => vo
 /** The member sign-in screen: account first, then a club. Hands back the session once both exist. */
 export function WelcomeFlow({ onAuthenticated }: { onAuthenticated: (session: MemberAuthSession) => void }) {
   const [me, setMe] = useState<MeResponse | null>(null);
-  const [useCode, setUseCode] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
@@ -352,7 +350,6 @@ export function WelcomeFlow({ onAuthenticated }: { onAuthenticated: (session: Me
       .catch(() => setFailed(true));
   }, [me, onAuthenticated]);
 
-  if (useCode) return <MemberLogin onAuthenticated={onAuthenticated} />;
   if (failed) {
     return (
       <Shell eyebrow="Offline" title="Can't reach the server" intro="Check your connection and try again.">
@@ -373,11 +370,6 @@ export function WelcomeFlow({ onAuthenticated }: { onAuthenticated: (session: Me
       intro="Track buy-ins, cash-outs, leaderboards and club points for your uni club or friend group. Free, and invite-only."
     >
       <AccountForm googleSignIn={me.options.googleSignIn} emailEnabled={me.options.email} callbackURL="/dashboard" onDone={() => void load()} />
-      {me.options.legacyAccessCodes && (
-        <button type="button" onClick={() => setUseCode(true)} className="mt-5 w-full text-center text-xs text-muted-foreground hover:text-primary hover:underline" data-testid="button-use-code">
-          Use an access code instead
-        </button>
-      )}
     </Shell>
   );
 }

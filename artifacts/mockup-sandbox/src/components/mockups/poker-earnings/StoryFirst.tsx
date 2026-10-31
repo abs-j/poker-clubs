@@ -85,7 +85,7 @@ export function StoryFirst() {
         <header className="sf-topbar">
           <div className="sf-brand">
             <div className="sf-mark" aria-hidden="true"><Spade size={19} strokeWidth={1.8} /></div>
-            <div><div className="sf-brand-title">Monash Poker</div><div className="sf-brand-sub">Members · earnings</div></div>
+            <div><div className="sf-brand-title">Poker Club</div><div className="sf-brand-sub">Members · earnings</div></div>
           </div>
           <div className="sf-member" aria-label="Signed in as Abhay">
             <span className="sf-avatar" aria-hidden="true">A</span><span>Abhay</span><ChevronDown size={13} aria-hidden="true" />
@@ -165,7 +165,7 @@ export function StoryFirst() {
             {scope !== "tournaments" && <div className="sf-trend-end"><span>{period === "ALL" ? (scope === "cash" ? "Abhay’s dated cash trail · 46 sessions" : "Abhay’s dated combined trail · through event") : `Abhay · ${monthName(period)} dated net`}</span><strong>{signed(period === "ALL" ? (scope === "cash" ? 114.90 : 263.65) : visibleTrendEnd)}</strong></div>}
             {scope === "tournaments" && period === "2026-10" && <div className="sf-event">
               <div className="sf-event-top"><span className="sf-event-date">04 Oct 2026</span><span className="sf-event-tag">Snapshot · 21 players</span></div>
-              <h3>Monash Poker tournament</h3><p>One dated event in the source. Tournament Net Profit only; invested $370, returned $370.</p>
+              <h3>Poker Club tournament</h3><p>One dated event in the source. Tournament Net Profit only; invested $370, returned $370.</p>
               <div className="sf-event-net"><span>Field net total</span><strong>$0.00</strong></div>
             </div>}
           </article>

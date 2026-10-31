@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { accountApi } from "@/lib/account-api";
 import { Activity, ChevronDown, Database, EyeOff, HardDriveDownload, LayoutDashboard, LogOut, RefreshCw, Search, ShieldCheck, Users } from "lucide-react";
-import { AuthCard } from "@/components/auth-card";
 import { Avatar } from "@/components/avatar";
 import { formatVisibleDuration } from "@/lib/member-usage";
 import { MetricCard, slug } from "./shared";
@@ -30,9 +30,7 @@ type AdminMember = {
   picture: "none" | "preset" | "upload";
 };
 type AdminHealth = {
-  sheet: { ok: true; lastUpdated: string | null; isStale: boolean } | { ok: false; error: string };
-  live: { ok: true; sessionStatus: string; syncStatus: string; lastSyncedAt: string | null; entries: number } | { ok: false; error: string };
-  tournaments: { count: number; flagged: string[] };
+  live: { ok: true; sessionStatus: string; entries: number } | { ok: false; error: string };
   lastBackupAt: string | null;
   lastMemberSignInAt: string | null;
 };
@@ -182,43 +180,15 @@ function HealthStrip({ refreshKey, activeMembers }: { refreshKey: number; active
   if (error) return <p className="mt-5 text-xs text-destructive">{error}</p>;
   if (!data) return <div className="mt-5 h-24 skeleton rounded-2xl" />;
 
-  const sheet = data.sheet;
-  const noSheet = !sheet.ok && /No Google Sheet is linked/i.test(sheet.error ?? "");
   const live = data.live;
   const backupAge = data.lastBackupAt ? Date.now() - new Date(data.lastBackupAt).getTime() : null;
   return (
-    <section data-testid="section-admin-health" aria-label="Status" className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <StatusTile
-        label="Club sheet"
-        value={!sheet.ok ? (noSheet ? "Not used" : "Unavailable") : sheet.isStale ? "Out of date" : "Up to date"}
-        detail={sheet.ok ? `Read ${relativeTime(sheet.lastUpdated)}` : noSheet ? "This club records its results in the app." : sheet.error}
-        tone={noSheet ? "good" : !sheet.ok || sheet.isStale ? "warn" : "good"}
-      />
+    <section data-testid="section-admin-health" aria-label="Status" className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
       <StatusTile
         label="Live ledger"
         value={!live.ok ? "Unavailable" : live.sessionStatus === "open" ? "Game in progress" : live.sessionStatus === "ended" ? "Last game closed" : "No game running"}
-        detail={
-          live.ok
-            ? live.syncStatus === "synced"
-              ? `Backed up to the sheet ${relativeTime(live.lastSyncedAt)}`
-              : live.syncStatus === "pending"
-                ? "Sheet backup pending"
-                : "Sheet backup needs attention"
-            : live.error
-        }
-        tone={!live.ok || live.syncStatus === "error" ? "warn" : live.sessionStatus === "open" ? "good" : "neutral"}
-      />
-      <StatusTile
-        label="Tournaments"
-        value={data.tournaments.count === 0 ? "None read" : `${data.tournaments.count} on the site`}
-        detail={
-          data.tournaments.flagged.length > 0
-            ? `Sheet flagged: ${data.tournaments.flagged.join(", ")}`
-            : data.tournaments.count === 0
-              ? "Record one under Club settings, Record a tournament"
-              : "All data checks passed"
-        }
-        tone={data.tournaments.flagged.length > 0 || data.tournaments.count === 0 ? "warn" : "good"}
+        detail={live.ok ? `${live.entries} ${live.entries === 1 ? "entry" : "entries"} tonight` : live.error}
+        tone={!live.ok ? "warn" : live.sessionStatus === "open" ? "good" : "neutral"}
       />
       <StatusTile
         label="Ledger backup"
@@ -499,53 +469,16 @@ function UsageSection({ usage, memberVisible, onRefresh }: { usage: AdminUsageSe
 
 // ---------------------------------------------------------------- page
 
-function AdminLogin({ onLogin, initialError }: { onLogin: (password: string) => Promise<void>; initialError: string }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(initialError);
-  const [waitSeconds, setWaitSeconds] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async () => {
-    setSubmitting(true);
-    setError("");
-    setWaitSeconds(0);
-    try {
-      await onLogin(password);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "That admin password could not be verified.";
-      setError(message);
-      const wait = cause as { retryAfterSeconds?: number };
-      if (wait.retryAfterSeconds) setWaitSeconds(wait.retryAfterSeconds);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
+function AdminLogin() {
   return (
-    <AuthCard
-      tone="admin"
-      icon={<ShieldCheck className="h-5 w-5" />}
-      areaLabel="Admin area"
-      eyebrow="Restricted area"
-      title="Admin sign in"
-      intro={
-        <p>
-          This area can view member activity and <strong className="text-foreground">permanently erase ledger data</strong>.
-          Sign-ins and actions are recorded.
-        </p>
-      }
-      fieldLabel="Admin password"
-      value={password}
-      onChange={setPassword}
-      error={error}
-      waitSeconds={waitSeconds}
-      submitting={submitting}
-      submitLabel="Open admin area"
-      onSubmit={() => void submit()}
-      testIds={{ input: "input-admin-password", submit: "button-admin-login", error: "status-admin-login-error" }}
-      note={<p>Forgotten it? Whoever manages the Replit project can reset the <span className="font-mono">ADMIN_PASSWORD</span> secret.</p>}
-      footer={<a href="/dashboard" className="hover:text-primary hover:underline">Back to the member dashboard</a>}
-    />
+    <main className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground">
+      <div data-testid="state-admin-signin" className="max-w-sm text-center">
+        <ShieldCheck className="mx-auto h-8 w-8 text-primary" aria-hidden="true" />
+        <h1 className="mt-3 text-lg font-semibold">Club admins only</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Sign in with your club account. Owners and admins see this area.</p>
+        <a href="/" className="mt-5 inline-flex h-10 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground">Go to sign in</a>
+      </div>
+    </main>
   );
 }
 
@@ -618,23 +551,8 @@ export function AdminPage() {
     return () => window.clearInterval(interval);
   }, [authenticated, loadVisits]);
 
-  const login = async (password: string) => {
-    const response = await fetch("/api/auth/admin/login", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    const result = (await response.json()) as { error?: string; retryAfterSeconds?: number };
-    if (!response.ok) {
-      throw Object.assign(new Error(result.error ?? "That admin password could not be verified."), { retryAfterSeconds: result.retryAfterSeconds });
-    }
-    await loadSession();
-    await loadVisits();
-  };
-
   const logout = async () => {
-    await fetch("/api/auth/admin/logout", { method: "POST", credentials: "include" });
+    await accountApi.signOut();
     setAuthenticated(false);
     setData(null);
   };
@@ -642,7 +560,7 @@ export function AdminPage() {
   if (checking) {
     return <div data-testid="state-auth-loading" className="flex min-h-[100dvh] items-center justify-center bg-background text-sm text-muted-foreground">Checking sign-in…</div>;
   }
-  if (!authenticated) return <AdminLogin onLogin={login} initialError={error} />;
+  if (!authenticated) return <AdminLogin />;
 
   return (
     <AdminDashboard

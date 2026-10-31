@@ -1,12 +1,11 @@
-// End-to-end smoke test for the Monash Poker dashboard.
+// End-to-end smoke test: the API over HTTP, then the main screens in a real browser.
 //
 // Checks the API over HTTP, then walks the main screens in a real browser on a phone-sized
-// screen. It is deliberately structural ("there are podiums", "the tab bar is on screen")
-// rather than exact, because the numbers come from the live club sheet and change.
+// screen. It creates its own accounts and clubs, so it needs an empty or throwaway database.
+// It is deliberately structural ("there are podiums", "the tab bar is on screen") rather than exact.
 //
 // Run from a folder that has `puppeteer-core` installed (CI installs it in a temp folder):
-//   SMOKE_BASE_URL=http://localhost:5173 SMOKE_MEMBER_CODE=... SMOKE_ADMIN_PASSWORD=... \
-//   node scripts/smoke/smoke.mjs
+//   SMOKE_BASE_URL=http://localhost:5173 node scripts/smoke/smoke.mjs
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 
@@ -14,16 +13,9 @@ const require = createRequire(`${process.cwd()}/`);
 const puppeteer = require("puppeteer-core");
 
 const BASE = (process.env.SMOKE_BASE_URL ?? "http://localhost:5173").replace(/\/$/, "");
-const MEMBER_CODE = process.env.SMOKE_MEMBER_CODE;
-const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD;
 const CHROME = process.env.CHROME_PATH ?? "/usr/bin/google-chrome";
 const OUT = process.env.SMOKE_OUT ?? "smoke-output";
 mkdirSync(OUT, { recursive: true });
-
-if (!MEMBER_CODE || !ADMIN_PASSWORD) {
-  console.error("Set SMOKE_MEMBER_CODE and SMOKE_ADMIN_PASSWORD.");
-  process.exit(2);
-}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const results = [];
@@ -76,99 +68,16 @@ async function api(path, { jar, method = "GET", body, headers = {} } = {}) {
 console.log(`Smoke test against ${BASE}`);
 console.log("\nAPI");
 
-const member = cookieJar();
-const admin = cookieJar();
-let dashboard;
-
 await check("health endpoint answers", async () => {
   const response = await api("/api/healthz");
   expect(response.ok, `status ${response.status}`);
 });
 
-await check("public summary is readable without signing in", async () => {
-  const response = await api("/api/poker/public-summary");
-  expect(response.ok, `status ${response.status}`);
-  const json = await response.json();
-  expect(typeof json.totalSessions === "number", "no totalSessions");
-});
-
-await check("a wrong access code is refused", async () => {
-  const response = await api("/api/auth/member/login", { method: "POST", body: { code: "definitely-wrong" } });
-  expect(response.status === 401, `expected 401, got ${response.status}`);
-});
-
-await check("dashboard needs a sign-in", async () => {
-  const response = await api("/api/poker/dashboard");
-  expect(response.status === 401, `expected 401, got ${response.status}`);
-});
-
-await check("member can sign in", async () => {
-  const response = await api("/api/auth/member/login", { jar: member, method: "POST", body: { code: MEMBER_CODE } });
-  expect(response.ok, `status ${response.status}`);
-  const json = await response.json();
-  expect(json.authenticated === true, "not authenticated");
-  return json.memberName;
-});
-
-await check("dashboard has players, nights and tournaments", async () => {
-  const response = await api("/api/poker/dashboard", { jar: member });
-  expect(response.ok, `status ${response.status}`);
-  dashboard = await response.json();
-  expect(dashboard.leaderboard.length > 0, "leaderboard is empty");
-  expect(dashboard.sessions.length > 0, "no cash sessions");
-  expect(Array.isArray(dashboard.tournaments), "tournaments missing from the payload");
-  expect(
-    !dashboard.sessions.some((s) => s.players.length > 0 && s.players.every((p) => /bad beat jackpot/i.test(p.player))),
-    "a jackpot-only entry is counted as a game",
-  );
-  return `${dashboard.leaderboard.length} players, ${dashboard.sessions.length} nights, ${dashboard.tournaments.length} tournaments`;
-});
-
-await check("tournament results balance", async () => {
-  for (const event of dashboard.tournaments) {
-    const net = event.results.reduce((sum, r) => sum + r.netProfit, 0);
-    expect(Math.abs(net) < 0.5, `${event.date} nets ${net.toFixed(2)}, expected about 0`);
-  }
-});
-
-await check("live ledger and avatars answer", async () => {
-  const live = await api("/api/poker/live-activity", { jar: member });
-  expect(live.ok, `live-activity ${live.status}`);
-  const avatars = await api("/api/poker/avatars", { jar: member });
-  expect(avatars.ok, `avatars ${avatars.status}`);
-});
-
-await check("live ledger round trip: start, buy in, cash out, close", async () => {
-  if (process.env.SMOKE_WRITE !== "1") return "skipped (set SMOKE_WRITE=1 on a throwaway database)";
-  const start = await api("/api/poker/live-session/start", { jar: member, method: "POST" });
-  expect(start.ok, `start ${start.status}`);
-  const buy = await api("/api/poker/live-activity", { jar: member, method: "POST", body: { action: "buy_in", amount: 20, attributedPlayer: "Smoke Player" } });
-  expect(buy.ok, `buy-in ${buy.status}`);
-  const out = await api("/api/poker/live-activity", { jar: member, method: "POST", body: { action: "cash_out", amount: 35, attributedPlayer: "Smoke Player" } });
-  expect(out.ok, `cash-out ${out.status}`);
-  const snapshot = await (await api("/api/poker/live-activity", { jar: member })).json();
-  expect(snapshot.sessionStatus === "open", `status ${snapshot.sessionStatus}`);
-  expect(snapshot.totals.buyIns === 20 && snapshot.totals.cashOuts === 35, `totals ${JSON.stringify(snapshot.totals)}`);
-  const row = snapshot.playerSummaries.find((p) => p.playerName === "Smoke Player");
-  expect(row && row.buyIns === 20 && row.cashOuts === 35, "player summary missing");
-  const end = await api("/api/poker/live-session/end", { jar: member, method: "POST" });
-  expect(end.ok, `end ${end.status}`);
-  const closed = await (await api("/api/poker/live-activity", { jar: member })).json();
-  expect(closed.sessionStatus === "ended", `after end: ${closed.sessionStatus}`);
-});
-
-await check("admin can sign in and read status", async () => {
-  const login = await api("/api/auth/admin/login", { jar: admin, method: "POST", body: { password: ADMIN_PASSWORD } });
-  expect(login.ok, `login ${login.status}`);
-  for (const path of ["/api/admin/health", "/api/admin/members", "/api/admin/audit"]) {
-    const response = await api(path, { jar: admin });
-    expect(response.ok, `${path} ${response.status}`);
-  }
-});
-
-await check("admin endpoints refuse members", async () => {
-  const response = await api("/api/admin/members", { jar: member });
-  expect(response.status === 401, `expected 401, got ${response.status}`);
+await check("results and admin tools need a sign-in, and the old sign-in routes are gone", async () => {
+  expect((await api("/api/poker/dashboard")).status === 401, "dashboard should need a sign-in");
+  expect((await api("/api/admin/visits")).status === 401, "admin visits should need a sign-in");
+  expect((await api("/api/auth/member/login", { method: "POST", body: { code: "x" } })).status === 404, "access-code sign-in should be gone");
+  expect((await api("/api/poker/public-summary")).status === 404, "the public snapshot should be gone");
 });
 
 // --------------------------------------------------------------- browser
@@ -195,23 +104,25 @@ console.log("\nAccounts and clubs");
     expect(session.authenticated && session.club?.role === "owner", "owner session missing");
   });
 
-  await check("a new club starts empty and never sees another club's history", async () => {
+  await check("a new club starts empty", async () => {
     const response = await api("/api/poker/dashboard", { jar: owner });
     expect(response.ok, `status ${response.status}`);
     const json = await response.json();
     expect(json.leaderboard.length === 0 && json.sessions.length === 0, "new club has someone else's data");
-    expect(json.spreadsheetUrl === "", "new club exposes a spreadsheet link");
   });
 
-  await check("a new club's ledger is separate from the original club's", async () => {
+  const rival = cookieJar();
+  await check("a second club's ledger is separate from the first club's", async () => {
+    expect((await api("/api/identity/sign-up/email", { jar: rival, method: "POST", headers: origin, body: { name: "Rival Owner", email: `rival-${stamp}@example.com`, password } })).ok, "rival sign-up failed");
+    expect((await api("/api/clubs", { jar: rival, method: "POST", body: { name: `Rival Club ${stamp}`, playerName: "Rival Owner" } })).status === 201, "rival club not created");
     const started = await api("/api/poker/live-session/start", { jar: owner, method: "POST" });
     expect(started.ok, `start ${started.status}`);
     const entry = await api("/api/poker/live-activity", { jar: owner, method: "POST", body: { action: "buy_in", amount: 10 } });
     expect(entry.ok, `entry ${entry.status}`);
     const mine = await (await api("/api/poker/live-activity", { jar: owner })).json();
-    const original = await (await api("/api/poker/live-activity", { jar: member })).json();
+    const theirs = await (await api("/api/poker/live-activity", { jar: rival })).json();
     expect(mine.entries.length === 1, `expected 1 entry, got ${mine.entries.length}`);
-    expect(!original.entries.some((e) => e.eventId === mine.entries[0].eventId), "entry leaked to the original club");
+    expect(!theirs.entries.some((e) => e.eventId === mine.entries[0].eventId), "entry leaked to another club");
   });
 
   await check("an invite lets a second person join under their own name", async () => {
@@ -253,8 +164,8 @@ console.log("\nAccounts and clubs");
       jar: owner, method: "POST", body: { backupId: backup.backupId, confirmation: "RESET LIVE LEDGER" },
     });
     expect(reset.ok, `reset ${reset.status}`);
-    const original = await api("/api/poker/live-activity", { jar: member });
-    expect(original.ok, "original club's ledger went missing");
+    const theirs = await api("/api/poker/live-activity", { jar: rival });
+    expect(theirs.ok, "the other club's ledger went missing");
   });
 
   const history = [
@@ -580,6 +491,35 @@ console.log("\nAccounts and clubs");
   });
 }
 
+console.log("\nSeeding a club for the browser walkthrough");
+
+const viewerEmail = `viewer-${Date.now()}@example.com`;
+const viewerPassword = "smoke-test-pass-9";
+let dashboard;
+{
+  const viewer = cookieJar();
+  const origin = { origin: BASE };
+  await check("a club with a few nights and a tournament is ready to browse", async () => {
+    expect((await api("/api/identity/sign-up/email", { jar: viewer, method: "POST", headers: origin, body: { name: "Vera Viewer", email: viewerEmail, password: viewerPassword } })).ok, "sign-up failed");
+    expect((await api("/api/clubs", { jar: viewer, method: "POST", body: { name: "Browse Club", playerName: "Vera Viewer" } })).status === 201, "club not created");
+    const night = (date, rows) => rows.map(([name, i, o], index) => `${index === 0 ? date : ""},${name},${i},${o}`).join("\n");
+    const text = ["Date,Player,Buy-in,Cash-out",
+      night("03/03/2026", [["Vera Viewer", 20, 60], ["Ann", 20, 0], ["Bo", 20, 20], ["Cy", 20, 0], ["Di", 20, 20]]),
+      night("10/03/2026", [["Vera Viewer", 20, 10], ["Ann", 20, 50], ["Bo", 20, 0], ["Cy", 20, 40], ["Di", 20, 0]]),
+      night("07/04/2026", [["Vera Viewer", 20, 0], ["Ann", 20, 30], ["Bo", 20, 40], ["Cy", 20, 10], ["Di", 20, 20]]),
+    ].join("\n");
+    const imported = await api("/api/clubs/current/import", { jar: viewer, method: "POST", body: { text } });
+    expect(imported.ok, `import ${imported.status}`);
+    const tournament = await api("/api/clubs/current/tournaments", { jar: viewer, method: "POST", body: {
+      date: "2026-04-14", title: "Browse Freezeout", buyIn: 20,
+      players: [["Vera Viewer", 1], ["Ann", 2], ["Bo", 3], ["Cy", 4]].map(([name, finishPlace]) => ({ name, finishPlace, entries: 1, knockouts: 0 })),
+    } });
+    expect(tournament.status === 201, `tournament ${tournament.status}`);
+    dashboard = await (await api("/api/poker/dashboard", { jar: viewer })).json();
+    expect(dashboard.leaderboard.length >= 4 && dashboard.sessions.length === 3, `seed produced ${dashboard.leaderboard.length} players, ${dashboard.sessions.length} nights`);
+  });
+}
+
 console.log("\nBrowser (phone-sized screen)");
 
 const browser = await puppeteer.launch({
@@ -624,17 +564,11 @@ await check("dark mode is the default for a new visitor", async () => {
 });
 
 await check("signing in lands on Home with the tab bar on screen", async () => {
-  await page.evaluate(
-    async (code) => {
-      await fetch("/api/auth/member/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-    },
-    MEMBER_CODE,
-  );
-  await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle2" });
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+  await visible('[data-testid="input-email"]');
+  await page.type('[data-testid="input-email"]', viewerEmail);
+  await page.type('[data-testid="input-password"]', viewerPassword);
+  await page.tap('[data-testid="button-account-submit"]');
   await visible('[data-testid="section-home-overview"]');
   const bar = await page.evaluate(() => {
     const nav = document.querySelector('[data-testid="nav-bottom-tabs"]');
@@ -697,7 +631,7 @@ await check("Games has one heading and a player search that narrows the list", a
 
 await check("a tournament opens its detail with results", async () => {
   if (dashboard.tournaments.length === 0) return "no tournaments to open";
-  await page.evaluate(() => document.querySelector('[data-testid^="card-tournament-2"]')?.click());
+  await page.evaluate(() => document.querySelector('[data-testid^="card-tournament-club-"]')?.click());
   await visible('[data-testid="section-tournament-detail"]');
   const rows = await page.evaluate(() => document.querySelectorAll('[data-testid="list-tournament-results"] li').length);
   expect(rows > 0, "no result rows");
@@ -765,18 +699,18 @@ await check("My account page loads from the menu", async () => {
   await visible('[data-testid="section-account"]');
 });
 
-await check("admin page shows status and keeps the danger zone closed", async () => {
+await check("the admin page opens for the club owner and keeps the danger zone closed", async () => {
   const adminPage = await newPage({ width: 1280, height: 900 });
   await adminPage.goto(`${BASE}/admin`, { waitUntil: "networkidle2" });
   await adminPage.evaluate(
-    async (password) => {
-      await fetch("/api/auth/admin/login", {
+    async ({ email, password }) => {
+      await fetch("/api/identity/sign-in/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
     },
-    ADMIN_PASSWORD,
+    { email: viewerEmail, password: viewerPassword },
   );
   await adminPage.goto(`${BASE}/admin`, { waitUntil: "networkidle2" });
   await adminPage.waitForSelector('[data-testid="section-admin-health"]', { timeout: 15000 });

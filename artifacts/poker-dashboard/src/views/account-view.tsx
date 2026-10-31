@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Camera, Download, FileSpreadsheet, LogOut, Moon, Sun } from "lucide-react";
+import { Camera, Download, LogOut, Moon, Sun } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { AvatarPickerDialog } from "@/components/avatar-picker-dialog";
 import { BadgeChips, FormDots } from "@/components/form-dots";
@@ -24,7 +24,6 @@ type AccountViewProps = {
   onToggleTheme: () => void;
   canInstall: boolean;
   onInstall: () => void;
-  spreadsheetUrl: string | null;
   onLogout: () => void;
   onOpenProfile: () => void;
 };
@@ -60,7 +59,6 @@ export function AccountView({
   onToggleTheme,
   canInstall,
   onInstall,
-  spreadsheetUrl,
   onLogout,
   onOpenProfile,
 }: AccountViewProps) {
@@ -201,14 +199,6 @@ export function AccountView({
               <Download className="h-4 w-4" />
               Install
             </button>
-          </SettingRow>
-        )}
-        {spreadsheetUrl && (
-          <SettingRow title="Club spreadsheet" detail="Where the results come from.">
-            <a href={spreadsheetUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary">
-              <FileSpreadsheet className="h-4 w-4" />
-              Open
-            </a>
           </SettingRow>
         )}
         <SettingRow title="Sign out" detail={`Signed in as ${memberName}.`}>
