@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. `main` is clean and green (typecheck, API 115 tests, dashboard 95 tests, browser smoke 45/45 in CI).
+State as of 31 Oct 2026. Last local run with L4: typecheck clean, API 126 tests, dashboard 99 tests, smoke 50/50.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -14,8 +14,8 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 
 ## Where work stopped
 
-L3 is merged (past nights and notes in the ledger, no schema change). L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements`. L4 is next.
+L4 is done (jackpot payout, and tournaments started from the Live tab's New night menu). L3 (past nights and notes, no schema change), L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements` (L2), and the new table `jackpot_payouts` (L4: `club_id`, `player_id`, `cents`, `paid_at`, `paid_by`). The structure work is next.
 
 ## How to work
 
@@ -74,8 +74,12 @@ Done. No schema change.
 - The "Record a night" form is gone from `components/club-data-panel.tsx`; `POST /clubs/current/sessions` still exists but the site no longer calls it. CSV, paste and Sheet history import stay in admin Setup.
 
 ### L4. Jackpot payout, tournaments from "New night"
-Payout: table or column recording `(club_id, player_id, cents, at, by)`; `clubJackpot()` in `lib/club-sessions.ts` subtracts payouts; UI on the jackpot card in `live-view.tsx`.
-"New night" menu on the Live tab with Cash night and Tournament; the tournament form currently lives in `components/club-data-panel.tsx`.
+Done. Schema: table `jackpot_payouts (club_id, player_id, cents, paid_at, paid_by)` with cascade delete from the club and restrict on the player, so a payout is not dropped when someone claims a different name. `clubJackpot()` subtracts those cents from the surplus. The pot cannot be overdrawn.
+- `GET /api/clubs/current/jackpot` now also returns `payouts` (`name`, `amount` in dollars, `at`, `by`).
+- `POST /api/clubs/current/jackpot/payouts` `{ name, amount }`: the host of the open or latest night, or an admin. 403 otherwise. 400 for an unknown player, a non-positive amount, or more than the pot holds.
+- The jackpot card on Live shows the reduced total, the payout history, and (for the host or an admin) a form to record one.
+- Live's start button is a **New night** menu: Cash night (any member, same as before) and Tournament (host or admin). The tournament form moved out of admin Setup; CSV import of past tournaments stays there.
+- `POST /api/clubs/current/tournaments` is no longer admin-only. A member who is not the host gets 403. Deleting a tournament and importing tournament CSVs stay admin-only.
 
 ## After the ledger: structure work (see the plan)
 Split My account into Me and Club admin (Club tab gets an Admin section: People, Setup, Settings, Danger); make Members/invite link available to all members
@@ -85,4 +89,4 @@ so usage is visible only to the platform owner; Leaderboard tab label and Home c
 ## Known loose ends
 - Real Monash member first names in the tests and mockup have been replaced with fictional ones. The git history (and the local `full-history` branch) still contains them and the old screenshots; do not make that history public.
 - Dead but harmless: unused tables/columns (`auth_sessions`, `login_throttle`, `clubs.hashtag`, `invites.emailed_to`, `live_activity_events.sheet_hash`), `liveLedgerSheetRowRangesForSession` and the sheet helpers in `lib/live-ledger-utils.ts` / `lib/live-ledger-deletion.ts`, the empty `quarters` field in the dashboard payload, some `.recap-*` CSS.
-- Not done: edit a recorded night (the reopen step covers it), jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres.
+- Not done: edit a recorded night (the reopen step covers it), jackpot rows in the CSV export, tournament CSV export, avatars still stored in Postgres. The structure work (Me vs Club admin, platform admin page, merge names) has not started.

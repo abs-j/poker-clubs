@@ -4,6 +4,7 @@ import {
   clubSessions,
   clubTournaments,
   db,
+  jackpotPayouts,
   liveActivityEvents,
   liveSessions,
   normalizeNameKey,
@@ -14,6 +15,7 @@ import { buildClubDashboard, type NightInput } from "./club-dashboard";
 import { nightFingerprint, type ParsedNight } from "./import-parse";
 import { loadTournamentEvents } from "./club-tournaments";
 import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
+import { payoutCents, remainingJackpotCents } from "./jackpot";
 import { canManageNight, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -338,17 +340,105 @@ export async function listClubNights(clubId: number) {
   }));
 }
 
-/** Everything the club has put into its bad beat jackpot so far, in dollars, and how many nights added to it. */
-export async function clubJackpot(clubId: number): Promise<{ total: number; nights: number }> {
+export type JackpotPayoutRow = {
+  id: number;
+  name: string;
+  /** Dollars paid to this player. */
+  amount: number;
+  at: string;
+  by: string;
+};
+
+export type JackpotView = {
+  /** Dollars still in the pot: surplus from nights minus payouts. */
+  total: number;
+  nights: number;
+  payouts: JackpotPayoutRow[];
+};
+
+/** A payout the club cannot record (bad amount, unknown player, empty pot). */
+export class JackpotInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "JackpotInputError";
+  }
+}
+
+/** The bad beat jackpot still held, in dollars, how many nights added to it, and the payouts already made. */
+export async function clubJackpot(clubId: number): Promise<JackpotView> {
   await syncClosedLiveSessions(clubId);
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
+      contributed: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
       nights: sql<number>`count(*) filter (where ${clubSessions.jackpotCents} > 0)`.mapWith(Number),
     })
     .from(clubSessions)
     .where(eq(clubSessions.clubId, clubId));
-  return { total: toDollars(row?.total ?? 0), nights: row?.nights ?? 0 };
+  const payouts = await db
+    .select({
+      id: jackpotPayouts.id,
+      name: players.displayName,
+      cents: jackpotPayouts.cents,
+      at: jackpotPayouts.paidAt,
+      by: jackpotPayouts.paidBy,
+    })
+    .from(jackpotPayouts)
+    .innerJoin(players, eq(players.id, jackpotPayouts.playerId))
+    .where(eq(jackpotPayouts.clubId, clubId))
+    .orderBy(desc(jackpotPayouts.paidAt), desc(jackpotPayouts.id));
+  const paid = payouts.reduce((sum, payout) => sum + payout.cents, 0);
+  return {
+    total: toDollars(remainingJackpotCents(row?.contributed ?? 0, paid)),
+    nights: row?.nights ?? 0,
+    payouts: payouts.map((payout) => ({
+      id: payout.id,
+      name: payout.name,
+      amount: toDollars(payout.cents),
+      at: payout.at.toISOString(),
+      by: payout.by,
+    })),
+  };
+}
+
+/**
+ * Records a payout to one player and returns the pot afterwards.
+ * The caller has already checked that the host or an admin is asking.
+ * Two payouts at once are serialized on the club row so they cannot overdraw the pot.
+ */
+export async function recordJackpotPayout(
+  clubId: number,
+  paidBy: string,
+  body: { name?: unknown; amount?: unknown },
+): Promise<JackpotView> {
+  const name = typeof body.name === "string" ? tidy(body.name) : "";
+  const key = normalizeNameKey(name);
+  if (!key || name.length > 80) throw new JackpotInputError("Choose a player.");
+  await syncClosedLiveSessions(clubId);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM clubs WHERE id = ${clubId} FOR UPDATE`);
+    const [pot] = await tx
+      .select({
+        contributed: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
+      })
+      .from(clubSessions)
+      .where(eq(clubSessions.clubId, clubId));
+    const [paid] = await tx
+      .select({
+        cents: sql<number>`coalesce(sum(${jackpotPayouts.cents}), 0)`.mapWith(Number),
+      })
+      .from(jackpotPayouts)
+      .where(eq(jackpotPayouts.clubId, clubId));
+    const checked = payoutCents(body.amount, remainingJackpotCents(pot?.contributed ?? 0, paid?.cents ?? 0));
+    if ("error" in checked) throw new JackpotInputError(checked.error);
+    const [player] = await tx
+      .select({ id: players.id })
+      .from(players)
+      .where(and(eq(players.clubId, clubId), eq(players.nameKey, key)))
+      .limit(1);
+    if (!player) throw new JackpotInputError("That person is not on this club's roster.");
+    await tx.insert(jackpotPayouts).values({ clubId, playerId: player.id, cents: checked.cents, paidBy });
+  });
+  return clubJackpot(clubId);
 }
 
 /** Deletes a hand-entered or imported night. Nights from the live ledger are removed there instead. */

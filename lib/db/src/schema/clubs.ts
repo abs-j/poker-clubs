@@ -188,6 +188,31 @@ export const nightSettlements = pgTable(
 );
 
 /**
+ * Money paid out of the club's bad beat jackpot to one player.
+ * The running total is the surplus recorded on nights minus these rows.
+ */
+export const jackpotPayouts = pgTable(
+  "jackpot_payouts",
+  {
+    id: serial("id").primaryKey(),
+    clubId: integer("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "restrict" }),
+    /** Amount paid, in cents. Always greater than zero. */
+    cents: integer("cents").notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
+    paidBy: text("paid_by").notNull(),
+  },
+  (table) => [
+    index("jackpot_payouts_club_id_idx").on(table.clubId),
+    index("jackpot_payouts_player_id_idx").on(table.playerId),
+  ],
+);
+
+/**
  * A tournament a club ran. Only what was entered is stored (places, entries, knockouts and any
  * payouts); prize pools, returns and profit are worked out when the dashboard is built.
  */

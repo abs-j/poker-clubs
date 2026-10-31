@@ -263,6 +263,31 @@ console.log("\nAccounts and clubs");
     expect(after.total === 4, "a shortfall changed the jackpot");
   });
 
+  await check("the host or an admin can pay the jackpot out, and the total goes down", async () => {
+    const pay = (jar, body) => api("/api/clubs/current/jackpot/payouts", { jar, method: "POST", body });
+    expect((await pay(guest, { name: "Smoke Guest", amount: 1 })).status === 403, "a member who is not the host paid the jackpot");
+    expect((await pay(rival, { name: "Rival Owner", amount: 1 })).status === 400, "an empty jackpot paid out");
+    expect((await pay(owner, { name: "Nobody", amount: 1 })).status === 400, "an unknown player was paid");
+    expect((await pay(owner, { name: "Smoke Guest", amount: 5 })).status === 400, "a payout bigger than the pot was accepted");
+    const paid = await pay(owner, { name: "smoke guest", amount: "1.50" });
+    expect(paid.status === 201, `payout ${paid.status}`);
+    const body = await paid.json();
+    expect(body.total === 2.5 && body.nights === 1 && body.payouts.length === 1, `after payout ${JSON.stringify(body)}`);
+    const row = body.payouts[0];
+    expect(row.name === "Smoke Guest" && row.amount === 1.5 && row.by === "Pat Imported", `payout row ${JSON.stringify(row)}`);
+    const untouched = await (await api("/api/clubs/current/jackpot", { jar: rival })).json();
+    expect(untouched.total === 0 && untouched.payouts.length === 0, "a payout showed up in another club");
+
+    expect((await api("/api/poker/live-session/start", { jar: guest, method: "POST" })).ok, "guest could not start a night");
+    const hostPaid = await pay(guest, { name: "Pat Imported", amount: 1 });
+    expect(hostPaid.status === 201, `the host's payout ${hostPaid.status}`);
+    const afterHost = await hostPaid.json();
+    expect(afterHost.total === 1.5 && afterHost.payouts.length === 2, `after the host paid ${JSON.stringify({ total: afterHost.total, payouts: afterHost.payouts.length })}`);
+    expect((await api("/api/poker/live-session/end", { jar: guest, method: "POST" })).ok, "could not discard the empty night");
+    const still = await (await api("/api/clubs/current/jackpot", { jar: owner })).json();
+    expect(still.total === 1.5 && still.payouts.length === 2, "discarding the night changed the jackpot");
+  });
+
   await check("the host manages the night, and reopening it does not record it twice", async () => {
     const nights = async () => (await (await api("/api/poker/dashboard", { jar: owner })).json()).sessions.length;
     const before = await nights();
@@ -583,6 +608,13 @@ console.log("\nAccounts and clubs");
         { name: "Wes", finishPlace: 4, entries: 1, knockouts: 0 },
       ],
     };
+    expect((await api("/api/clubs/current/tournaments", { jar: guest, method: "POST", body })).status === 403, "a member who is not the host recorded a tournament");
+    expect((await api("/api/poker/live-session/start", { jar: guest, method: "POST" })).ok, "guest could not start a night");
+    const asHost = await api("/api/clubs/current/tournaments", { jar: guest, method: "POST", body: { ...body, title: "Host Freezeout" } });
+    expect(asHost.status === 201, `host record ${asHost.status}`);
+    const hostEvent = await asHost.json();
+    expect((await api(`/api/clubs/current/tournaments/${hostEvent.id}`, { jar: owner, method: "DELETE" })).status === 204, "could not delete the host's tournament");
+    expect((await api("/api/poker/live-session/end", { jar: guest, method: "POST" })).ok, "could not discard the empty night");
     const bad = await api("/api/clubs/current/tournaments", { jar: owner, method: "POST", body: { ...body, players: [body.players[0], { ...body.players[1], finishPlace: 1 }] } });
     expect(bad.status === 400, `duplicate places should be refused, got ${bad.status}`);
     const saved = await api("/api/clubs/current/tournaments", { jar: owner, method: "POST", body });
@@ -930,6 +962,8 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
     setter.call(node, "2026-01-10");
     node.dispatchEvent(new Event("input", { bubbles: true }));
   });
+  await tapCentered('[data-testid="button-new-night"]');
+  await wait('[data-testid="button-start-live-session"]');
   await tapCentered('[data-testid="button-start-live-session"]');
   await wait('[data-testid="text-live-night-date"]');
   expect(/10 Jan 2026/.test(await text('[data-testid="text-live-night-date"]')), "the past night's date should show on Live");
@@ -948,6 +982,96 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
   expect(wide <= 1, `the Live page scrolls sideways on a phone (${wide}px)`);
   await phone.screenshot({ path: `${OUT}/live-notes.png`, fullPage: true });
   await context.close();
+});
+
+await check("a jackpot payout and a tournament can be recorded from the Live tab", async () => {
+  const jar = cookieJar();
+  const origin = { origin: BASE };
+  const email = `payout-${Date.now()}@example.com`;
+  const secret = "smoke-test-pass-9";
+  expect((await api("/api/identity/sign-up/email", { jar, method: "POST", headers: origin, body: { name: "Ada Payout", email, password: secret } })).ok, "sign-up failed");
+  expect((await api("/api/clubs", { jar, method: "POST", body: { name: "Payout Club", playerName: "Ada Payout" } })).status === 201, "club not created");
+  expect((await api("/api/poker/live-session/start", { jar, method: "POST" })).ok, "could not start");
+  expect((await api("/api/poker/live-activity", { jar, method: "POST", body: { action: "buy_in", amount: 10 } })).ok, "buy-in failed");
+  expect((await api("/api/poker/live-activity", { jar, method: "POST", body: { action: "cash_out", amount: 6 } })).ok, "cash-out failed");
+  expect((await api("/api/clubs/current/ledger/resolution", { jar, method: "PUT", body: { mode: "jackpot" } })).ok, "jackpot choice refused");
+  expect((await api("/api/poker/live-session/end", { jar, method: "POST" })).ok, "could not close");
+
+  const context = await browser.createBrowserContext();
+  const phone = await context.newPage();
+  try {
+    await phone.setViewport(PHONE);
+    phone.on("pageerror", (error) => pageErrors.push(error.message));
+    phone.on("response", (response) => { if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`); });
+    const wait = (selector) => phone.waitForSelector(selector, { timeout: 15000 });
+    // A control at the bottom of a long page can sit under the fixed tab bar, so scroll it clear and fall back to a DOM click.
+    const press = async (selector) => {
+      await wait(selector);
+      await phone.evaluate((sel) => {
+        const node = document.querySelector(sel);
+        node.scrollIntoView({ block: "center" });
+        const bar = document.querySelector('[data-testid="nav-bottom-tabs"]');
+        const rect = node.getBoundingClientRect();
+        const limit = bar ? bar.getBoundingClientRect().top - 16 : window.innerHeight - 16;
+        if (rect.bottom > limit) window.scrollBy(0, rect.bottom - limit);
+      }, selector);
+      try {
+        await phone.tap(selector);
+      } catch {
+        await phone.$eval(selector, (node) => node.click());
+      }
+    };
+    await phone.goto(`${BASE}/`, { waitUntil: "networkidle2" });
+    await wait('[data-testid="input-email"]');
+    await phone.type('[data-testid="input-email"]', email);
+    await phone.type('[data-testid="input-password"]', secret);
+    await press('[data-testid="button-account-submit"]');
+    await wait('[data-testid="section-home-overview"]');
+    await press('[data-testid="tab-live"]');
+    await wait('[data-testid="text-jackpot-total"]');
+    await phone.waitForFunction(() => /4\.00/.test(document.querySelector('[data-testid="text-jackpot-total"]')?.textContent ?? ""), { timeout: 15000 });
+    await wait('[data-testid="form-jackpot-payout"]');
+    const playerName = await phone.$eval('[data-testid="input-jackpot-player"]', (node) => node.value);
+    if (playerName !== "Ada Payout") {
+      await phone.click('[data-testid="input-jackpot-player"]', { clickCount: 3 });
+      await phone.type('[data-testid="input-jackpot-player"]', "Ada Payout");
+    }
+    await phone.click('[data-testid="input-jackpot-amount"]');
+    await phone.type('[data-testid="input-jackpot-amount"]', "1");
+    await press('[data-testid="button-jackpot-payout"]');
+    await phone.waitForFunction(() => /3\.00/.test(document.querySelector('[data-testid="text-jackpot-total"]')?.textContent ?? ""), { timeout: 15000 });
+    await phone.waitForFunction(() => /Ada Payout/.test(document.querySelector('[data-testid="list-jackpot-payouts"]')?.innerText ?? ""), { timeout: 15000 });
+    const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(sideways <= 1, `the jackpot card scrolls sideways on a phone (${sideways}px)`);
+
+    await press('[data-testid="button-new-night"]');
+    await wait('[data-testid="menu-new-night-tournament"]');
+    await phone.$eval('[data-testid="menu-new-night-tournament"]', (node) => node.click());
+    await wait('[data-testid="section-record-tournament"]');
+    await phone.type('[data-testid="input-tournament-title"]', "Friday Freezeout");
+    await phone.type('[data-testid="input-tournament-buyin"]', "10");
+    await phone.type('[data-testid="input-tournament-name-0"]', "Ada Payout");
+    await phone.type('[data-testid="input-tournament-name-1"]', "Bo Payout");
+    await press('[data-testid="button-tournament-save"]');
+    await phone.waitForFunction(() => /Tournament recorded/.test(document.querySelector('[data-testid="status-tournament-saved"]')?.innerText ?? ""), { timeout: 15000 });
+    const wide = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(wide <= 1, `the tournament form scrolls sideways on a phone (${wide}px)`);
+    await phone.screenshot({ path: `${OUT}/live-jackpot-tournament.png`, fullPage: true });
+
+    await phone.evaluate(() => window.scrollTo(0, 0));
+    await press('[data-testid="button-mobile-dashboard-menu"]');
+    await wait('[data-testid="menu-open-account"]');
+    await press('[data-testid="menu-open-account"]');
+    await wait('[data-testid="section-import-tournaments"]');
+    const moved = await phone.$('[data-testid="section-record-tournament"]');
+    expect(moved === null, "the tournament form should stay off the admin Setup page");
+  } catch (error) {
+    await phone.screenshot({ path: `${OUT}/live-jackpot-tournament-failed.png`, fullPage: true }).catch(() => undefined);
+    const where = await phone.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "");
+    throw new Error(`${error.message}\n${where}`);
+  } finally {
+    await context.close();
+  }
 });
 
 await check("terms and privacy are readable without signing in, and sign-up asks for agreement", async () => {

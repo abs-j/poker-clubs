@@ -1,7 +1,7 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { cleanTimezone } from "../lib/club-settings-parse";
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { clubs, db, invites, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
+import { clubs, db, invites, jackpotPayouts, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
 import { adminClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
 import {
@@ -506,7 +506,8 @@ router.post("/clubs/current/claim", requireMemberSession, async (req, res): Prom
 
       const [{ cash }] = await tx.select({ cash: count() }).from(sessionResults).where(eq(sessionResults.playerId, mine.playerId));
       const [{ tournaments }] = await tx.select({ tournaments: count() }).from(tournamentResults).where(eq(tournamentResults.playerId, mine.playerId));
-      if (cash + tournaments > 0) {
+      const [{ payouts }] = await tx.select({ payouts: count() }).from(jackpotPayouts).where(eq(jackpotPayouts.playerId, mine.playerId));
+      if (cash + tournaments + payouts > 0) {
         throw new JoinError("Your current name already has results, so it can't be swapped. Ask a club admin to remove it from the roster first.", 409);
       }
       const [target] = await tx

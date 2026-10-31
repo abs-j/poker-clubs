@@ -10,9 +10,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { clubFileSlug, clubTimeZone, clubToday } from "@/lib/club-format";
-import { accountApi, type BalanceChoice } from "@/lib/account-api";
+import { AccountError, accountApi, type BalanceChoice, type JackpotSummary } from "@/lib/account-api";
 import { SettleList, useRefreshSettleUp } from "@/components/settle-up";
 import { LedgerNotes } from "@/components/ledger-notes";
+import { RecordTournament } from "@/components/record-tournament";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
 const LIVE_ROLE_KEY = ["live-session-role"];
@@ -38,7 +39,8 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const [handingOver, setHandingOver] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [savingBank, setSavingBank] = useState(false);
-  const [jackpot, setJackpot] = useState<{ total: number; nights: number } | null>(null);
+  const [jackpot, setJackpot] = useState<JackpotSummary | null>(null);
+  const [showTournament, setShowTournament] = useState(false);
   const liveQuery = useGetPokerLiveActivity({
     query: {
       queryKey: getGetPokerLiveActivityQueryKey(),
@@ -103,7 +105,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const rosterQuery = useQuery({
     queryKey: ["club-members"],
     queryFn: () => accountApi.members(),
-    enabled: canManage && snapshot !== undefined && snapshot.sessionStatus !== "not_started",
+    enabled: canManage && snapshot !== undefined && (snapshot.sessionStatus !== "not_started" || showTournament || (jackpot?.total ?? 0) > 0),
   });
   const isOpen = snapshot?.sessionStatus === "open";
   const playerOptions = [...new Set([memberName, ...availablePlayers].filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -238,6 +240,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const start = () => {
     setFormError("");
     setSessionNotice("");
+    setShowTournament(false);
     setStarting(true);
     startPokerLiveSession({ headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: nightDate }) })
       .then((next) => {
@@ -548,11 +551,25 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           </label>}
         </div>
         <div className="flex flex-col items-end gap-2">
-          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <button onClick={start} disabled={isSaving} aria-label={snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"} data-testid="button-start-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm"><Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><span className="sm:hidden">{starting ? "Starting…" : snapshot.sessionStatus === "ended" ? "New session" : "Start"}</span><span className="hidden sm:inline">{starting ? "Starting…" : snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"}</span></button>}
+          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" disabled={isSaving} data-testid="button-new-night" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">
+                <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span>{starting ? "Starting…" : "New night"}</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onSelect={start} data-testid="button-start-live-session" className="min-h-11">Cash night</DropdownMenuItem>
+              {canManage && <DropdownMenuItem onSelect={() => setShowTournament(true)} data-testid="menu-new-night-tournament" className="min-h-11">Tournament</DropdownMenuItem>}
+            </DropdownMenuContent>
+          </DropdownMenu>}
           {isOpen && canManage && <button onClick={end} disabled={isSaving} aria-label={snapshot.hasRecordedActivity ? "End session" : "Discard empty session"} data-testid="button-end-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-destructive/35 bg-destructive/10 px-2.5 text-[11px] font-semibold text-destructive disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">{snapshot.hasRecordedActivity ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}<span className="sm:hidden">{endMutation.isPending ? "Saving…" : snapshot.hasRecordedActivity ? "End" : "Discard"}</span><span className="hidden sm:inline">{endMutation.isPending ? snapshot.hasRecordedActivity ? "Ending…" : "Discarding…" : snapshot.hasRecordedActivity ? "End session" : "Discard empty session"}</span></button>}
           {roleQuery.data?.status === "ended" && canManage && <button type="button" onClick={reopen} disabled={isSaving} data-testid="button-reopen-live-session" className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-border bg-background px-2.5 text-[11px] font-semibold disabled:opacity-60 sm:h-11 sm:px-5 sm:text-sm">{reopening ? "Reopening…" : "Reopen"}</button>}
         </div>
       </div>
+
+      {showTournament && !isOpen && <RecordTournament roster={bankOptions} onCancel={() => setShowTournament(false)} />}
 
       {isOpen && canManage && <LedgerNotes roster={bankOptions} onAdded={setSnapshot} />}
 
@@ -686,11 +703,9 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
         {roleQuery.data?.status === "ended" && roleQuery.data.nightId !== null && <SettleList nightId={roleQuery.data.nightId} />}
       </div>
 
-      {jackpot && jackpot.total > 0 && <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
-        <p className="section-label">Bad beat jackpot</p>
-        <p className="mt-1 font-mono text-2xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
-        <p className="mt-1 text-xs text-muted-foreground">Built from the surplus of {jackpot.nights} {jackpot.nights === 1 ? "night" : "nights"} that closed over.</p>
-      </section>}
+      {jackpot && (jackpot.total > 0 || jackpot.payouts.length > 0) && (
+        <JackpotCard jackpot={jackpot} canManage={canManage} players={bankOptions} onPaid={setJackpot} />
+      )}
 
       <section className="rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="section-live-ledger-history">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -950,6 +965,69 @@ function LiveMetric({ label, compactLabel, value, detail, tone }: { label: strin
     <p className={`mt-1.5 truncate font-mono text-[18px] font-semibold tracking-[-0.045em] sm:mt-2 sm:text-2xl ${tone === "positive" ? "text-chart-1" : tone === "negative" ? "text-destructive" : "text-foreground"}`}>{value}</p>
     <p className="mt-1 hidden truncate text-[11px] text-muted-foreground sm:block sm:text-[11px]">{detail}</p>
   </article>;
+}
+
+function JackpotCard({ jackpot, canManage, players, onPaid }: { jackpot: JackpotSummary; canManage: boolean; players: string[]; onPaid: (next: JackpotSummary) => void }) {
+  const [name, setName] = useState(players[0] ?? "");
+  const [amount, setAmount] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pay = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      onPaid(await accountApi.payJackpot({ name, amount }));
+      setAmount("");
+    } catch (caught) {
+      setError(caught instanceof AccountError ? caught.message : "Something went wrong. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
+      <p className="section-label">Bad beat jackpot</p>
+      <p className="mt-1 font-mono text-2xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Built from the surplus of {jackpot.nights} {jackpot.nights === 1 ? "night" : "nights"} that closed over.
+        {jackpot.payouts.length > 0 ? ` ${jackpot.payouts.length} ${jackpot.payouts.length === 1 ? "payout" : "payouts"} so far.` : ""}
+      </p>
+      {canManage && jackpot.total > 0 && (
+        <form onSubmit={(event) => void pay(event)} className="mt-4 flex flex-wrap items-end gap-2" data-testid="form-jackpot-payout">
+          <label className="min-w-[8rem] flex-1 text-[11px] font-semibold text-muted-foreground">
+            Player
+            <input list="jackpot-payout-players" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} data-testid="input-jackpot-player" className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-normal text-foreground outline-none focus:border-primary" />
+            <datalist id="jackpot-payout-players">
+              {players.map((player) => <option key={player} value={player} />)}
+            </datalist>
+          </label>
+          <label className="w-28 text-[11px] font-semibold text-muted-foreground">
+            Amount
+            <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" required placeholder="0.00" data-testid="input-jackpot-amount" className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm font-normal text-foreground outline-none focus:border-primary" />
+          </label>
+          <button type="submit" disabled={busy || !name.trim() || !amount.trim()} data-testid="button-jackpot-payout" className="h-10 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60">
+            {busy ? "Saving…" : "Record payout"}
+          </button>
+        </form>
+      )}
+      {error && <p role="alert" data-testid="status-jackpot-error" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+      {!canManage && jackpot.total > 0 && <p className="mt-3 text-xs text-muted-foreground">The host or an admin can pay this out to a player.</p>}
+      {jackpot.payouts.length > 0 && (
+        <ul className="mt-4 divide-y divide-border/70 rounded-xl border border-border" data-testid="list-jackpot-payouts">
+          {jackpot.payouts.map((payout) => (
+            <li key={payout.id} className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm" data-testid={`row-jackpot-payout-${payout.id}`}>
+              <span className="min-w-0">
+                <span className="font-semibold">{payout.name}</span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">by {payout.by} · {formatActivityTime(payout.at)}</span>
+              </span>
+              <span className="shrink-0 font-mono text-sm font-semibold">{formatCurrency(payout.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function LiveActivityLoading() {
