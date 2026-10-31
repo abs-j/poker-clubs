@@ -1,6 +1,8 @@
 // Calls for accounts, clubs and invites. Sign-in itself is handled by the identity service
 // under /api/identity; everything about clubs is under /api/clubs and /api/invites.
 
+import type { LiveActivitySnapshot } from "@workspace/api-client-react";
+
 export const APP_NAME = (import.meta.env.VITE_APP_NAME as string | undefined) || "Poker Clubs";
 
 export type ClubRole = "owner" | "admin" | "member";
@@ -54,7 +56,6 @@ export type NightRow = {
   /** Surplus from this night that went into the bad beat jackpot, in dollars. */
   jackpot: number;
 };
-export type NightInput = { date: string; players: Array<{ name: string; buyIn: string; cashOut: string }> };
 
 export type TournamentRow = { id: number; date: string; title: string; players: number; entries: number };
 export type TournamentFormInput = {
@@ -232,8 +233,6 @@ export const accountApi = {
   undoImport: (batchId: string) => request<{ removed: number }>(`/api/clubs/current/import/${batchId}`, { method: "DELETE" }),
   nights: () => request<{ sessions: NightRow[] }>("/api/clubs/current/sessions", { cache: "no-store" }),
   deleteNight: (id: number) => request<void>(`/api/clubs/current/sessions/${id}`, { method: "DELETE" }),
-  recordNight: (night: NightInput) =>
-    request<{ imported: number; balanced: boolean; difference: number }>("/api/clubs/current/sessions", send("POST", night)),
   tournaments: () => request<{ tournaments: TournamentRow[] }>("/api/clubs/current/tournaments", { cache: "no-store" }),
   recordTournament: (input: TournamentFormInput) =>
     request<{ id: number; players: number; totalCollected: number; mainPrizePool: number; dataCheck: string }>(
@@ -244,6 +243,9 @@ export const accountApi = {
     request<TournamentImportPreview>("/api/clubs/current/tournaments/import/preview", send("POST", tabs)),
   importTournaments: (tabs: TournamentTabs) =>
     request<{ imported: number; duplicates: number }>("/api/clubs/current/tournaments/import", send("POST", tabs)),
+  /** Host or admin: adds a night's entries read from notes (amounts in dollars) to the open night. */
+  addNotesToLedger: (players: Array<{ name: string; buyIn: string; cashOut: string }>) =>
+    request<LiveActivitySnapshot>("/api/poker/live-session/notes", send("POST", { players })),
   readNotesImage: (image: { data: string; mediaType: string }) =>
     request<{ text: string }>("/api/clubs/current/sessions/notes-image", send("POST", image)),
   deleteTournament: (id: number) => request<void>(`/api/clubs/current/tournaments/${id}`, { method: "DELETE" }),

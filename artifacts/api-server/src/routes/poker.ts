@@ -19,11 +19,13 @@ import { recordAdminAction } from "../lib/admin-audit";
 import { LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { resolveAttributedPlayer } from "../lib/live-activity-player";
 import {
+  addEntriesFromNotes,
   createLiveActivityEvent,
   deleteLiveActivityEvent,
   getLiveActivityHistory,
   getLiveActivitySnapshot,
   endLiveSession,
+  LiveSessionInputError,
   liveSessionRole,
   reopenLiveSession,
   setLiveSessionBank,
@@ -193,14 +195,33 @@ router.post("/poker/live-session/start", requireMemberSession, async (req, res):
       res.status(401).json({ error: "Member authentication required." });
       return;
     }
+    // An optional { date: "YYYY-MM-DD" } starts a night for a past day; without it the night is tonight's.
+    const date = typeof req.body?.date === "string" ? req.body.date : undefined;
     res.status(201).json(
-      StartPokerLiveSessionResponse.parse(await startLiveSession(session.memberName, memberClubId(res))),
+      StartPokerLiveSessionResponse.parse(await startLiveSession(session.memberName, memberClubId(res), date)),
     );
   } catch (error) {
     req.log.error({ err: error }, "Unable to start live poker session");
-    res.status(502).json({
+    res.status(error instanceof LiveSessionInputError ? 400 : 502).json({
       error: error instanceof Error ? error.message : "Unable to start live poker session.",
     });
+  }
+});
+
+/** Fills the open night from notes: { players: [{ name, buyIn, cashOut }] }. The host or an admin. */
+router.post("/poker/live-session/notes", requireMemberSession, async (req, res): Promise<void> => {
+  res.set("Cache-Control", "no-store");
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  try {
+    res.status(201).json(StartPokerLiveSessionResponse.parse(await addEntriesFromNotes(actor, memberClubId(res), req.body?.players)));
+  } catch (error) {
+    req.log.error({ err: error }, "Unable to fill the live session from notes");
+    const message = error instanceof Error ? error.message : "Unable to add those entries.";
+    res.status(refused(error) ?? (error instanceof LiveSessionInputError ? 400 : 502)).json({ error: message });
   }
 });
 

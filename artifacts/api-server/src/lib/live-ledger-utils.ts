@@ -38,6 +38,54 @@ export function liveLedgerSessionDate(value = new Date(), timeZone = LIVE_LEDGER
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+/**
+ * The date a night is started for. Empty means tonight. A past date is fine (catching up a night after the fact);
+ * a future date or something that is not a real calendar day is refused.
+ */
+export function chooseLedgerDate(raw: unknown, today: string): { date: string } | { error: string } {
+  if (raw === undefined || raw === null || raw === "") return { date: today };
+  if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { error: "Choose the date of the night." };
+  const parsed = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== raw) return { error: "That is not a real date." };
+  if (raw > today) return { error: "A night cannot be in the future." };
+  if (raw < "2000-01-01") return { error: "That date is too far back." };
+  return { date: raw };
+}
+
+export type NotesPlayer = { name: string; buyInCents: number; cashOutCents: number };
+
+/**
+ * Checks the players read from someone's notes before they become ledger entries. A name listed twice is one
+ * person with more money in or out; a player with no money at all is dropped.
+ */
+export function cleanNotesPlayers(raw: unknown): { players: NotesPlayer[] } | { error: string } {
+  if (!Array.isArray(raw) || raw.length === 0) return { error: "Add at least one player with a buy-in or cash-out." };
+  if (raw.length > 100) return { error: "That is more than 100 players for one night." };
+  const merged = new Map<string, NotesPlayer>();
+  for (const row of raw) {
+    const entry = (row ?? {}) as { name?: unknown; buyIn?: unknown; cashOut?: unknown };
+    const name = typeof entry.name === "string" ? entry.name.trim().replace(/\s+/g, " ") : "";
+    if (!name) continue;
+    const buyIn = entry.buyIn === undefined || entry.buyIn === "" ? 0 : Number(entry.buyIn);
+    const cashOut = entry.cashOut === undefined || entry.cashOut === "" ? 0 : Number(entry.cashOut);
+    if (name.length > 80 || !Number.isFinite(buyIn) || !Number.isFinite(cashOut) || buyIn < 0 || cashOut < 0 || buyIn > 100_000 || cashOut > 100_000) {
+      return { error: `Check the amounts for ${name || "a player"}.` };
+    }
+    const key = name.toLocaleLowerCase();
+    const existing = merged.get(key);
+    const buyInCents = Math.round(buyIn * 100);
+    const cashOutCents = Math.round(cashOut * 100);
+    if (existing) {
+      existing.buyInCents += buyInCents;
+      existing.cashOutCents += cashOutCents;
+    } else {
+      merged.set(key, { name, buyInCents, cashOutCents });
+    }
+  }
+  const players = [...merged.values()].filter((player) => player.buyInCents > 0 || player.cashOutCents > 0);
+  return players.length > 0 ? { players } : { error: "Add at least one player with a buy-in or cash-out." };
+}
+
 export function formatLiveLedgerTimestamp(value: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: LIVE_LEDGER_TIME_ZONE,

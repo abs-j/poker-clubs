@@ -14,8 +14,8 @@ Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION
 
 ## Where work stopped
 
-L2 is merged (bank and settle-up). L1 (hosts) is merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
-`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements`. L3 is next.
+L3 is merged (past nights and notes in the ledger, no schema change). L2 (bank and settle-up) and L1 (hosts) are merged before it. Production needs `pnpm --filter @workspace/db run push` when a build with these is published; everything added is additive:
+`live_sessions.host_name` (L1), `live_sessions.bank_name`, `live_sessions.settle_up` (boolean, default false) and the new table `night_settlements`. L4 is next.
 
 ## How to work
 
@@ -66,9 +66,12 @@ UI: bank picker in the Live header, the Settle up list under the close summary, 
 Pure logic is in `lib/settle-up.ts` on both sides, with tests; smoke covers the API rules and the Home, Live and Games screens.
 
 ### L3. Past nights and notes inside the ledger
-Start-night takes a date (server: allow a past date; `liveLedgerSessionDate` and `getLatestSessionForDate` in `lib/live-activity.ts` assume today).
-Move the paste-notes and screenshot tools from `components/club-data-panel.tsx` (`box-night-notes`, `lib/night-notes.ts`, `/clubs/current/sessions/notes-image`)
-into the ledger as "Fill from notes" creating entries as the host. Remove the "Record a night" form once covered. Keep the CSV/paste/Sheet history import in admin Setup.
+Done. No schema change.
+- `POST /api/poker/live-session/start` takes an optional `{ date }` (`YYYY-MM-DD`, not in the future; default is the club's today). Invalid dates return 400 (`chooseLedgerDate` in `lib/live-ledger-utils.ts`).
+- `getLatestSessionForDate` matches a night dated that day or closed that day, so a night for a past date is found and closed as the latest session. `endLiveSession` uses the same condition.
+- `POST /api/poker/live-session/notes` `{ players: [{ name, buyInCents, cashOutCents }] }` adds buy-in and cash-out entries to the open night, created by the caller (host or admin only), with the comment "From notes". The Live tab shows it as "Fill from notes" (`components/ledger-notes.tsx`, using `lib/night-notes.ts`).
+- `POST /clubs/current/sessions/notes-image` (screenshot reading) now needs a member session and is allowed only for the host or an admin of the open night (403 otherwise).
+- The "Record a night" form is gone from `components/club-data-panel.tsx`; `POST /clubs/current/sessions` still exists but the site no longer calls it. CSV, paste and Sheet history import stay in admin Setup.
 
 ### L4. Jackpot payout, tournaments from "New night"
 Payout: table or column recording `(club_id, player_id, cents, at, by)`; `clubJackpot()` in `lib/club-sessions.ts` subtracts payouts; UI on the jackpot card in `live-view.tsx`.

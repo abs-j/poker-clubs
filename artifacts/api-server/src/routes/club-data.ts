@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, type AuthSession } from "../lib/auth";
 import { isClubAdmin } from "../lib/club-access";
 import { LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
+import { liveSessionRole } from "../lib/live-activity";
 import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, listTournaments, previewTournamentImport, recordTournament } from "../lib/club-tournaments";
@@ -283,7 +284,18 @@ function takeNotesImageUse(clubId: number): boolean {
 }
 
 /** Reads a screenshot of notes into text lines. The site then fills the form from them, and nothing is saved here. */
-router.post("/clubs/current/sessions/notes-image", requireAdminSession, async (req, res): Promise<void> => {
+router.post("/clubs/current/sessions/notes-image", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  // Reading a picture costs money, so only the host of the open night (or an admin) can ask for it.
+  const role = await liveSessionRole(actor, memberClubId(res));
+  if (role.status !== "open" || !role.canManage) {
+    res.status(403).json({ error: "Only the host of the open night or an admin can read notes into it." });
+    return;
+  }
   if (!process.env.ANTHROPIC_API_KEY) {
     res.status(503).json({ error: "Reading screenshots isn't switched on for this site. Paste the text instead." });
     return;
@@ -293,7 +305,7 @@ router.post("/clubs/current/sessions/notes-image", requireAdminSession, async (r
     res.status(400).json({ error: checked.error });
     return;
   }
-  if (!takeNotesImageUse(adminClubId(res))) {
+  if (!takeNotesImageUse(memberClubId(res))) {
     res.status(429).json({ error: "Your club has used its screenshot reads for today. Paste the text instead, or try tomorrow." });
     return;
   }

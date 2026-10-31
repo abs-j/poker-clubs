@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { parseResolution } from "./night-balance";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   clubSessions,
   db,
@@ -25,6 +25,8 @@ import {
   calculateLiveLedgerTotals,
   calculateLivePlayerTotals,
   formatLiveLedgerTimestamp,
+  chooseLedgerDate,
+  cleanNotesPlayers,
   liveLedgerSessionDate,
   liveLedgerSheetRowRangesForSession,
   normalizeGoogleSheetsDate,
@@ -429,11 +431,26 @@ async function listEventsForSession(sessionKey: string) {
     .orderBy(desc(liveActivityEvents.occurredAt));
 }
 
-async function getLatestSessionForDate(clubId: number, sessionDate: string) {
+/**
+ * The latest night for a date: one dated that day, or one closed that day. A night caught up for a past date
+ * is closed today, and the Live tab should still show it as closed rather than as nothing.
+ */
+async function getLatestSessionForDate(clubId: number, sessionDate: string, timeZone: string) {
   const [session] = await db
     .select()
     .from(liveSessions)
-    .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.sessionDate, sessionDate)))
+    .where(
+      and(
+        eq(liveSessions.clubId, clubId),
+        or(
+          eq(liveSessions.sessionDate, sessionDate),
+          and(
+            isNotNull(liveSessions.endedAt),
+            sql`to_char(${liveSessions.endedAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') = ${sessionDate}`,
+          ),
+        ),
+      ),
+    )
     .orderBy(desc(liveSessions.startedAt))
     .limit(1);
   return session ?? null;
@@ -449,9 +466,9 @@ async function getOldestOpenSession(clubId: number) {
   return session ?? null;
 }
 
-async function getCurrentLiveSession(clubId: number, sessionDate: string) {
+async function getCurrentLiveSession(clubId: number, sessionDate: string, timeZone: string) {
   const openSession = await getOldestOpenSession(clubId);
-  const sessionForToday = openSession ? null : await getLatestSessionForDate(clubId, sessionDate);
+  const sessionForToday = openSession ? null : await getLatestSessionForDate(clubId, sessionDate, timeZone);
   return resolveCurrentLiveSession(openSession, sessionForToday);
 }
 
@@ -549,8 +566,8 @@ async function snapshotForSession(session: typeof liveSessions.$inferSelect | nu
 }
 
 export async function getLiveActivitySnapshot(clubId: number): Promise<LiveActivitySnapshot> {
-  const sessionDate = liveLedgerSessionDate(new Date(), await clubTimezone(clubId));
-  return snapshotForSession(await getCurrentLiveSession(clubId, sessionDate));
+  const timeZone = await clubTimezone(clubId);
+  return snapshotForSession(await getCurrentLiveSession(clubId, liveLedgerSessionDate(new Date(), timeZone), timeZone));
 }
 
 export async function deleteLiveActivityLedgerSession(
@@ -873,8 +890,12 @@ export async function deleteLiveActivityEvent(
   return snapshotForSession(session);
 }
 
-export async function startLiveSession(memberName: string, clubId: number): Promise<LiveActivitySnapshot> {
-  const sessionDate = liveLedgerSessionDate(new Date(), await clubTimezone(clubId));
+/** Starts a night for `date` (tonight when omitted; a past date catches a night up after the fact). */
+export async function startLiveSession(memberName: string, clubId: number, date?: string): Promise<LiveActivitySnapshot> {
+  const timeZone = await clubTimezone(clubId);
+  const chosen = chooseLedgerDate(date, liveLedgerSessionDate(new Date(), timeZone));
+  if ("error" in chosen) throw new LiveSessionInputError(chosen.error);
+  const sessionDate = chosen.date;
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(0, hashtext('live-session'))`);
     const [openSession] = await tx
@@ -916,8 +937,61 @@ export async function startLiveSession(memberName: string, clubId: number): Prom
   return getLiveActivitySnapshot(clubId);
 }
 
+/**
+ * Adds a night's worth of entries read from notes (name, buy-in, cash-out per player) to the open night, logged by
+ * whoever is filling it in. The host or an admin only: it can add a lot of entries at once.
+ */
+export async function addEntriesFromNotes(actor: LedgerActor, clubId: number, rows: unknown): Promise<LiveActivitySnapshot> {
+  const cleaned = cleanNotesPlayers(rows);
+  if ("error" in cleaned) throw new LiveSessionInputError(cleaned.error);
+  const session = await db.transaction(async (tx) => {
+    const [open] = await tx
+      .select()
+      .from(liveSessions)
+      .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.status, "open")))
+      .orderBy(asc(liveSessions.startedAt))
+      .limit(1)
+      .for("update");
+    if (!open) throw new LiveSessionInputError("Start the night before filling it from notes.");
+    if (!canManageNight(actor, hostOf(open))) {
+      throw new LedgerPermissionError("Only the host or an admin can fill the night from notes.");
+    }
+    const base = Date.now();
+    let tick = 0;
+    const events: Array<typeof liveActivityEvents.$inferInsert> = [];
+    for (const player of cleaned.players) {
+      for (const [action, amountCents] of [["buy_in", player.buyInCents], ["cash_out", player.cashOutCents]] as const) {
+        if (amountCents <= 0) continue;
+        const at = new Date(base + tick++);
+        events.push({
+          clubId,
+          eventId: randomUUID(),
+          sessionKey: open.sessionKey,
+          sessionDate: open.sessionDate,
+          memberName: player.name,
+          action,
+          amountCents,
+          comment: "From notes",
+          occurredAt: at,
+          createdBy: actor.name,
+          createdAt: at,
+          updatedBy: actor.name,
+          updatedAt: at,
+          revision: 1,
+        });
+      }
+    }
+    await tx.insert(liveActivityEvents).values(events);
+    await tx.insert(liveActivityEventComments).values(
+      events.map((event) => ({ eventId: event.eventId, action: "entry", comment: "From notes", createdBy: actor.name, createdAt: event.createdAt })),
+    );
+    return open;
+  });
+  return snapshotForSession(session);
+}
+
 export async function endLiveSession(actor: LedgerActor, clubId: number): Promise<LiveSessionEndResult> {
-  const sessionDate = liveLedgerSessionDate(new Date(), await clubTimezone(clubId));
+  const timeZone = await clubTimezone(clubId);
   const result = await db.transaction(async (tx) => {
     let [session] = await tx
       .select()
@@ -927,10 +1001,19 @@ export async function endLiveSession(actor: LedgerActor, clubId: number): Promis
       .limit(1)
       .for("update");
     if (!session) {
+      const today = liveLedgerSessionDate(new Date(), timeZone);
       [session] = await tx
         .select()
         .from(liveSessions)
-        .where(and(eq(liveSessions.clubId, clubId), eq(liveSessions.sessionDate, sessionDate)))
+        .where(
+          and(
+            eq(liveSessions.clubId, clubId),
+            or(
+              eq(liveSessions.sessionDate, today),
+              and(isNotNull(liveSessions.endedAt), sql`to_char(${liveSessions.endedAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') = ${today}`),
+            ),
+          ),
+        )
         .orderBy(desc(liveSessions.startedAt))
         .limit(1)
         .for("update");
@@ -1011,6 +1094,14 @@ export async function endLiveSession(actor: LedgerActor, clubId: number): Promis
 }
 
 const ACTIVE_STATUSES = ["open", "finalizing"] as const;
+
+/** A bad request to start or fill a night (a future date, a name that is too long), as opposed to a server fault. */
+export class LiveSessionInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LiveSessionInputError";
+  }
+}
 
 export type LiveSessionRole = {
   hostName: string | null;

@@ -9,9 +9,7 @@ import {
   type TournamentImportPreview,
   type TournamentRow,
 } from "@/lib/account-api";
-import { parseNightNotes } from "@/lib/night-notes";
 import { plural } from "@/lib/utils";
-import { prepareNotesImage } from "@/lib/notes-image";
 import { formatCurrency, formatDate } from "@/views/shared";
 
 const button =
@@ -46,7 +44,7 @@ export function ClubDataPanel({ roster }: { roster: string[] }) {
       <p className="section-label text-primary">Results</p>
       <h2 className="mt-1 text-lg font-semibold tracking-tight">Club history</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Nights you close in the live ledger are recorded automatically. Bring in older results here, or enter a night by hand.
+        Nights you close in the live ledger are recorded automatically. To catch up a night you missed, start it on the Live tab with its date. Bring in older results here.
       </p>
       <p className="mt-3 text-xs text-muted-foreground">
         Your results are yours:{" "}
@@ -57,7 +55,6 @@ export function ClubDataPanel({ roster }: { roster: string[] }) {
       </p>
       <ImportSection onDone={loadNights} />
       <ImportTournaments onDone={loadNights} />
-      <RecordNight roster={roster} onDone={loadNights} />
       <RecordTournament roster={roster} onDone={loadNights} />
       <NightList nights={nights} tournaments={tournaments} onChanged={loadNights} />
     </div>
@@ -401,148 +398,6 @@ function ImportSection({ onDone }: { onDone: () => void }) {
           </div>
         </div>
       )}
-    </section>
-  );
-}
-
-type Row = { name: string; buyIn: string; cashOut: string };
-const emptyRows = (): Row[] => Array.from({ length: 4 }, () => ({ name: "", buyIn: "", cashOut: "" }));
-
-function RecordNight({ roster, onDone }: { roster: string[]; onDone: () => void }) {
-  const [date, setDate] = useState(today());
-  const [rows, setRows] = useState<Row[]>(emptyRows);
-  const [notes, setNotes] = useState("");
-  const [noteSummary, setNoteSummary] = useState("");
-  const [reading, setReading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const filled = rows.filter((row) => row.name.trim());
-  const buy = filled.reduce((sum, row) => sum + money(row.buyIn), 0);
-  const cash = filled.reduce((sum, row) => sum + money(row.cashOut), 0);
-  const gap = Math.round((cash - buy) * 100) / 100;
-
-  const update = (index: number, patch: Partial<Row>) =>
-    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-
-  // Fills the table from pasted notes such as "Ann - $10 -> $48", one player per line.
-  const fillFromNotes = (text = notes) => {
-    const read = parseNightNotes(text, roster);
-    if (read.rows.length === 0) {
-      setNoteSummary("Couldn't find any players. Use one line per player, like: Ann - $10 -> $48");
-      return;
-    }
-    setRows([...read.rows, ...emptyRows().slice(0, 2)]);
-    const extras = [
-      read.newNames.length > 0 ? `${read.newNames.join(", ")} ${read.newNames.length === 1 ? "isn't" : "aren't"} in the club yet and would be added as new. Rename in the table if it's someone listed.` : "",
-      read.skipped.length > 0 ? `Skipped: ${read.skipped.slice(0, 3).join("; ")}.` : "",
-    ].filter(Boolean);
-    setNoteSummary(`Filled in ${plural(read.rows.length, "player")}. Check the table, then save. ${extras.join(" ")}`.trim());
-  };
-
-  // A screenshot or photo of the notes is read into text, shown in the box, and used to fill the table.
-  const readPicture = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setReading(true);
-    setNoteSummary("");
-    try {
-      const { text } = await accountApi.readNotesImage(await prepareNotesImage(file));
-      setNotes(text);
-      if (text.trim()) fillFromNotes(text);
-      else setNoteSummary("Couldn't find any players in that picture. Try a clearer screenshot, or paste the text.");
-    } catch (caught) {
-      setNoteSummary(caught instanceof AccountError ? caught.message : "Couldn't open that picture. Try another one, or paste the text.");
-    } finally {
-      setReading(false);
-    }
-  };
-
-  const save = async () => {
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const result = await accountApi.recordNight({ date, players: filled });
-      setMessage(result.balanced ? "Night recorded." : `Night recorded, but it is out by $${Math.abs(result.difference).toFixed(2)}.`);
-      setRows(emptyRows());
-      onDone();
-    } catch (caught) {
-      setError(describe(caught));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="mt-8 border-t border-border/70 pt-6" data-testid="section-record-night">
-      <p className="text-sm font-semibold">Record a night</p>
-      <div className="mt-3 flex items-center gap-2">
-        <label className="text-xs text-muted-foreground" htmlFor="night-date">Date</label>
-        <input id="night-date" type="date" value={date} max={today()} onChange={(event) => setDate(event.target.value)} className={input} data-testid="input-night-date" />
-      </div>
-      <details className="mt-3 rounded-xl border border-border p-3" data-testid="box-night-notes">
-        <summary className="cursor-pointer text-xs font-semibold">Paste from your notes</summary>
-        <textarea
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-          rows={6}
-          placeholder={"Ann - $10 -> $48\nBo - $30 -> $5.10"}
-          className="mt-2 w-full rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary"
-          data-testid="input-night-notes"
-        />
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button type="button" disabled={!notes.trim()} onClick={() => fillFromNotes()} className={button} data-testid="button-night-notes-fill">
-            Fill the table
-          </button>
-          <label className={`${button} cursor-pointer ${reading ? "opacity-60" : ""}`}>
-            <FileUp className="h-4 w-4" />
-            {reading ? "Reading the picture..." : "Or choose a screenshot"}
-            <input type="file" accept="image/*" disabled={reading} onChange={(event) => void readPicture(event)} className="sr-only" data-testid="input-night-notes-image" />
-          </label>
-        </div>
-      </details>
-      {noteSummary && <p className="mt-2 text-xs text-muted-foreground" data-testid="status-night-notes">{noteSummary}</p>}
-      <datalist id="club-roster">
-        {roster.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-      <div className="mt-3 space-y-2">
-        {rows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[1fr_5.5rem_5.5rem] gap-2">
-            <input
-              list="club-roster"
-              value={row.name}
-              onChange={(event) => update(index, { name: event.target.value })}
-              placeholder="Player"
-              maxLength={40}
-              className={input}
-              data-testid={`input-night-name-${index}`}
-            />
-            <input value={row.buyIn} onChange={(event) => update(index, { buyIn: event.target.value })} placeholder="Buy-in" inputMode="decimal" className={input} data-testid={`input-night-buyin-${index}`} />
-            <input value={row.cashOut} onChange={(event) => update(index, { cashOut: event.target.value })} placeholder="Cash-out" inputMode="decimal" className={input} data-testid={`input-night-cashout-${index}`} />
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className={button} onClick={() => setRows((current) => [...current, ...emptyRows().slice(0, 2)])}>
-          <Plus className="h-4 w-4" />
-          More players
-        </button>
-        <button type="button" disabled={busy || filled.length < 2} onClick={() => void save()} className={primary} data-testid="button-night-save">
-          Save night
-        </button>
-        {filled.length > 0 && (
-          <span className={`text-xs ${Math.abs(gap) > 0.5 ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`} data-testid="text-night-balance">
-            {Math.abs(gap) > 0.5 ? `Out by $${Math.abs(gap).toFixed(2)}` : "Balanced"}
-          </span>
-        )}
-      </div>
-      {error && <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
-      {message && <p data-testid="status-night-saved" className="mt-3 text-xs font-semibold">{message} <button type="button" className="underline" onClick={() => window.location.reload()}>See the leaderboard</button></p>}
     </section>
   );
 }

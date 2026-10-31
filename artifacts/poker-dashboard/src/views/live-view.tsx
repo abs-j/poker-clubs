@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { getGetPokerLiveActivityQueryKey, getGetPokerLiveActivityHistoryQueryKey, useGetPokerLiveActivityHistory, useCreatePokerLiveActivity, useDeletePokerLiveActivity, useEndPokerLiveSession, useGetPokerLiveActivity, useStartPokerLiveSession, useUpdatePokerLiveActivity, type LiveActivityHistoryRecord, type LiveActivityEntry, type LiveActivityInputAction, type LivePlayerSummary } from "@workspace/api-client-react";
+import { getGetPokerLiveActivityQueryKey, getGetPokerLiveActivityHistoryQueryKey, useGetPokerLiveActivityHistory, useCreatePokerLiveActivity, useDeletePokerLiveActivity, useEndPokerLiveSession, useGetPokerLiveActivity, startPokerLiveSession, useUpdatePokerLiveActivity, type LiveActivityHistoryRecord, type LiveActivityEntry, type LiveActivityInputAction, type LivePlayerSummary } from "@workspace/api-client-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { buildLiveLedgerUrl } from "@/lib/live-ledger-links";
 import { copyTextToClipboard, formatLivePlayerSummaryRows, livePlayerNetProfit } from "@/lib/live-player-summary";
@@ -9,9 +9,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
-import { clubFileSlug, clubTimeZone } from "@/lib/club-format";
+import { clubFileSlug, clubTimeZone, clubToday } from "@/lib/club-format";
 import { accountApi, type BalanceChoice } from "@/lib/account-api";
 import { SettleList, useRefreshSettleUp } from "@/components/settle-up";
+import { LedgerNotes } from "@/components/ledger-notes";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
 const LIVE_ROLE_KEY = ["live-session-role"];
@@ -58,7 +59,8 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const createMutation = useCreatePokerLiveActivity();
   const updateMutation = useUpdatePokerLiveActivity();
   const deleteMutation = useDeletePokerLiveActivity();
-  const startMutation = useStartPokerLiveSession();
+  const [starting, setStarting] = useState(false);
+  const [nightDate, setNightDate] = useState(() => clubToday());
   const endMutation = useEndPokerLiveSession();
   const roleQuery = useQuery({
     queryKey: LIVE_ROLE_KEY,
@@ -89,7 +91,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   );
   const isSaving =
     createMutation.isPending || updateMutation.isPending || deleteMutation.isPending ||
-    startMutation.isPending || endMutation.isPending || handingOver || reopening;
+    starting || endMutation.isPending || handingOver || reopening;
   const canManage = roleQuery.data?.canManage === true;
   const hostLabel = roleQuery.data?.hostName ?? (snapshot && snapshot.sessionStatus !== "not_started" ? snapshot.startedBy : null);
   const refreshSettleUp = useRefreshSettleUp();
@@ -236,13 +238,15 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   const start = () => {
     setFormError("");
     setSessionNotice("");
-    startMutation.mutate(undefined, {
-      onSuccess: (next) => {
+    setStarting(true);
+    startPokerLiveSession({ headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: nightDate }) })
+      .then((next) => {
         queryClient.setQueryData(liveQuery.queryKey, next);
+        setNightDate(clubToday());
         refreshRole();
-      },
-      onError: (error) => setFormError(apiErrorMessage(error)),
-    });
+      })
+      .catch((error) => setFormError(apiErrorMessage(error)))
+      .finally(() => setStarting(false));
   };
 
   // One tap adds a buy-in for the chosen player. A short-lived Undo covers a mis-tap without
@@ -537,13 +541,20 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
               </select>
             </label>
             : bankLabel && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-bank">Bank: {bankLabel}</p>)}
+          {snapshot.sessionStatus !== "not_started" && snapshot.sessionDate.slice(0, 10) !== clubToday() && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-night-date">Night of {formatDate(snapshot.sessionDate.slice(0, 10))}</p>}
+          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <label className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground sm:text-xs">
+            <span className="shrink-0">{snapshot.sessionStatus === "ended" ? "Next night's date" : "Night date"}</span>
+            <input type="date" value={nightDate} max={clubToday()} onChange={(event) => setNightDate(event.target.value)} disabled={isSaving} data-testid="input-live-night-date" className="h-9 min-w-0 rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground disabled:opacity-60" />
+          </label>}
         </div>
         <div className="flex flex-col items-end gap-2">
-          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <button onClick={start} disabled={isSaving} aria-label={snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"} data-testid="button-start-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm"><Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><span className="sm:hidden">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "New session" : "Start"}</span><span className="hidden sm:inline">{startMutation.isPending ? "Starting…" : snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"}</span></button>}
+          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <button onClick={start} disabled={isSaving} aria-label={snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"} data-testid="button-start-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm"><Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><span className="sm:hidden">{starting ? "Starting…" : snapshot.sessionStatus === "ended" ? "New session" : "Start"}</span><span className="hidden sm:inline">{starting ? "Starting…" : snapshot.sessionStatus === "ended" ? "Start another session" : "Start session"}</span></button>}
           {isOpen && canManage && <button onClick={end} disabled={isSaving} aria-label={snapshot.hasRecordedActivity ? "End session" : "Discard empty session"} data-testid="button-end-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-destructive/35 bg-destructive/10 px-2.5 text-[11px] font-semibold text-destructive disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">{snapshot.hasRecordedActivity ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}<span className="sm:hidden">{endMutation.isPending ? "Saving…" : snapshot.hasRecordedActivity ? "End" : "Discard"}</span><span className="hidden sm:inline">{endMutation.isPending ? snapshot.hasRecordedActivity ? "Ending…" : "Discarding…" : snapshot.hasRecordedActivity ? "End session" : "Discard empty session"}</span></button>}
           {roleQuery.data?.status === "ended" && canManage && <button type="button" onClick={reopen} disabled={isSaving} data-testid="button-reopen-live-session" className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-border bg-background px-2.5 text-[11px] font-semibold disabled:opacity-60 sm:h-11 sm:px-5 sm:text-sm">{reopening ? "Reopening…" : "Reopen"}</button>}
         </div>
       </div>
+
+      {isOpen && canManage && <LedgerNotes roster={bankOptions} onAdded={setSnapshot} />}
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
         <LiveMetric label="Buy-ins" compactLabel="IN" value={formatCurrency(snapshot.totals.buyIns)} detail="Total added" tone="positive" />
