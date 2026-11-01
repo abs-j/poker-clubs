@@ -10,6 +10,7 @@ import { useAchievements } from "@/components/achievements-context";
 import { careerFor } from "@/lib/career";
 import { BadgeChips, FormDots } from "@/components/form-dots";
 import { Avatar } from "@/components/avatar";
+import { SharedGamesCard } from "@/components/shared-games-card";
 import { TrophyShelf } from "@/components/trophy-shelf";
 import { AvatarPickerDialog } from "@/components/avatar-picker-dialog";
 import { avatarKey, useMemberAvatars } from "@/lib/avatars";
@@ -81,7 +82,7 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
 
   return (
     <section data-testid="section-players" className="space-y-4">
-      <PageIntro eyebrow={`Leaderboard / ${scope === "all" ? "all earnings" : scope === "cash" ? "cash games" : "tournaments"}`} title="Profile" description="Search or select a player. Open someone else to see you vs them." count={`${players.length} players in view`} />
+      <PageIntro eyebrow={`Leaderboard / ${scope === "all" ? "all earnings" : scope === "cash" ? "cash games" : "tournaments"}`} title="Profile" description="Search or select a player. Open someone else to see how you have done in the games you both played." count={`${players.length} players in view`} />
       <div className="soft-shadow rounded-2xl border border-border bg-card p-4 sm:p-5">
         <label className="block max-w-xl">
           <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Find a player</span>
@@ -184,7 +185,7 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
             </div> : <EmptyPanel title="No games in this scope" description="Try another season from the global filter." />}
           </div>
         </div>
-        {!isOwnProfile && viewerPlayer && <YouVsThem you={viewerPlayer} them={selectedPlayer} rateLabel={rateLabel} activityLabel={activityLabel} />}
+        {!isOwnProfile && viewerPlayer && <SharedGamesCard sessions={allSessions} viewer={viewer} other={selectedPlayer.name} />}
         <PointsBreakdownCard playerName={selectedPlayer.name} previewNights={5} />
         <TournamentRecordCard tournaments={tournaments} playerName={selectedPlayer.name} onOpenTournament={onOpenTournament} />
         <TrophyShelf sessions={allSessions} playerName={selectedPlayer.name} badgeMap={badgeMap} careerGames={careerFor(careers, selectedPlayer.name)?.games} />
@@ -196,43 +197,6 @@ export function PlayersView({ players, sessions, allSessions, tournaments, onOpe
 }
 
 /** How the signed-in member compares with the player whose profile is open. Replaces the old Compare tab. */
-function YouVsThem({ you, them, rateLabel, activityLabel }: { you: Player; them: Player; rateLabel: string; activityLabel: string }) {
-  const rows: Array<{ label: string; a: number; b: number; format: (value: number) => string; higherIsBetter: boolean }> = [
-    { label: "Net result", a: you.profitTotal, b: them.profitTotal, format: signedCurrency, higherIsBetter: true },
-    { label: `${activityLabel} in profit`, a: you.positiveSessionPct, b: them.positiveSessionPct, format: (value) => `${value.toFixed(0)}%`, higherIsBetter: true },
-    { label: `Profit per ${rateLabel}`, a: you.profitPerSession, b: them.profitPerSession, format: signedCurrency, higherIsBetter: true },
-    { label: activityLabel, a: you.gamesPlayed, b: them.gamesPlayed, format: (value) => String(value), higherIsBetter: true },
-    { label: "Best result", a: you.maxWin, b: them.maxWin, format: signedCurrency, higherIsBetter: true },
-    { label: "Worst result", a: you.maxLoss, b: them.maxLoss, format: signedCurrency, higherIsBetter: true },
-  ];
-  return (
-    <div data-testid="card-you-vs-them" className="soft-shadow overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="border-b border-border p-5">
-        <p className="section-label">You vs {them.name}</p>
-        <h2 className="mt-1 text-lg font-semibold">How you compare</h2>
-      </div>
-      <table className="w-full text-left text-sm">
-        <thead className="bg-secondary/35 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-          <tr><th className="px-4 py-3">&nbsp;</th><th className="px-3 py-3">You</th><th className="px-3 py-3">{them.name}</th></tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const tie = row.a === row.b;
-            const youWin = row.higherIsBetter ? row.a > row.b : row.a < row.b;
-            return (
-              <tr key={row.label} className="border-t border-border/70">
-                <td className="px-4 py-3 font-medium">{row.label}</td>
-                <td className={`px-3 py-3 font-mono ${!tie && youWin ? "font-semibold text-chart-1" : "text-muted-foreground"}`}>{row.format(row.a)}</td>
-                <td className={`px-3 py-3 font-mono ${!tie && !youWin ? "font-semibold text-chart-1" : "text-muted-foreground"}`}>{row.format(row.b)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function PlayerHistorySections({ sessions, playerName }: { sessions: Session[]; playerName: string }) {
   const [showAllOpponents, setShowAllOpponents] = useState(false);
   const results = useMemo(() => buildResultsByGame(sessions, playerName), [sessions, playerName]);

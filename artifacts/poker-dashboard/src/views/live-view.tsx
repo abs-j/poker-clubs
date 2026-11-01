@@ -327,7 +327,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
         queryClient.invalidateQueries({ queryKey: liveQuery.queryKey }),
         queryClient.invalidateQueries({ queryKey: LIVE_ROLE_KEY }),
       ]))
-      .then(() => { refreshSettleUp(); setSessionNotice("Night reopened. Close it again when the ledger is right."); })
+      .then(() => { void queryClient.invalidateQueries(); setSessionNotice("Night reopened. Close it again when the ledger is right."); })
       .catch((error) => setFormError(apiErrorMessage(error)))
       .finally(() => setReopening(false));
   };
@@ -378,7 +378,8 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
               : "Session closed and saved to ledger history.";
         setSessionNotice(notice + (result.outcome === "closed" ? balanceNote : ""));
         if (result.outcome !== "discarded") {
-          void queryClient.invalidateQueries({ queryKey: ["/api/poker/live-activity/history"] });
+          // A closed night counts on Home, Games and the leaderboards straight away.
+          void queryClient.invalidateQueries();
         }
       },
       onError: (error) => setFormError(apiErrorMessage(error)),
@@ -448,7 +449,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   return (
     <section className="space-y-5" data-testid="section-live-ledger">
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <PageIntro eyebrow="Live session ledger" title="Track tonight as it happens" description="Log buy-ins and cash-outs, check the balance, and keep a separate record of each session. Times use Melbourne time (AEST/AEDT)." count={`${snapshot.sessionStatus === "ended" ? "Closed" : snapshot.sessionStatus === "open" ? "Open" : "Not started"} · ${formatActivitySessionDate(snapshot.sessionDate)}`} compactOnMobile />
+        <PageIntro eyebrow="Live session ledger" title="Track tonight as it happens" description="Log buy-ins and cash-outs, check the balance, and keep a separate record of each session. Times use the club's time zone." count={`${snapshot.sessionStatus === "ended" ? "Closed" : snapshot.sessionStatus === "open" ? "Open" : "Not started"} · ${formatActivitySessionDate(snapshot.sessionDate)}`} compactOnMobile />
         <div className="flex shrink-0 items-center gap-2">
           <div className="hidden items-center gap-2 lg:flex">
             <button type="button" onClick={() => setShowQr((value) => !value)} aria-expanded={showQr} aria-controls={showQr ? "live-ledger-qr" : undefined} data-testid="button-toggle-live-qr" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold"><QrCode className="h-3.5 w-3.5" />{showQr ? "Hide QR" : "Share Live"}</button>
@@ -515,7 +516,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             </span>
             <span className="hidden sm:inline">
               {snapshot.sessionStatus === "ended"
-                ? `Closed by ${snapshot.endedBy ?? "a member"}. This ledger is saved separately and is not added to historical results.`
+                ? `Closed by ${snapshot.endedBy ?? "a member"}. It is saved to the club's recorded nights and counted on the leaderboard.`
                 : snapshot.sessionStatus === "open"
                   ? `Started by ${snapshot.startedBy ?? "a member"}${snapshot.startedAt ? ` · ${formatActivityTime(snapshot.startedAt)}` : ""}.${snapshot.hasRecordedActivity || !canManage ? "" : " This session has no activity rows and can be discarded."}`
                   : "Start a ledger when the game begins."}

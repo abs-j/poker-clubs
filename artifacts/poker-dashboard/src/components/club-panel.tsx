@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, Copy, LogOut, QrCode, Share2, Trash2, UserPlus } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Copy, LogOut, QrCode, Settings, Share2, Trash2, UserPlus } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ClubDataPanel } from "@/components/club-data-panel";
 import { ClubSettingsPanel } from "@/components/club-settings-panel";
@@ -371,12 +371,11 @@ function ClubJackpot() {
 }
 
 /** Rules stay in the guidelines view. This is the rest of the Club tab: members, the invite, the jackpot, and admin tools. */
-export function ClubHome() {
+function useClubData() {
   const { me, error, busy, load, run } = useMeLoader();
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [adminInvites, setAdminInvites] = useState<InviteRow[]>([]);
-  const [newName, setNewName] = useState("");
 
   const reload = useCallback(async () => {
     const next = await load();
@@ -408,12 +407,7 @@ export function ClubHome() {
     node?.scrollIntoView({ block: "start" });
   }, [me]);
 
-  if (!me?.user) return null;
-  const active: ClubSummary | undefined = me.clubs.find((club) => club.slug === me.active) ?? me.clubs[0];
-  if (!active) return null;
-  const isAdmin = isClubAdmin(active.role);
-  const isOwner = active.role === "owner";
-
+  const active: ClubSummary | undefined = me?.user ? me.clubs.find((club) => club.slug === me.active) ?? me.clubs[0] : undefined;
   const act = (action: () => Promise<unknown>) =>
     void run(async () => {
       try {
@@ -423,14 +417,26 @@ export function ClubHome() {
       }
     });
 
-  const addName = (event: FormEvent) => {
-    event.preventDefault();
-    if (!newName.trim()) return;
-    act(async () => {
-      await accountApi.addPlayer(newName.trim());
-      setNewName("");
-    });
+  return {
+    me,
+    active,
+    error,
+    busy,
+    run,
+    act,
+    reload,
+    members,
+    invites,
+    adminInvites,
+    isAdmin: isClubAdmin(active?.role),
+    isOwner: active?.role === "owner",
   };
+}
+
+/** The Club tab: what every member uses. Admin tools live on their own page (see ClubAdmin). */
+export function ClubHome({ top, rules, onOpenAdmin }: { top?: ReactNode; rules?: ReactNode; onOpenAdmin?: () => void }) {
+  const { error, busy, run, act, members, invites, active, isAdmin, isOwner } = useClubData();
+  if (!active) return null;
 
   const resetLink = () => {
     if (!window.confirm("Reset the invite link? Existing member links will stop working.")) return;
@@ -442,12 +448,20 @@ export function ClubHome() {
 
   return (
     <div className="space-y-4" data-testid="section-club-home">
+      {isAdmin && onOpenAdmin && (
+        <div className="flex justify-end">
+          <button type="button" onClick={onOpenAdmin} data-testid="button-open-club-admin" className={smallButton}>
+            <Settings className="h-4 w-4" aria-hidden="true" />
+            Club admin
+          </button>
+        </div>
+      )}
       {error && (
         <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
         </p>
       )}
-
+      {top}
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="section-invites" id="section-invites">
         <p className="section-label text-primary">Invite</p>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
@@ -482,6 +496,10 @@ export function ClubHome() {
         )}
       </div>
 
+      {rules}
+
+      <ClubJackpot />
+
       <details className="group soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="section-members">
         <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold [&::-webkit-details-marker]:hidden">
           <span>Members ({members.length})</span>
@@ -508,58 +526,91 @@ export function ClubHome() {
           Leave this club
         </button>
       )}
-
-      <ClubJackpot />
-
-      {isAdmin && (
-        <section className="space-y-3" data-testid="section-admin">
-          <div className="px-1">
-            <p className="section-label text-primary">Admin</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight">Club admin</h2>
-          </div>
-          <AdminBlock id="admin-people" testId="section-admin-people" title="People" detail="Roles, emails and names that haven't joined.">
-            <MemberRoster members={members} active={active} busy={busy} manage isOwner={isOwner} onRun={act} />
-            <form onSubmit={addName} className="mt-3 flex gap-2">
-              <input className={inputClass} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Add a player who hasn't joined yet" data-testid="input-add-player" />
-              <button type="submit" disabled={busy || !newName.trim()} className={smallButton}>
-                Add
-              </button>
-            </form>
-            <MergeNames names={members.map((member) => member.name)} mine={active.playerName} onMerged={() => { void reload(); }} />
-            {adminInvites.length > 0 && (
-              <ul className="mt-4 space-y-2" data-testid="list-admin-invites">
-                {adminInvites.map((invite) => (
-                  <li key={invite.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-xs">
-                    <span className="font-semibold">Admin invite</span>
-                    <code className="min-w-0 flex-1 break-all rounded-md bg-secondary/60 px-2 py-1">{inviteLink(invite.code)}</code>
-                    <button
-                      type="button"
-                      className={smallButton}
-                      aria-label="Revoke admin invite"
-                      onClick={() => act(() => accountApi.revokeInvite(invite.id))}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </AdminBlock>
-          <AdminBlock id="admin-setup" testId="section-admin-setup" title="Setup" detail="One-time history import, and CSV export of cash nights and tournaments.">
-            <ClubDataPanel embedded />
-          </AdminBlock>
-          <AdminBlock id="admin-settings" testId="section-admin-settings" title="Settings" detail="Name, rules, points, currency and timezone.">
-            <ClubSettingsPanel embedded />
-          </AdminBlock>
-          <AdminBlock id="admin-danger" testId="section-admin-danger" title="Danger" detail="Delete the club. This cannot be undone.">
-            {isOwner ? (
-              <DeleteClub clubName={active.name} />
-            ) : (
-              <p className="text-sm text-muted-foreground" data-testid="text-danger-owner-only">Only the club owner can delete the club.</p>
-            )}
-          </AdminBlock>
-        </section>
-      )}
     </div>
+  );
+}
+
+/** Admin tools on their own page, only for owners and admins. */
+export function ClubAdmin({ onBack }: { onBack: () => void }) {
+  const { error, busy, act, reload, members, adminInvites, active, isAdmin, isOwner } = useClubData();
+  const [newName, setNewName] = useState("");
+  if (!active) return null;
+  if (!isAdmin) {
+    return (
+      <p className="soft-shadow rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground" data-testid="text-admin-members-only">
+        Club admin tools are for club admins.
+      </p>
+    );
+  }
+
+  const addName = (event: FormEvent) => {
+    event.preventDefault();
+    if (!newName.trim()) return;
+    act(async () => {
+      await accountApi.addPlayer(newName.trim());
+      setNewName("");
+    });
+  };
+
+  return (
+    <section className="space-y-3" data-testid="section-admin">
+      <div className="flex flex-wrap items-end justify-between gap-3 px-1">
+        <div>
+          <p className="section-label text-primary">Admin</p>
+          <h1 className="mt-1 text-lg font-semibold tracking-tight">Club admin</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">People, history, settings and deleting the club. Only admins see this page.</p>
+        </div>
+        <button type="button" onClick={onBack} data-testid="button-admin-back" className={smallButton}>
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back to Club
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+      <AdminBlock id="admin-people" testId="section-admin-people" title="People" detail="Roles, emails and names that haven't joined.">
+        <MemberRoster members={members} active={active} busy={busy} manage isOwner={isOwner} onRun={act} />
+        <form onSubmit={addName} className="mt-3 flex gap-2">
+          <input className={inputClass} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Add a player who hasn't joined yet" data-testid="input-add-player" />
+          <button type="submit" disabled={busy || !newName.trim()} className={smallButton}>
+            Add
+          </button>
+        </form>
+        <MergeNames names={members.map((member) => member.name)} mine={active.playerName} onMerged={() => { void reload(); }} />
+        {adminInvites.length > 0 && (
+          <ul className="mt-4 space-y-2" data-testid="list-admin-invites">
+            {adminInvites.map((invite) => (
+              <li key={invite.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-xs">
+                <span className="font-semibold">Admin invite</span>
+                <code className="min-w-0 flex-1 break-all rounded-md bg-secondary/60 px-2 py-1">{inviteLink(invite.code)}</code>
+                <button
+                  type="button"
+                  className={smallButton}
+                  aria-label="Revoke admin invite"
+                  onClick={() => act(() => accountApi.revokeInvite(invite.id))}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AdminBlock>
+      <AdminBlock id="admin-setup" testId="section-admin-setup" title="Setup" detail="One-time history import, and CSV export of cash nights and tournaments.">
+        <ClubDataPanel embedded />
+      </AdminBlock>
+      <AdminBlock id="admin-settings" testId="section-admin-settings" title="Settings" detail="Name, rules, points, currency and timezone.">
+        <ClubSettingsPanel embedded />
+      </AdminBlock>
+      <AdminBlock id="admin-danger" testId="section-admin-danger" title="Danger" detail="Delete the club. This cannot be undone.">
+        {isOwner ? (
+          <DeleteClub clubName={active.name} />
+        ) : (
+          <p className="text-sm text-muted-foreground" data-testid="text-danger-owner-only">Only the club owner can delete the club.</p>
+        )}
+      </AdminBlock>
+    </section>
   );
 }

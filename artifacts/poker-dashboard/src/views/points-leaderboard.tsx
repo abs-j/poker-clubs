@@ -72,7 +72,7 @@ export function PointsLeaderboard({ viewer, onOpenPlayer }: PointsLeaderboardPro
   const viewerKey = viewer.trim().toLocaleLowerCase();
   const visible = showAll ? rows : rows.slice(0, 15);
   if (!hasNights) {
-    return <EmptyPanel title="No scored nights in this period" description="Club points count nights with at least four players. Choose another period or All time." />;
+    return <EmptyPanel title="No scored nights in this period" description="Club points count nights with at least four players. Pick another month above." />;
   }
   if (seasons.length === 0) {
     return <EmptyPanel title="No scored nights yet" description="Club points appear once a night with at least four players has been recorded." />;

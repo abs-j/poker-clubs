@@ -18,6 +18,10 @@ type PointsPodiumCardProps = {
   /** Also list places 4 and 5 and the viewer beneath the podium, like the profit podium. */
   withRunnersUp?: boolean;
   testId?: string;
+  /** Replaces the default heading, e.g. "This month's points". */
+  title?: string;
+  /** Replaces the default description under the heading. */
+  description?: string;
 };
 
 /** The club points podium: sits straight after the net profit podium. */
@@ -30,6 +34,8 @@ export function PointsPodiumCard({
   onSeeAll,
   withRunnersUp = false,
   testId = "card-points-podium",
+  title = "The club points podium",
+  description,
 }: PointsPodiumCardProps) {
   const shared = usePointsSeason();
   const { rowsFor } = usePoints();
@@ -44,7 +50,7 @@ export function PointsPodiumCard({
   if (noNights) {
     return (
       <ChartCard testId={testId} eyebrow={eyebrow} title="The club points podium" description="No scored nights in this period. Points start from the first night with four or more players.">
-        <p className="py-6 text-center text-sm text-muted-foreground">Choose another period or All time.</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">Pick another month above.</p>
       </ChartCard>
     );
   }
@@ -57,8 +63,8 @@ export function PointsPodiumCard({
     <ChartCard
       testId={testId}
       eyebrow={`${eyebrow} · ${seasonLabel(season)}`}
-      title="The club points podium"
-      description={selectable ? "Follows the filters above. Tap the podium for the table, or a name for their profile." : undefined}
+      title={title}
+      description={description ?? (selectable ? "Follows the filters above. Tap the podium for the table, or a name for their profile." : undefined)}
       action={
         <div className="flex flex-wrap items-center gap-2">
           {onSeeAll && (

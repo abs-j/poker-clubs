@@ -168,3 +168,9 @@ test("points can be limited to cash nights or to tournaments", () => {
   assert.equal(firstScoredDate(cash, events), "2026-10-02");
   assert.equal(firstScoredDate([], []), null);
 });
+
+test("the previous month rolls back over a year", async () => {
+  const { previousSeason } = await import("./points.ts");
+  assert.equal(previousSeason("2026-03"), "2026-02");
+  assert.equal(previousSeason("2026-01"), "2025-12");
+});

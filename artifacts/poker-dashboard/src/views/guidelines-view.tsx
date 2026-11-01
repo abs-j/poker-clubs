@@ -1,6 +1,6 @@
 import { useClubSettings } from "@/components/club-settings-context";
 import { ClubBuzz } from "@/components/club-buzz";
-import { ClubHome } from "@/components/club-panel";
+import { ClubAdmin, ClubHome } from "@/components/club-panel";
 import type { ChartSession } from "@/lib/club-charts";
 import { PageIntro } from "./shared";
 
@@ -13,7 +13,7 @@ function ClubGuidelines({ text }: { text: string | null }) {
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         {blocks.length === 0 ? (
           <p data-testid="text-guidelines-empty" className="text-sm leading-6 text-muted-foreground">
-            This club hasn&apos;t written its rules yet. Club admins can add them under Admin, in Settings.
+            This club hasn&apos;t written its rules yet. Club admins can add them in Club admin, under Settings.
           </p>
         ) : (
           <div className="space-y-4" data-testid="text-club-guidelines">
@@ -43,13 +43,14 @@ function ClubGuidelines({ text }: { text: string | null }) {
   );
 }
 
-export function GuidelinesView({ sessions, viewer, onOpenPlayer }: { sessions: ChartSession[]; viewer: string; onOpenPlayer: (name: string) => void }) {
+export function GuidelinesView({ sessions, onOpenAdmin }: { sessions: ChartSession[]; onOpenAdmin: () => void }) {
   const { settings } = useClubSettings();
   return (
-    <div className="space-y-4">
-      <ClubGuidelines text={settings.guidelines} />
-      <ClubBuzz sessions={sessions} viewer={viewer} onOpenPlayer={onOpenPlayer} />
-      <ClubHome />
-    </div>
+    <ClubHome top={<ClubBuzz sessions={sessions} />} rules={<ClubGuidelines text={settings.guidelines} />} onOpenAdmin={onOpenAdmin} />
   );
+}
+
+/** The admin page: people, import and export, settings and deleting the club. */
+export function ClubAdminView({ onBack }: { onBack: () => void }) {
+  return <ClubAdmin onBack={onBack} />;
 }

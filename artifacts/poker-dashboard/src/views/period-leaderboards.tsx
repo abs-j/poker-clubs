@@ -64,25 +64,6 @@ export function PeriodLeaderboards({ players, sessions, allSessions, activePerio
         </ChartCard>
       )}
       {afterPodium}
-      {barRows.length > 0 && (
-        <ChartCard
-          testId="card-leaderboard-bars"
-          eyebrow={`${scopeLabel} · ${earningsScopeLabel}`}
-          title="Net profit at a glance"
-          description={barRows.length > 20 ? "The ten biggest winners and ten biggest losers. Click a name to open their profile." : "Everyone's net profit. Click a name to open their profile."}
-        >
-          <LeaderboardBars
-            rows={bars.rows}
-            gapAfter={bars.gapAfter}
-            hidden={bars.hidden}
-            viewer={viewer}
-            colorFor={() => null}
-            onToggle={onSelectPlayer}
-            actionLabel="open their profile"
-          />
-        </ChartCard>
-      )}
-      {afterOverview}
       <div id="profit-table" className="soft-shadow scroll-mt-4 overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-end sm:justify-between sm:p-5">
           <div><p className="section-label" data-testid="text-leaderboard-label">Leaderboard</p><h2 className="mt-1 text-lg font-semibold">{scopeLabel} · {earningsScopeLabel}</h2><p className="mt-1 text-xs text-muted-foreground">Player rankings and stats use the selected earnings scope and period.</p></div>
@@ -141,6 +122,35 @@ export function PeriodLeaderboards({ players, sessions, allSessions, activePerio
           )}
         </> : <EmptyPanel title={`No ${earningsScopeLabel.toLowerCase()} results for ${scopeLabel}`} description="This leaderboard will populate when results are available in the selected earnings scope." />}
       </div>
+      {afterOverview}
+      {barRows.length > 0 && (
+        <details data-testid="details-leaderboard-bars" className="group soft-shadow rounded-2xl border border-border bg-card">
+          <summary className="flex min-h-[52px] cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-sm font-semibold">
+            <span>Net profit at a glance <span className="font-normal text-muted-foreground">· bar chart</span></span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+          </summary>
+          <div className="px-1 pb-1">
+      {barRows.length > 0 && (
+              <ChartCard
+                testId="card-leaderboard-bars"
+                eyebrow={`${scopeLabel} · ${earningsScopeLabel}`}
+                title="Net profit at a glance"
+                description={barRows.length > 20 ? "The ten biggest winners and ten biggest losers. Click a name to open their profile." : "Everyone's net profit. Click a name to open their profile."}
+              >
+                <LeaderboardBars
+                  rows={bars.rows}
+                  gapAfter={bars.gapAfter}
+                  hidden={bars.hidden}
+                  viewer={viewer}
+                  colorFor={() => null}
+                  onToggle={onSelectPlayer}
+                  actionLabel="open their profile"
+                />
+              </ChartCard>
+            )}
+          </div>
+        </details>
+      )}
     </section>
   );
 }

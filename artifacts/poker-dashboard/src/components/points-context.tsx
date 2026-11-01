@@ -4,6 +4,8 @@ import {
   buildPointsLeaderboard,
   firstScoredDate,
   pointsSeasons,
+  scoreNights,
+  seasonOf,
   type NightKind,
   type PointsCashNight,
   type PointsRow,
@@ -21,6 +23,8 @@ type PointsValue = {
   rowsFor: (season: string) => PointsRow[];
   /** Rows for a season limited to some kinds of night (the leaderboard's Cash / Tournaments filter). */
   rowsWith: (options: { season: string; kinds?: NightKind[] }) => PointsRow[];
+  /** The same month's standings before its latest scored night, for "who just moved" news. */
+  rowsBeforeLatest: (season: string) => PointsRow[];
   /** First night that scored, e.g. for "scored nights start on". */
   firstNight: string | null;
   tournaments: TournamentEvent[];
@@ -32,6 +36,7 @@ const EMPTY: PointsValue = {
   currentSeason: null,
   rowsFor: () => [],
   rowsWith: () => [],
+  rowsBeforeLatest: () => [],
   firstNight: null,
   tournaments: [],
 };
@@ -70,6 +75,19 @@ export function PointsProvider({
         const rows = buildPointsLeaderboard(cashNights, tournaments, { season, kinds, rules });
         cache.set(cacheKey, rows);
         return rows;
+      },
+      rowsBeforeLatest: (season) => {
+        const nights = scoreNights(cashNights, tournaments, rules)
+          .map((entry) => entry.night)
+          .filter((night) => seasonOf(night.date) === season)
+          .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+        const latest = nights[nights.length - 1];
+        if (!latest) return [];
+        return buildPointsLeaderboard(
+          cashNights.filter((night) => `cash-${night.sessionNumber}` !== latest.id),
+          tournaments.filter((event) => `tournament-${event.id}` !== latest.id),
+          { season, rules },
+        );
       },
       firstNight: firstScoredDate(cashNights, tournaments, rules),
       tournaments,
