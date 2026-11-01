@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ChevronRight, LoaderCircle, Spade } from "lucide-react";
+import { CalendarDays, ChevronRight, CircleDollarSign, History, LoaderCircle, Spade, Trophy, UserRound, type LucideIcon } from "lucide-react";
 import type { MemberAuthSession } from "@/lib/member-session";
 import { APP_NAME, AccountError, accountApi, extractInviteCode, type InvitePreview, type MeResponse } from "@/lib/account-api";
 
@@ -323,6 +323,75 @@ function Onboarding({ user, onDone }: { user: { name: string }; onDone: () => vo
 }
 
 /** The member sign-in screen: account first, then a club. Hands back the session once both exist. */
+const FEATURES: Array<{ icon: LucideIcon; title: string; body: string }> = [
+  { icon: CircleDollarSign, title: "A live ledger for game night", body: "Log buy-ins and cash-outs as people play, check the night balances, then settle up at the end." },
+  { icon: Trophy, title: "Leaderboards that mean something", body: "All-time profit and monthly club points, with podiums, badges and a season to chase every month." },
+  { icon: UserRound, title: "Your own numbers", body: "Your net, form and best game, and how you have done against each player in the games you both played." },
+  { icon: CalendarDays, title: "Tournaments too", body: "Record buy-ins, finishing places and prizes, and let them count towards club points." },
+  { icon: History, title: "Bring your history", body: "Import past results from a spreadsheet, and download your club's results whenever you like." },
+];
+
+const STEPS = [
+  ["Start a club", "Create an account and name your club. You are the owner."],
+  ["Invite your group", "Share a link or QR code. Everyone picks their name and joins."],
+  ["Run a night", "Record it live, close it, and the standings update for everyone."],
+];
+
+/** The signed-out front page: what the site is, then the sign-in form. The form stays near the top on a phone. */
+function Landing({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-[100dvh] bg-background text-foreground" data-testid="page-landing">
+      <div className="mx-auto grid max-w-5xl gap-x-12 gap-y-8 px-5 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start lg:py-14">
+        <div className="lg:col-start-1 lg:row-start-1">
+          <div className="flex items-center gap-3">
+            <div className="brand-mark flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]">
+              <Spade className="h-5 w-5" />
+            </div>
+            <p className="text-lg font-semibold tracking-tight">{APP_NAME}</p>
+          </div>
+          <p className="section-label mt-8 text-primary lg:mt-14">For uni clubs and friend groups</p>
+          <h1 className="mt-2 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Your poker night, recorded and ranked.</h1>
+          <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
+            Track buy-ins, cash-outs, leaderboards and monthly club points for your group. Free, and invite-only.
+          </p>
+        </div>
+
+        <div className="soft-shadow rounded-2xl border border-border bg-card p-6 sm:p-8 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <p className="section-label text-primary">Get started</p>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight">Sign in or create an account</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">Then start a club, or join one with an invite link.</p>
+          <div className="mt-6">{children}</div>
+        </div>
+
+        <div className="lg:col-start-1 lg:row-start-2">
+          <ul data-testid="list-landing-features" className="grid gap-3 sm:grid-cols-2">
+            {FEATURES.map(({ icon: Icon, title, body }) => (
+              <li key={title} className="rounded-2xl border border-border bg-card p-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <h3 className="mt-3 text-sm font-semibold">{title}</h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{body}</p>
+              </li>
+            ))}
+          </ul>
+          <ol data-testid="list-landing-steps" className="mt-8 space-y-3">
+            {STEPS.map(([title, body], index) => (
+              <li key={title} className="flex items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{index + 1}</span>
+                <span className="text-sm leading-6"><strong className="font-semibold">{title}.</strong> <span className="text-muted-foreground">{body}</span></span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+      <p className="pb-8 text-center text-[11px] text-muted-foreground">
+        <a href="/terms" className="inline-block px-2 py-3 hover:text-primary hover:underline">Terms</a> · <a href="/privacy" className="inline-block px-2 py-3 hover:text-primary hover:underline">Privacy</a>
+      </p>
+    </div>
+  );
+}
+
 export function WelcomeFlow({ onAuthenticated }: { onAuthenticated: (session: MemberAuthSession) => void }) {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [failed, setFailed] = useState(false);
@@ -364,13 +433,9 @@ export function WelcomeFlow({ onAuthenticated }: { onAuthenticated: (session: Me
   if (me.user) return <Shell eyebrow={APP_NAME} title="Opening your club…">{null}</Shell>;
 
   return (
-    <Shell
-      eyebrow="Welcome"
-      title={`Run your poker night with ${APP_NAME}`}
-      intro="Track buy-ins, cash-outs, leaderboards and club points for your uni club or friend group. Free, and invite-only."
-    >
+    <Landing>
       <AccountForm googleSignIn={me.options.googleSignIn} emailEnabled={me.options.email} callbackURL="/dashboard" onDone={() => void load()} />
-    </Shell>
+    </Landing>
   );
 }
 

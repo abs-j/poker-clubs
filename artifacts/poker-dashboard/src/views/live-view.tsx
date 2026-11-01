@@ -575,8 +575,8 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
       {isOpen && canManage && <LedgerNotes roster={bankOptions} onAdded={setSnapshot} />}
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
-        <LiveMetric label="Buy-ins" compactLabel="IN" value={formatCurrency(snapshot.totals.buyIns)} detail="Total added" tone="positive" />
-        <LiveMetric label="Cash-outs" compactLabel="OUT" value={formatCurrency(snapshot.totals.cashOuts)} detail="Total returned" tone="negative" />
+        <LiveMetric label="Buy-ins" compactLabel="IN" value={formatCurrency(snapshot.totals.buyIns)} detail="Total added" tone="neutral" />
+        <LiveMetric label="Cash-outs" compactLabel="OUT" value={formatCurrency(snapshot.totals.cashOuts)} detail="Total returned" tone="neutral" />
         <LiveMetric label="Net balance" compactLabel="NET" value={signedCurrency(balance)} detail="Buy-ins minus cash-outs" tone={Math.abs(balance) < 0.01 ? "neutral" : balance < 0 ? "positive" : "negative"} />
         <div className="hidden sm:block"><LiveMetric
           label="Balance"
@@ -602,7 +602,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             {editingEventId && <button type="button" onClick={() => resetForm()} aria-label="Cancel editing" className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"><X className="h-3.5 w-3.5" />Cancel edit</button>}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-secondary/60 p-1 sm:mt-4">
-            {([["buy_in", "↑ Buy-in / rebuy"], ["cash_out", "↓ Cash-out"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setAction(value)} className={`min-h-10 rounded-lg border px-2 py-2 text-xs font-bold transition-colors ${action === value ? value === "buy_in" ? "border-chart-1/30 bg-chart-1/15 text-chart-1 shadow-sm" : "border-destructive/30 bg-destructive/10 text-destructive shadow-sm" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
+            {([["buy_in", "↑ Buy-in / rebuy"], ["cash_out", "↓ Cash-out"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setAction(value)} className={`min-h-10 rounded-lg border px-2 py-2 text-xs font-bold transition-colors ${action === value ? "border-primary/30 bg-primary/10 text-primary shadow-sm" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
           </div>
           {!editingEventId && action === "buy_in" && <div className="mt-3" data-testid="chips-live-quick-amount">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -860,12 +860,12 @@ function TonightBoard({ summaries, viewer, closed }: { summaries: LivePlayerSumm
 function LiveActivityRow({ entry, onEdit, onDelete, disabled, readOnly = false, canChange = false }: { entry: LiveActivityEntry; onEdit: () => void; onDelete: () => void; disabled: boolean; readOnly?: boolean; canChange?: boolean }) {
   const isBuyIn = entry.action === "buy_in";
   const auditComments = entry.auditComments ?? [];
-  return <div className={`flex flex-col gap-3 border-l-4 px-3 py-4 sm:flex-row sm:items-center sm:justify-between ${isBuyIn ? "border-chart-1/70 bg-chart-1/[0.035]" : "border-destructive/65 bg-destructive/[0.035]"}`}>
+  return <div className={`flex flex-col gap-3 border-l-4 px-3 py-4 sm:flex-row sm:items-center sm:justify-between ${isBuyIn ? "border-primary/60 bg-primary/[0.035]" : "border-chart-1/70 bg-chart-1/[0.035]"}`}>
     <div className="flex min-w-0 items-start gap-3">
-      <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isBuyIn ? "bg-chart-1/15 text-chart-1" : "bg-destructive/10 text-destructive"}`}>{isBuyIn ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</span>
+      <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isBuyIn ? "bg-primary/15 text-primary" : "bg-chart-1/15 text-chart-1"}`}>{isBuyIn ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}</span>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <p className={`text-sm font-bold ${isBuyIn ? "text-chart-1" : "text-destructive"}`}>{isBuyIn ? "↑ BUY-IN / REBUY" : "↓ CASH-OUT"}</p>
+          <p className="text-sm font-bold">{isBuyIn ? "↑ BUY-IN / REBUY" : "↓ CASH-OUT"}</p>
           <span className="rounded-md bg-secondary px-1.5 py-1 text-[11px] font-semibold text-muted-foreground">{entry.memberName}</span>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{formatActivityTime(entry.occurredAt)} · {entry.createdBy === entry.updatedBy ? `logged by ${entry.createdBy}` : `logged by ${entry.createdBy} · last updated by ${entry.updatedBy}`}</p>
@@ -880,7 +880,7 @@ function LiveActivityRow({ entry, onEdit, onDelete, disabled, readOnly = false, 
       </div>
     </div>
     <div className="flex items-center justify-between gap-3 pl-12 sm:justify-end sm:pl-0">
-      <p className={`font-mono text-sm font-bold ${isBuyIn ? "text-chart-1" : "text-destructive"}`}>{isBuyIn ? "+" : "−"}{formatCurrency(entry.amount)}</p>
+      <p className="font-mono text-sm font-bold">{isBuyIn ? "In" : "Out"} {formatCurrency(entry.amount)}</p>
       {!readOnly && canChange && <div className="flex items-center gap-1">
         <button onClick={onEdit} disabled={disabled} aria-label={`Edit ${entry.action}`} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
         <button onClick={onDelete} disabled={disabled} aria-label={`Delete ${entry.action}`} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -894,8 +894,8 @@ function PastLedgerCard({ session }: { session: LiveActivityHistoryRecord }) {
     <summary className="flex cursor-pointer list-none flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div><p className="text-sm font-semibold">{formatActivitySessionDate(session.sessionDate)}</p><p className="mt-1 text-xs text-muted-foreground">{session.entries.length} entries · closed {formatActivityTime(session.endedAt)}</p></div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
-        <span className="font-mono text-chart-1">In {formatCurrency(session.totals.buyIns)}</span>
-        <span className="font-mono text-destructive">Out {formatCurrency(session.totals.cashOuts)}</span>
+        <span className="font-mono">In {formatCurrency(session.totals.buyIns)}</span>
+        <span className="font-mono">Out {formatCurrency(session.totals.cashOuts)}</span>
         <span className={`rounded-md px-2 py-1 font-semibold ${session.balanceStatus === "balanced" ? "bg-secondary text-muted-foreground" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>{session.balanceStatus === "balanced" ? "Balanced" : "Unbalanced"}</span>
       </div>
     </summary>
@@ -949,8 +949,8 @@ function LivePlayerSummaryList({ title, summaries, emptyMessage, testId, embedde
             const netProfit = livePlayerNetProfit(summary);
             return <tr key={summary.playerName}>
               <th scope="row" className="py-3 pr-4 font-semibold">{summary.playerName}</th>
-              <td className="px-3 py-3 text-right font-mono text-chart-1">{formatCurrency(summary.buyIns)}</td>
-              <td className="px-3 py-3 text-right font-mono text-destructive">{formatCurrency(summary.cashOuts)}</td>
+              <td className="px-3 py-3 text-right font-mono">{formatCurrency(summary.buyIns)}</td>
+              <td className="px-3 py-3 text-right font-mono">{formatCurrency(summary.cashOuts)}</td>
               <td className={`py-3 pl-3 text-right font-mono font-semibold ${netProfit > 0 ? "text-chart-1" : netProfit < 0 ? "text-destructive" : "text-muted-foreground"}`}>{signedCurrency(netProfit)}</td>
             </tr>;
           })}
