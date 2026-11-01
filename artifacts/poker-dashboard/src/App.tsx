@@ -45,11 +45,12 @@ const PublicGamesGrowthChart = lazy(() => import("@/components/public-games-grow
 const PlatformUsagePage = lazy(() => import("./views/platform-usage").then((m) => ({ default: m.PlatformUsagePage })));
 const AccountView = lazy(() => import("./views/account-view").then((m) => ({ default: m.AccountView })));
 const GuidelinesView = lazy(() => import("./views/guidelines-view").then((m) => ({ default: m.GuidelinesView })));
+const ClubAdminView = lazy(() => import("./views/guidelines-view").then((m) => ({ default: m.ClubAdminView })));
 const GamesView = lazy(() => import("./views/games-view").then((m) => ({ default: m.GamesView })));
 const PointsLeaderboard = lazy(() => import("./views/points-leaderboard").then((m) => ({ default: m.PointsLeaderboard })));
 const PeriodLeaderboards = lazy(() => import("./views/period-leaderboards").then((m) => ({ default: m.PeriodLeaderboards })));
 const PlayersView = lazy(() => import("./views/players-view").then((m) => ({ default: m.PlayersView })));
-import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, Settings, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
 
 import { Route, Router as WouterRouter, Switch } from "wouter";
 import { EmptyPanel, MetricCard, MonthFilter, PageIntro, buildRankMovementMap, buildScopedPlayers, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency, slug } from "./views/shared";
@@ -91,7 +92,7 @@ type PeriodSummary = {
   positiveSessions: number;
   negativeSessions: number;
 };
-type View = "overview" | "sessions" | "live" | "months" | "players" | "guidelines" | "account";
+type View = "overview" | "sessions" | "live" | "months" | "players" | "guidelines" | "admin" | "account";
 
 function buildScopePeriods(
   basePeriods: PeriodSummary[],
@@ -263,12 +264,19 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
   const [performanceScope, setPerformanceScope] = useState<PerformanceScope>("all");
   const [monthFilter, setMonthFilter] = useState<MonthFilter | null>("ALL");
   const [refreshing, setRefreshing] = useState(false);
+  const [clubAdmin, setClubAdmin] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    accountApi.me().then((me) => { if (!cancelled) setClubAdmin(me.clubs.find((club) => club.slug === me.active)?.role !== "member"); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const [selectedSession, setSelectedSession] = useState<number | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false);
   const [visualizerSearch, setVisualizerSearch] = useState("");
 
-  useMemberUsageTracking(activeView);
+  // The usage report has no separate admin section, so the admin page counts as the Club tab.
+  useMemberUsageTracking(activeView === "admin" ? "guidelines" : activeView);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
@@ -340,10 +348,11 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
   );
   // One filter bar drives both leaderboards: the period picks the points season and the
   // Cash / Tournaments choice limits which nights are scored.
-  const pointsSeasonKey = useMemo(
-    () => seasonForPeriod(activePeriodFilter, pointsSeasons(sessions, tournaments)),
-    [activePeriodFilter, sessions, tournaments],
-  );
+  // Points are monthly. With "All time" chosen the points show the latest month rather than a lifetime total.
+  const pointsSeasonKey = useMemo(() => {
+    const seasons = pointsSeasons(sessions, tournaments);
+    return activePeriodFilter === "ALL" ? seasons[0] ?? null : seasonForPeriod(activePeriodFilter, seasons);
+  }, [activePeriodFilter, sessions, tournaments]);
   const pointsKinds = useMemo<NightKind[] | undefined>(
     () => (performanceScope === "cash" ? ["cash"] : performanceScope === "tournaments" ? ["tournament"] : undefined),
     [performanceScope],
@@ -474,7 +483,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
   if (isError) return <ErrorState refreshing={refreshing} onRetry={handleRefresh} />;
   if (!dashboard) return <EmptyDashboard />;
   // Live, the account page and the club rules do not need any recorded results.
-  if (!hasNumbers && activeView !== "live" && activeView !== "account" && activeView !== "guidelines") {
+  if (!hasNumbers && activeView !== "live" && activeView !== "account" && activeView !== "guidelines" && activeView !== "admin") {
     return (
       <NewClubStart
         clubName={dashboard.title}
@@ -516,12 +525,9 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
               <div className="hidden flex-wrap items-center gap-2 print-hidden lg:flex">
                 {platformAdmin && <a href="/admin" data-testid="link-platform-usage" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><Activity className="h-4 w-4" />Site usage</a>}
                 <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open Me" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
-                <button onClick={() => void onLogout()} data-testid="button-member-logout" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><LogOut className="h-4 w-4" />Sign out</button>
-                <button onClick={handleRefresh} disabled={refreshing} data-testid="button-refresh-dashboard" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 disabled:opacity-60"><Activity className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />{refreshing ? "Checking" : "Refresh"}</button>
-                {canInstall && <button onClick={() => void install()} data-testid="button-install-app" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><Download className="h-4 w-4" />Install app</button>}
                 <button onClick={toggleTheme} data-testid="button-toggle-theme" className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground" aria-label="Toggle dark mode">{isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
               </div>
-              <div className="print-hidden lg:hidden">
+              <div className="print-hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button type="button" data-testid="button-mobile-dashboard-menu" aria-label="Open dashboard menu" className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-foreground">
@@ -533,6 +539,11 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
                     <DropdownMenuItem onSelect={() => navigate("account")} data-testid="menu-open-account">
                       <Avatar name={memberName} size={20} />Me
                     </DropdownMenuItem>
+                    {clubAdmin && (
+                      <DropdownMenuItem onSelect={() => navigate("admin")} data-testid="menu-club-admin">
+                        <Settings className="h-4 w-4" />Club admin
+                      </DropdownMenuItem>
+                    )}
                     {platformAdmin && (
                       <DropdownMenuItem onSelect={() => { window.location.assign("/admin"); }} data-testid="menu-platform-usage">
                         <Activity className="h-4 w-4" />Site usage
@@ -634,7 +645,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
              {activeView === "months" && (
               <PointsSeasonProvider season={pointsSeasonKey} kinds={pointsKinds}>
                 <PeriodLeaderboards players={selectedPeriodKey ? seasonPlayers : scopePlayers} sessions={scopeSessions} allSessions={homeSessions} activePeriod={activePeriodFilter} scope={performanceScope} viewer={memberName} onSelectPlayer={openPlayer}
-                afterPodium={<PointsPodiumCard viewer={memberName} onOpenPlayer={openPlayer} selectable />}
+                afterPodium={<PointsPodiumCard viewer={memberName} onOpenPlayer={openPlayer} selectable eyebrow="Monthly points" title="The monthly points podium" description={activePeriodFilter === "ALL" ? "Points are monthly. This is the latest month; pick another month above." : "Points for the month chosen above. Tap the podium for the table."} />}
                 afterOverview={
                   <div id="club-points" className="scroll-mt-4">
                     <PointsLeaderboard viewer={memberName} onOpenPlayer={openPlayer} />
@@ -667,7 +678,8 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
               </div>
             )}
               {activeView === "players" && <PlayersView players={selectedPeriodKey ? seasonPlayers : scopePlayers} sessions={scopeSessions} allSessions={homeSessions} tournaments={tournaments} onOpenTournament={openTournament} scope={performanceScope} initialPlayer={selectedPlayer ?? memberName} viewer={memberName} />}
-             {activeView === "guidelines" && <GuidelinesView sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />}
+             {activeView === "guidelines" && <GuidelinesView sessions={homeSessions} onOpenAdmin={() => navigate("admin")} />}
+             {activeView === "admin" && <ClubAdminView onBack={() => navigate("guidelines")} />}
             {activeView === "account" && (
               <AccountView
                 memberName={memberName}
@@ -700,7 +712,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
 }
 
 function ErrorState({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) { return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><div data-testid="state-dashboard-error" className="max-w-md rounded-2xl border border-destructive/30 bg-card p-7 text-center soft-shadow"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive"><Activity className="h-5 w-5" /></div><h1 className="mt-4 text-xl font-semibold">The club sheet is out of reach</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">The last dashboard request did not complete. Your figures have not been changed.</p><button onClick={onRetry} disabled={refreshing} data-testid="button-retry-dashboard" className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{refreshing ? "Checking source" : "Try again"}</button></div></div>; }
-function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar }: { clubName: string; memberName: string; platformAdmin: boolean; onNavigate: (view: "live" | "guidelines") => void; tabBar: ReactNode }) {
+function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar }: { clubName: string; memberName: string; platformAdmin: boolean; onNavigate: (view: "live" | "guidelines" | "admin") => void; tabBar: ReactNode }) {
   // Only admins can set a club up; everyone else just waits for the first night.
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   useEffect(() => {
@@ -726,9 +738,9 @@ function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar 
       </div>
     );
   }
-  const steps: Array<{ title: string; body: string; action: string; view: "live" | "guidelines"; hash?: string; testId: string }> = [
+  const steps: Array<{ title: string; body: string; action: string; view: "live" | "guidelines" | "admin"; hash?: string; testId: string }> = [
     { title: "Bring your club in", body: "Copy your invite link or show the QR code. Anyone who opens it can join and pick their name.", action: "Invite people", view: "guidelines", hash: "section-invites", testId: "button-start-invite" },
-    { title: "Bring in your history", body: "Import past results from a spreadsheet. The leaderboard, points and profiles fill in straight away.", action: "Import results", view: "guidelines", hash: "admin-setup", testId: "button-start-import" },
+    { title: "Bring in your history", body: "Import past results from a spreadsheet. The leaderboard, points and profiles fill in straight away.", action: "Import results", view: "admin", hash: "admin-setup", testId: "button-start-import" },
     { title: "Run a night", body: "Start a live session to record buy-ins and cash-outs as people play. Close it and the night joins the leaderboard.", action: "Open the live ledger", view: "live", testId: "button-start-live" },
   ];
   return (

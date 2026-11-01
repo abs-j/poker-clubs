@@ -5,7 +5,9 @@ import { normalizeName } from "@/lib/club-charts";
 import type { DashboardPlayer as Player, TournamentSnapshot } from "@/lib/earnings-analytics";
 import { AnimatedNumber } from "@/components/animated-number";
 import { usePoints } from "@/components/points-context";
-import { pointsFor } from "@/lib/points";
+import { pointsFor, seasonLabel, seasonOf } from "@/lib/points";
+import { clubToday } from "@/lib/club-format";
+import { PointsPodiumCard } from "@/components/points-podium-card";
 import { Podium } from "@/components/podium";
 import { Avatar } from "@/components/avatar";
 import { prefersReducedMotion } from "@/lib/motion";
@@ -53,6 +55,7 @@ export function HomeOverview({
 }: HomeOverviewProps) {
   const key = normalizeName(memberName);
   const { currentSeason, rowsFor } = usePoints();
+  const monthIsCurrent = currentSeason === seasonOf(clubToday());
   const myPoints = currentSeason ? pointsFor(rowsFor(currentSeason), memberName) : null;
   const me = standings.find((player) => normalizeName(player.name) === key);
   const cashNet = cashPlayers.find((player) => normalizeName(player.name) === key)?.profitTotal ?? 0;
@@ -118,7 +121,7 @@ export function HomeOverview({
                   </span>
                   {myPoints && (
                     <button type="button" onClick={onSeePoints} className="sf-rank-pill" data-testid="text-points-rank">
-                      #{myPoints.rank} · {Math.round(myPoints.points)} club pts
+                      #{myPoints.rank} in {seasonLabel(currentSeason ?? "")} · {Math.round(myPoints.points)} pts
                     </button>
                   )}
                   <span>Cash games{tournament?.available ? " + tournament" : ""}</span>
@@ -154,6 +157,22 @@ export function HomeOverview({
         )}
 
         {afterHero && <div style={{ marginTop: showSummary ? 16 : 0 }}>{afterHero}</div>}
+
+        {currentSeason && (
+          <div className="sf-content" style={{ marginTop: 16 }}>
+            <PointsPodiumCard
+              testId="card-home-monthly-points"
+              viewer={memberName}
+              onOpenPlayer={onOpenPlayer}
+              season={currentSeason}
+              eyebrow="Monthly points"
+              title={monthIsCurrent ? "This month's points" : `${seasonLabel(currentSeason)} points`}
+              description={monthIsCurrent ? "The season so far. Points reset each month." : "No games yet this month, so these are the last month's final standings."}
+              onSeeAll={onSeePoints}
+              withRunnersUp
+            />
+          </div>
+        )}
 
         <div className="sf-content" style={{ marginTop: 16 }}>
           <ChartCard

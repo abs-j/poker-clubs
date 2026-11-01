@@ -8,6 +8,7 @@ export type DashboardView =
   | "months"
   | "players"
   | "guidelines"
+  | "admin"
   | "account";
 
 export type Section = {
@@ -25,7 +26,7 @@ export const SECTIONS: Section[] = [
   { id: "sessions", label: "Games", icon: CalendarDays, views: ["sessions"] },
   { id: "live", label: "Live", icon: CircleDollarSign, views: ["live"] },
   { id: "months", label: "Leaderboard", icon: Users, views: ["months", "players"] },
-  { id: "guidelines", label: "Club", icon: BookOpen, views: ["guidelines"] },
+  { id: "guidelines", label: "Club", icon: BookOpen, views: ["guidelines", "admin"] },
 ];
 
 export const isActiveSection = (section: Section, view: DashboardView) => section.views.includes(view);

@@ -1,5 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { FileUp, Link2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AccountError,
   accountApi,
@@ -27,6 +28,9 @@ function describe(error: unknown): string {
 
 /** One-time history import. Recorded nights are edited and deleted from the Games tab. */
 export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
+  const queryClient = useQueryClient();
+  // Home, Games and the leaderboards read the same data, so an import or an undo reloads all of it.
+  const reload = () => void queryClient.invalidateQueries();
   return (
     <div className={embedded ? "" : "soft-shadow mt-4 rounded-2xl border border-border bg-card p-5 sm:p-6"} data-testid="panel-club-data">
       {!embedded && <p className="section-label text-primary">Results</p>}
@@ -49,8 +53,8 @@ export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
         </a>{" "}
         sheets, which import back in the form below.
       </p>
-      <ImportSection onDone={() => undefined} />
-      <ImportTournaments onDone={() => undefined} />
+      <ImportSection onDone={reload} />
+      <ImportTournaments onDone={reload} />
     </div>
   );
 }

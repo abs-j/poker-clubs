@@ -9,6 +9,7 @@ import {
   sortSessions,
   type ChartSession,
 } from "./club-charts.ts";
+import type { PointsRow } from "./points.ts";
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -400,54 +401,134 @@ export function buildSeason(sessions: ChartSession[], month?: string): Season | 
 
 export type BuzzItem = { id: string; text: string; tone: "up" | "info" };
 
-/** A handful of plain one-liners about what changed lately. Newest news first. */
-export function buildBuzz(sessions: ChartSession[], limit = 4): BuzzItem[] {
+/** The monthly points picture the buzz can talk about. */
+export type BuzzPoints = {
+  /** The month the standings belong to, e.g. "Nov 2026". */
+  seasonLabel: string;
+  /** Standings for that month now. */
+  now: PointsRow[];
+  /** The same month before its latest scored night. Empty when that night was the first. */
+  before: PointsRow[];
+  /** Date of the latest scored night in that month. */
+  latestNightDate: string | null;
+  /** Who won the month that just ended, if it had a clear winner. */
+  champion?: { label: string; name: string } | null;
+};
+
+function joinNames(names: string[]) {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The leader only when nobody shares the top spot. */
+function strictLeader<T extends { name: string }>(rows: T[], value: (row: T) => number): T | null {
+  if (!rows.length) return null;
+  if (rows.length === 1) return rows[0];
+  return value(rows[0]) > value(rows[1]) ? rows[0] : null;
+}
+
+/** Places held by competition ranking: equal results share a place. */
+function podiumKeys<T extends { name: string }>(rows: T[], value: (row: T) => number, places = 3): Map<string, number> {
+  const out = new Map<string, number>();
+  rows.forEach((row) => {
+    const rank = 1 + rows.filter((other) => value(other) > value(row)).length;
+    if (rank <= places) out.set(normalizeName(row.name), rank);
+  });
+  return out;
+}
+
+/**
+ * A handful of plain lines about what changed lately, most important first: a new leader, someone
+ * stepping onto a podium, the month's champion, then the latest game and streaks. It only celebrates;
+ * it never calls anyone out for losing.
+ */
+export function buildBuzz(sessions: ChartSession[], limit = 5, points: BuzzPoints | null = null): BuzzItem[] {
   const ordered = sortSessions(sessions);
   if (!ordered.length) return [];
-  const items: BuzzItem[] = [];
   const latest = ordered[ordered.length - 1];
   const { results, display } = perPlayerResults(ordered);
+  const found: Array<BuzzItem & { weight: number }> = [];
+  const add = (weight: number, item: BuzzItem) => found.push({ ...item, weight });
 
-  // Who took the latest game.
+  // Money standings before and after the latest game.
+  const now = buildPlayerTotals(ordered);
+  const before = ordered.length > 1 ? buildPlayerTotals(ordered.slice(0, -1)) : [];
+  const leaderNow = strictLeader(now, (row) => row.net);
+  const leaderBefore = strictLeader(before, (row) => row.net);
+  const newMoneyLeader =
+    before.length > 0 && leaderNow && (!leaderBefore || normalizeName(leaderBefore.name) !== normalizeName(leaderNow.name))
+      ? leaderNow
+      : null;
+  if (newMoneyLeader) {
+    add(100, {
+      id: "money-leader",
+      tone: "up",
+      text: `${newMoneyLeader.name} took the lead on the money leaderboard${leaderBefore ? `, passing ${leaderBefore.name}` : ""}.`,
+    });
+  }
+
+  // Points standings, only when the latest game was a scored night so the news is current.
+  const pointsFresh = Boolean(points && points.now.length && points.latestNightDate === latest.date);
+  let newPointsLeader: string | null = null;
+  if (points && pointsFresh) {
+    const pointsNow = strictLeader(points.now, (row) => row.points);
+    const pointsBefore = strictLeader(points.before, (row) => row.points);
+    if (pointsNow && points.before.length === 0) {
+      newPointsLeader = pointsNow.name;
+      add(60, { id: "points-open", tone: "up", text: `${pointsNow.name} leads ${points.seasonLabel} points after the first scored night.` });
+    } else if (pointsNow && (!pointsBefore || pointsBefore.key !== pointsNow.key)) {
+      newPointsLeader = pointsNow.name;
+      add(95, {
+        id: "points-leader",
+        tone: "up",
+        text: `${pointsNow.name} took the lead in ${points.seasonLabel} points${pointsBefore ? `, passing ${pointsBefore.name}` : ""}.`,
+      });
+    }
+  }
+
+  // Someone stepping onto a podium (one line per board, never repeating a new leader).
+  if (before.length >= 3) {
+    const had = podiumKeys(before, (row) => row.net);
+    const nowPlaces = podiumKeys(now, (row) => row.net);
+    const entrant = now.find((row) => {
+      const key = normalizeName(row.name);
+      return nowPlaces.has(key) && !had.has(key) && key !== normalizeName(newMoneyLeader?.name ?? "");
+    });
+    if (entrant) {
+      add(80, { id: "money-podium", tone: "up", text: `${entrant.name} moved onto the money podium, in ${ordinalLabel(nowPlaces.get(normalizeName(entrant.name)) ?? 3)}.` });
+    }
+  }
+  if (points && pointsFresh && points.before.length >= 3) {
+    const had = new Set(points.before.filter((row) => row.rank <= 3).map((row) => row.key));
+    const entrant = points.now.find((row) => row.rank <= 3 && !had.has(row.key) && row.name !== newPointsLeader);
+    if (entrant) {
+      add(78, { id: "points-podium", tone: "up", text: `${entrant.name} moved onto the ${points.seasonLabel} points podium, in ${ordinalLabel(entrant.rank)}.` });
+    }
+  }
+
+  // A month that just ended.
+  if (points?.champion) {
+    add(90, { id: "month-champion", tone: "up", text: `${points.champion.label} points champion: ${points.champion.name}.` });
+  }
+
+  // The latest game, naming everyone who shared the top result.
   const real = latest.players.filter((record) => isRealPlayer(record.player));
   if (real.length) {
-    const top = real.reduce((best, record) => (record.net > best.net ? record : best), real[0]);
-    if (top.net > 0) {
-      items.push({
+    const top = real.reduce((best, record) => Math.max(best, record.net), real[0].net);
+    if (top > 0) {
+      const winners = [...new Set(real.filter((record) => record.net === top).map((record) => record.player.trim()))];
+      add(70, {
         id: "latest-winner",
         tone: "up",
-        text: `${top.player.trim()} won the latest game, ${money(top.net)} up on the night.`,
-      });
-    }
-  }
-
-  // Rank changes over the latest game.
-  if (ordered.length > 1) {
-    const now = buildPlayerTotals(ordered);
-    const prev = buildPlayerTotals(ordered.slice(0, -1));
-    const prevRank = new Map(prev.map((row, index) => [normalizeName(row.name), index]));
-    const moves = now
-      .map((row, index) => {
-        const was = prevRank.get(normalizeName(row.name));
-        return was === undefined ? null : { name: row.name, from: was, to: index, delta: was - index };
-      })
-      .filter((row): row is { name: string; from: number; to: number; delta: number } => Boolean(row) && row!.delta > 0)
-      .sort((a, b) => b.delta - a.delta || a.to - b.to);
-    const climber = moves[0];
-    if (climber) {
-      const passed = prev[climber.to]?.name;
-      items.push({
-        id: "climber",
-        tone: "up",
         text:
-          climber.to === 0
-            ? `${climber.name} took the lead on the leaderboard.`
-            : `${climber.name} climbed ${climber.delta} ${climber.delta === 1 ? "place" : "places"} to ${ordinalLabel(climber.to + 1)}${passed ? `, past ${passed}` : ""}.`,
+          winners.length === 1
+            ? `${winners[0]} won the latest game, ${money(top)} up on the night.`
+            : `${joinNames(winners)} shared the top spot in the latest game, ${money(top)} up each.`,
       });
     }
   }
 
-  // Hot hands only: the buzz celebrates people, it never calls anyone out for losing.
+  // Runs of nights in profit. This says "in profit", not "won": a night in profit is not always the night's best result.
   const streaks: Array<{ key: string; run: number }> = [];
   for (const [key, list] of results) {
     let run = 0;
@@ -457,13 +538,13 @@ export function buildBuzz(sessions: ChartSession[], limit = 4): BuzzItem[] {
   streaks.sort((a, b) => b.run - a.run);
   for (const streak of streaks.slice(0, 2)) {
     const who = display.get(streak.key) ?? streak.key;
-    items.push({ id: `hot-${streak.key}`, tone: "up", text: `${who} has won ${streak.run} games in a row.` });
+    add(50, { id: `hot-${streak.key}`, tone: "up", text: `${who} has finished in profit ${streak.run} games in a row.` });
   }
 
   // Biggest pot of the record.
   const biggest = ordered.reduce((best, session) => (session.totalBuyIn > best.totalBuyIn ? session : best), ordered[0]);
   if (biggest.totalBuyIn > 0) {
-    items.push({
+    add(20, {
       id: "biggest-pot",
       tone: "info",
       text: biggest === latest
@@ -471,7 +552,11 @@ export function buildBuzz(sessions: ChartSession[], limit = 4): BuzzItem[] {
         : `Biggest pot on record: ${money(biggest.totalBuyIn)}.`,
     });
   }
-  return items.slice(0, limit);
+
+  return found
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, limit)
+    .map(({ weight: _weight, ...item }) => item);
 }
 
 function ordinalLabel(n: number) {
@@ -480,52 +565,53 @@ function ordinalLabel(n: number) {
   return `${n}${["th", "st", "nd", "rd"][n % 10 > 3 ? 0 : n % 10] ?? "th"}`;
 }
 
-// ---------------------------------------------------------------- rivalry
+// ----------------------------------------------------------- shared games
 
-export type Rivalry = {
+export type SharedGames = {
+  /** The other player, as the club writes their name. */
   name: string;
-  sharedGames: number;
-  wins: number;
-  losses: number;
-  /** Net difference over shared games: positive means the viewer is ahead. */
-  netDifference: number;
+  /** Games both of them sat in. */
+  games: number;
+  /** What the viewer won or lost across those games. */
+  yourNet: number;
+  /** What the other player won or lost across the same games. */
+  theirNet: number;
+  /** The most recent shared games, oldest first, for the trend strip. */
+  recent: Array<{ date: string; sessionNumber: number; yours: number; theirs: number; isTournament: boolean }>;
 };
 
-/**
- * The player the viewer has shared the most close games with, measured by how
- * evenly they split results. Needs at least three shared games.
- */
-export function buildRivalry(sessions: ChartSession[], viewerName: string): Rivalry | null {
-  const key = normalizeName(viewerName);
+/** How the viewer has done in the games they and another player both played. */
+export function buildSharedGames(
+  sessions: ChartSession[],
+  viewerName: string,
+  otherName: string,
+  recentCount = 8,
+): SharedGames | null {
+  const viewerKey = normalizeName(viewerName);
+  const otherKey = normalizeName(otherName);
+  if (viewerKey === otherKey) return null;
   const { results, display } = perPlayerResults(sessions);
-  const mine = results.get(key);
-  if (!mine) return null;
-  const mineBySession = new Map(mine.map((entry) => [entry.session, entry.net]));
-  let best: (Rivalry & { score: number }) | null = null;
-  for (const [otherKey, list] of results) {
-    if (otherKey === key) continue;
-    let shared = 0;
-    let wins = 0;
-    let losses = 0;
-    let diff = 0;
-    for (const { session, net } of list) {
-      const myNet = mineBySession.get(session);
-      if (myNet === undefined) continue;
-      shared += 1;
-      if (myNet > net) wins += 1;
-      else if (myNet < net) losses += 1;
-      diff += myNet - net;
-    }
-    if (shared < 3) continue;
-    // Prefer many shared games and an even split.
-    const score = shared - Math.abs(wins - losses) * 1.5;
-    if (!best || score > best.score) {
-      best = { name: display.get(otherKey) ?? otherKey, sharedGames: shared, wins, losses, netDifference: round2(diff), score };
-    }
-  }
-  if (!best) return null;
-  const { score: _score, ...rivalry } = best;
-  return rivalry;
+  const mine = results.get(viewerKey);
+  const theirs = results.get(otherKey);
+  if (!mine || !theirs) return null;
+  const theirBySession = new Map(theirs.map((entry) => [entry.session, entry.net]));
+  const shared = mine.flatMap((entry) => {
+    const other = theirBySession.get(entry.session);
+    return other === undefined ? [] : [{ session: entry.session, yours: entry.net, theirs: other }];
+  });
+  return {
+    name: display.get(otherKey) ?? otherName,
+    games: shared.length,
+    yourNet: round2(shared.reduce((sum, row) => sum + row.yours, 0)),
+    theirNet: round2(shared.reduce((sum, row) => sum + row.theirs, 0)),
+    recent: shared.slice(-recentCount).map((row) => ({
+      date: row.session.date,
+      sessionNumber: row.session.sessionNumber,
+      yours: row.yours,
+      theirs: row.theirs,
+      isTournament: row.session.eventType === "tournament",
+    })),
+  };
 }
 
 // ------------------------------------------------------------ trophy shelf

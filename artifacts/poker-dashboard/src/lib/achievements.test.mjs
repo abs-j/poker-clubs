@@ -5,7 +5,7 @@ import {
   buildBadges,
   buildBuzz,
   buildFormDots,
-  buildRivalry,
+  buildSharedGames,
   buildSeason,
   monthKey,
 } from "./achievements.ts";
@@ -90,19 +90,69 @@ test("season is the month of the latest game", () => {
   assert.equal(earlier.leader.name, "Ana");
 });
 
-test("buzz mentions the latest winner and the biggest pot", () => {
+test("buzz leads with a new money leader, then the latest winner and the biggest pot", () => {
   const items = buildBuzz(sessions, 6);
-  assert.ok(items[0].text.startsWith("Ben won the latest game"));
+  assert.equal(items[0].text, "Ben took the lead on the money leaderboard, passing Ana.");
+  assert.ok(items.some((item) => item.text.startsWith("Ben won the latest game")));
   assert.ok(items.some((item) => item.id === "biggest-pot"));
-  assert.ok(items.some((item) => item.id.startsWith("hot-") || item.id === "climber"));
+  assert.ok(items.some((item) => item.id.startsWith("hot-")));
 });
 
-test("rivalry needs three shared games and prefers an even split", () => {
-  const rivalry = buildRivalry(sessions, "Ana");
-  assert.ok(rivalry);
-  assert.ok(["Ben", "Cy"].includes(rivalry.name));
-  assert.equal(rivalry.sharedGames, 5);
-  assert.equal(buildRivalry(sessions.slice(0, 2), "Ana"), null);
+test("buzz describes streaks as nights in profit, not wins", () => {
+  const items = buildBuzz(sessions, 8);
+  const hot = items.find((item) => item.id.startsWith("hot-"));
+  assert.ok(hot);
+  assert.match(hot.text, /finished in profit 3 games in a row/);
+  assert.ok(!items.some((item) => /won \d+ games in a row/.test(item.text)));
+});
+
+test("buzz names everyone who shared the top result", () => {
+  const tied = [
+    game(1, "2026-10-02", [rec("Ana", 10), rec("Ben", -10), rec("Cy", 0)]),
+    game(2, "2026-10-09", [rec("Ana", 20), rec("Ben", 20), rec("Cy", -40)]),
+  ];
+  const items = buildBuzz(tied, 6);
+  const latest = items.find((item) => item.id === "latest-winner");
+  assert.equal(latest.text, "Ana and Ben shared the top spot in the latest game, $20 up each.");
+});
+
+test("buzz reports a new monthly points leader only when the latest game was scored", () => {
+  const row = (name, rank, points, date) => ({ key: name.toLowerCase(), name, rank, points, history: [{ date }] });
+  const fresh = {
+    seasonLabel: "Oct 2026",
+    now: [row("Ben", 1, 30, "2026-10-16"), row("Ana", 2, 22, "2026-10-16")],
+    before: [row("Ana", 1, 20, "2026-10-09"), row("Ben", 2, 10, "2026-10-09")],
+    latestNightDate: "2026-10-16",
+  };
+  const items = buildBuzz(sessions, 8, fresh);
+  assert.ok(items.some((item) => item.text === "Ben took the lead in Oct 2026 points, passing Ana."));
+  const stale = buildBuzz(sessions, 8, { ...fresh, latestNightDate: "2026-10-09" });
+  assert.ok(!stale.some((item) => item.id === "points-leader"));
+  const champion = buildBuzz(sessions, 8, { ...fresh, latestNightDate: null, champion: { label: "Sep 2026", name: "Cy" } });
+  assert.ok(champion.some((item) => item.text === "Sep 2026 points champion: Cy."));
+});
+
+test("shared games add up what each player won or lost in the games both played", () => {
+  const shared = buildSharedGames(sessions, "Ana", "Ben");
+  assert.ok(shared);
+  assert.equal(shared.name, "Ben");
+  assert.equal(shared.games, 5);
+  assert.equal(shared.yourNet, 20);
+  assert.equal(shared.theirNet, 30);
+  assert.equal(shared.recent.length, 5);
+  assert.deepEqual(shared.recent.map((row) => row.sessionNumber), [1, 2, 3, 4, 5]);
+});
+
+test("shared games only count nights both players sat in", () => {
+  const lopsided = [
+    game(1, "2026-07-03", [rec("Ana", 10), rec("Ben", -10)]),
+    game(2, "2026-07-10", [rec("Ana", 20), rec("Cy", -20)]),
+  ];
+  const shared = buildSharedGames(lopsided, "Ana", "Ben");
+  assert.equal(shared.games, 1);
+  assert.equal(shared.yourNet, 10);
+  assert.equal(buildSharedGames(lopsided, "Ana", "Ana"), null);
+  assert.equal(buildSharedGames(lopsided, "Ana", "Nobody"), null);
 });
 
 

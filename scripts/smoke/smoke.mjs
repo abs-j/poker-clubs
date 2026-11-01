@@ -840,17 +840,19 @@ await check("signing in lands on Home with the tab bar on screen", async () => {
   await page.screenshot({ path: `${OUT}/home.png` });
 });
 
-await check("Home shows your summary, last game and the profit podium", async () => {
+await check("Home shows your summary, last game, monthly points and the profit podium", async () => {
   await sleep(1500);
   await visible('[data-testid="text-personal-net"]');
   await visible('[data-testid="card-my-night"]');
+  await visible('[data-testid="card-home-monthly-points"]');
   await visible('[data-testid="card-home-standings"]');
+  const homeOrder = await testIdsInOrder(/^(card-my-night|card-home-monthly-points|card-home-standings)$/);
+  expect(homeOrder.join() === "card-my-night,card-home-monthly-points,card-home-standings", `Home order was ${homeOrder.join(", ")}`);
   const tabs = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="nav-bottom-tabs"] button')].map((button) => button.textContent.trim()),
   );
   expect(tabs.join(",") === "Home,Games,Live,Leaderboard,Club", `tabs were ${tabs.join(", ")}`);
   const gone = await page.evaluate(() => ({
-    points: !!document.querySelector('[data-testid="card-home-points-podium"]'),
     chart: !!document.querySelector('[data-testid="card-home-results"]'),
     tournament: !!document.querySelector('[data-testid="card-latest-tournament"]'),
     season: !!document.querySelector('[data-testid="card-season"]'),
@@ -858,9 +860,9 @@ await check("Home shows your summary, last game and the profit podium", async ()
     history: !!document.querySelector('[data-testid="button-show-history-chart"]'),
     banner: !!document.querySelector('[data-testid="banner-live-game"]'),
   }));
-  expect(!gone.points && !gone.chart && !gone.tournament && !gone.season && !gone.buzz && !gone.history && !gone.banner, `Home still has extra cards ${JSON.stringify(gone)}`);
+  expect(!gone.chart && !gone.tournament && !gone.season && !gone.buzz && !gone.history && !gone.banner, `Home still has extra cards ${JSON.stringify(gone)}`);
   const podiums = await page.evaluate(() => document.querySelectorAll('[data-testid="podium"]').length);
-  expect(podiums === 1, `expected the profit podium only, found ${podiums}`);
+  expect(podiums === 2, `expected the monthly points and profit podiums, found ${podiums}`);
   await page.screenshot({ path: `${OUT}/home.png` });
 });
 
@@ -935,15 +937,15 @@ await check("a tournament opens its detail with results", async () => {
   return `${rows} results`;
 });
 
-await check("leaderboard: profit podium, points podium, then the tables", async () => {
+await check("leaderboard: both podiums, then the full tables, then the extras", async () => {
   await page.tap('[data-testid="tab-months"]');
   await visible('[data-testid="section-period-leaderboards"]');
   await visible('[data-testid="card-points-podium"]');
   const label = await page.$eval('[data-testid="text-leaderboard-label"]', (node) => node.textContent.trim());
   expect(label === "Leaderboard", `the table label was "${label}"`);
-  const ids = await testIdsInOrder(/^(card-podium|card-points-podium|card-leaderboard-bars|section-points-leaderboard)$/);
+  const ids = await testIdsInOrder(/^(card-podium|card-points-podium|section-points-leaderboard|details-leaderboard-bars)$/);
   expect(
-    ids.join() === "card-podium,card-points-podium,card-leaderboard-bars,section-points-leaderboard",
+    ids.join() === "card-podium,card-points-podium,section-points-leaderboard,details-leaderboard-bars",
     `order was ${ids.join(", ")}`,
   );
   await visible('[data-testid="card-season"]');
@@ -1002,6 +1004,14 @@ await check("Live ledger and Club pages load", async () => {
   await visible('[data-testid="button-invite-qr"]');
   await visible('[data-testid="section-club-jackpot"]');
   await visible('[data-testid="card-club-buzz"]');
+  const leakedAdmin = await page.$('[data-testid="section-admin"]');
+  expect(leakedAdmin === null, "admin tools should not be on the Club tab");
+  const clubOrder = await testIdsInOrder(/^(card-club-buzz|section-invites|section-guidelines|section-club-jackpot|section-members)$/);
+  expect(
+    clubOrder.join() === "card-club-buzz,section-invites,section-guidelines,section-club-jackpot,section-members",
+    `Club order was ${clubOrder.join(", ")}`,
+  );
+  await page.tap('[data-testid="button-open-club-admin"]');
   await visible('[data-testid="section-admin"]');
   await visible('[data-testid="section-admin-people"]');
   await visible('[data-testid="section-admin-setup"]');
@@ -1012,10 +1022,11 @@ await check("Live ledger and Club pages load", async () => {
   await visible('[data-testid="link-export-csv"]');
   await visible('[data-testid="link-export-tournament-log"]');
   await visible('[data-testid="link-export-tournament-results"]');
-  await visible('[data-testid="button-reset-invite"]');
   await visible('[data-testid="section-delete-club"]');
   const dangerOpen = await page.$eval('[data-testid="section-admin-danger"]', (node) => node.open);
   expect(dangerOpen === false, "club danger should start collapsed");
+  await page.tap('[data-testid="button-admin-back"]');
+  await visible('[data-testid="button-reset-invite"]');
 });
 
 await check("Me loads from the avatar menu and has no admin tools", async () => {
@@ -1071,7 +1082,7 @@ await check("a member sees Members and the invite, and cannot reset it or see Ad
   await wait('[data-testid="button-invite-qr"]');
   const club = await phone.evaluate(() => ({
     reset: !!document.querySelector('[data-testid="button-reset-invite"]'),
-    admin: !!document.querySelector('[data-testid="section-admin"]'),
+    admin: !!document.querySelector('[data-testid="section-admin"]') || !!document.querySelector('[data-testid="button-open-club-admin"]'),
     copy: !!document.querySelector('[data-testid="button-copy-invite"]'),
     share: !!document.querySelector('[data-testid="button-share-invite"]'),
     members: !!document.querySelector('[data-testid="section-members"]'),
@@ -1382,6 +1393,7 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
 
     await phone.evaluate(() => window.scrollTo(0, 0));
     await press('[data-testid="tab-guidelines"]');
+    await press('[data-testid="button-open-club-admin"]');
     await wait('[data-testid="section-admin-setup"]');
     await wait('[data-testid="section-import"]');
     await wait('[data-testid="section-import-tournaments"]');
@@ -1472,6 +1484,7 @@ await check("an admin can preview and merge two names; a member cannot, and anot
     await press('[data-testid="button-account-submit"]');
     await wait('[data-testid="section-home-overview"]');
     await press('[data-testid="tab-guidelines"]');
+    await press('[data-testid="button-open-club-admin"]');
     await wait('[data-testid="section-admin-people"]');
     const peopleOpen = await phone.$eval('[data-testid="section-admin-people"]', (node) => node.open);
     if (!peopleOpen) await press('[data-testid="section-admin-people"] summary');
@@ -1639,6 +1652,7 @@ await check("an admin edits and deletes games from the Games tab; a member canno
     await phone.waitForFunction((id) => !document.querySelector(`[data-testid="card-tournament-club-${id}"]`), { timeout: 15000 }, tournamentId);
 
     await press('[data-testid="tab-guidelines"]');
+    await press('[data-testid="button-open-club-admin"]');
     await phone.waitForSelector('[data-testid="section-admin-setup"]', { timeout: 15000 });
     const nightList = await phone.$('[data-testid="section-night-list"]');
     expect(nightList === null, "the night list should be gone from Club admin Setup");

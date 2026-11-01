@@ -338,6 +338,13 @@ export function seasonForPeriod(period: string, seasons: string[]): string | nul
   return seasons.includes(period) ? period : null;
 }
 
+/** The calendar month before a season key: "2026-01" gives "2025-12". */
+export function previousSeason(season: string): string {
+  const year = Number(season.slice(0, 4));
+  const month = Number(season.slice(5, 7));
+  return month <= 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, "0")}`;
+}
+
 /** The first night that scored, for "scored nights start on…" notes. */
 export function firstScoredDate(
   cashNights: PointsCashNight[],
