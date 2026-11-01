@@ -19,7 +19,7 @@ history exists only on the local branch `full-history` (it contains Monash scree
 2. **Resend**: live site reports email on. Confirm real delivery (`docs/EMAIL_SETUP.md`) and `VITE_CONTACT_EMAIL`.
 3. **Before making the repo public:** real Monash member first names in the tests/mockup are replaced (done). The legacy
    Monash code is gone. Have the Terms/Privacy text (`artifacts/poker-dashboard/src/views/legal.tsx`) reviewed.
-4. Nice to have: avatars out of Postgres, a public landing page, edit a recorded night, tournament CSV import/export.
+4. Nice to have: avatars out of Postgres. (The public landing page, editing a recorded night, and tournament CSV import/export are done.)
 
 ## Run it
 
@@ -43,7 +43,7 @@ End-to-end: `scripts/smoke/smoke.mjs` (run it from a folder with `puppeteer-core
 site running against an empty or throwaway database; it creates its own accounts and clubs:
 `SMOKE_BASE_URL=http://localhost:5173 CHROME_PATH=<chrome> node scripts/smoke/smoke.mjs`.
 CI (`.github/workflows/ci.yml`) does this on every push.
-Last local run (31 Oct 2026): 141 API tests, 99 dashboard tests, typecheck clean, smoke 55/55.
+Last local run (1 Nov 2026): 125 API tests, 104 dashboard tests, typecheck clean, smoke 56/56.
 
 ## Things that bit before
 

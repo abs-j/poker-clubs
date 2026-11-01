@@ -1,7 +1,7 @@
 # Simplification plan
 
 Decisions from the design interview (31 Oct 2026). Principle: **simplify; remove or default before adding.**
-Status (31 Oct 2026): the cuts, the ledger, and the structure work are done. Home is the live banner or your summary and last game, plus the profit podium and anything you still owe. The ranking tab is labelled Leaderboard. See `docs/HANDOFF.md` for loose ends that are not part of this plan.
+Status (1 Nov 2026): the cuts, the ledger, the structure work and the monthly-points revamp are done. Home is the live banner or your summary and last game, plus the monthly points podium, the profit podium and anything you still owe. The ranking tab is labelled Leaderboard. See `docs/HANDOFF.md` for loose ends that are not part of this plan.
 
 ## How the site is used
 
@@ -24,11 +24,11 @@ One open night per club.
 ## Information architecture
 
 - **Tabs:** Home, Games, Live, Leaderboard, Club.
-- **Home:** live banner if a night is on, otherwise my summary and last game. Keeps the profit podium for a quick glance. Shows any nights I still owe or am owed on.
+- **Home:** live banner if a night is on, otherwise my summary and last game. Keeps the monthly points podium and the profit podium for a quick glance. Shows any nights I still owe or am owed on.
 - **Live:** one ledger for everything about a night. "New night" starts today's (or a past date). Entries by hand, paste notes, or screenshot (the existing notes tools move here). A night can be cash or tournament. Optional bank. Close with the balance step. Closed nights can be reopened. Settle-up ticks per player.
 - **Games:** the nights. Admins and hosts edit, reopen or delete from here (replaces the admin night list).
-- **Leaderboard:** the ranking. Filters: Month and All time only (months include the year). Player profiles show "you vs them" (replaces the Compare tab).
-- **Club:** rules, members (collapsible), invite link (anyone copies, admins reset), jackpot. Admins also see an **Admin** section: People, Setup (one-time history import, tournament CSV import), Settings, Danger.
+- **Leaderboard:** the full tables on one scrolling page. Filters: Month and All time only (months include the year). Points are monthly only; "All time" shows the latest month. Player profiles show the games you both played (what each of you won or lost, plus a recent trend), which replaces both the Compare tab and "you vs them".
+- **Club:** members only: Club Buzz, invite link (anyone copies, admins reset), rules, jackpot, members (collapsible). Admins also get a Club admin button that opens a separate **Admin** page: People, Setup (one-time history import, tournament CSV import), Settings, Danger.
 - **Me (avatar menu):** picture, record, trophies, password, theme, install, switch club, sign out, delete account. No admin items.
 - **Seasons are calendar months** (previously quarters).
 - **Platform admin page** for the owner only. Replaces `/admin`.

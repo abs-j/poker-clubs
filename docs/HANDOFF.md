@@ -1,6 +1,6 @@
 # Handoff: ledger work (for Cursor or anyone continuing)
 
-State as of 31 Oct 2026. Last local run after the dead-code cleanup, merged with jackpot CSV rows, tournament CSV export, and the Home/Leaderboard simplification: typecheck clean, API 138 tests, dashboard 99 tests, smoke 56/56. Schema unchanged.
+State as of 1 Nov 2026. Last local run after the monthly-points revamp (S6): typecheck clean, API 125 tests, dashboard 104 tests, smoke 56/56. Schema unchanged.
 Read first: `CLAUDE.md` (run and verify commands, gotchas), `docs/SIMPLIFICATION_PLAN.md` (decisions), then this file.
 
 ## What is done and merged
@@ -85,15 +85,15 @@ Done. Schema: table `jackpot_payouts (club_id, player_id, cents, paid_at, paid_b
 
 ### S1. Me and Club admin
 Done. No schema change. The avatar menu opens **Me** (picture, record, trophies, password, theme, install, switch club, sign out, delete account). Club admin is no longer on that page.
-The **Club** tab has the rules, a collapsible Members list, the invite link (copy, share and QR) and the jackpot. Every member can read the member invite via `GET /api/clubs/current/invite` (scoped by `club_id`; admin-role invites are not included). Creating, revoking and resetting stay on the existing admin routes (`POST` and `DELETE /api/clubs/current/invites`, and the admin list `GET /api/clubs/current/invites`).
-Admins also see an **Admin** section on the Club tab: People (roles, emails, add a name), Setup (one-time history import and tournament CSV import), Settings, and Danger (delete club, owner only, still confirmed by typing the name). Delete account stays on Me, behind Danger, and still asks for the password (or email) and a confirmation. Recorded nights are edited and deleted from the Games tab.
+The **Club** tab (members only; see S6) has Club Buzz, the invite link (copy, share and QR), the rules, the jackpot and a collapsible Members list. Every member can read the member invite via `GET /api/clubs/current/invite` (scoped by `club_id`; admin-role invites are not included). Creating, revoking and resetting stay on the existing admin routes (`POST` and `DELETE /api/clubs/current/invites`, and the admin list `GET /api/clubs/current/invites`).
+Admins also get a **Club admin** button on the Club tab (and an item in the menu) that opens a separate admin page (S6): People (roles, emails, add a name), Setup (one-time history import and tournament CSV import), Settings, and Danger (delete club, owner only, still confirmed by typing the name). Delete account stays on Me, behind Danger, and still asks for the password (or email) and a confirmation. Recorded nights are edited and deleted from the Games tab.
 
 ### S2. Merge two names
 Done. No schema change, so no database push.
 - `POST /api/clubs/current/players/merge/preview` and `POST /api/clubs/current/players/merge`. Club owner or admin only: a signed-in member gets 403, anyone else 401. The club comes from `adminClubId`. A name that is not in that club is 404.
 - One transaction moves session results, ledger names (including who logged, edited or deleted an entry, and comments), tournament results, settle-up ticks, jackpot payouts, host, bank, started-by and ended-by, the balance choice when it names a player, the linked account, the profile picture, and usage rows. The removed name is deleted only after nothing still points at it.
 - Same night in a cash game: buy-ins and cash-outs are added. Same tournament: results are added and prizes written down as amounts, unless both names took a top-up or both had a free entry, in which case the merge is refused and nothing changes. Same settle-up night: the tick stays only when both names were already settled. Two linked accounts are refused.
-- The Club tab's Admin → People section (from S1) includes the merge form for an owner or admin: pick both names, preview what moves, then confirm. People starts collapsed. The preview says the merge cannot be undone.
+- The Club admin page's People section (from S1) includes the merge form for an owner or admin: pick both names, preview what moves, then confirm. People starts collapsed. The preview says the merge cannot be undone.
 - API tests live in `merge-players.test.mjs` and need `DATABASE_URL` (CI's checks job provides Postgres). Smoke covers the preview and confirm on a phone.
 
 ### S3. Admin edit and delete on the Games tab
@@ -118,9 +118,9 @@ Done. No schema change, so no database push.
 ### S5. Leaderboard label and Home content
 Done. No schema change, so no database push.
 - The phone and desktop tabs read Home, Games, Live, Leaderboard, Club. The ranking table's label is Leaderboard (it had said Leaderboards). A player's page, opened from that tab, is titled Profile. The platform usage page calls that section Profile too.
-- Home with no night on: your summary (all-time net, rank, cash and tournament split), your last game, anything you still owe or are owed, and the profit podium.
-- Home while a night is on: the live banner instead of the summary and last game. The profit podium stays, and so does settle-up.
-- The points podium, the points table, season highlights, and the optional running-totals chart stay on the Leaderboard. Club buzz stays, on the Club tab. The result-by-game chart stays on a profile. The separate latest-tournament card is gone; Games already lists tournaments, and the last-game card still states a tournament finish.
+- Home with no night on: your summary (all-time net, rank, cash and tournament split), your last game, anything you still owe or are owed, the monthly points podium (S6), and the profit podium.
+- Home while a night is on: the live banner instead of the summary and last game. The monthly points podium and the profit podium stay, and so does settle-up.
+- The points podium, the points table, season highlights, and the optional running-totals chart stay on the Leaderboard (reordered and made monthly in S6). Club buzz stays, on the Club tab. The result-by-game chart stays on a profile. The separate latest-tournament card is gone; Games already lists tournaments, and the last-game card still states a tournament finish.
 
 The simplification plan has no further steps.
 
@@ -130,4 +130,17 @@ The simplification plan has no further steps.
 - The called dashboard route still returns an empty `quarters` field so that payload shape stays the same. Ledger backup and reset still return `sheetRows` / `clearedSheetRows` (always empty; there is no spreadsheet). `/api/healthz` is unchanged.
 - Removed as unused, with no schema change: shadcn components nothing imported and the packages only they used; `.recap-*` and `.season-leader` CSS; the sheet row helpers (`liveLedgerSheetRowRangesForSession`, `normalizeGoogleSheetsDate`, `parseMelbourneTimestamp`, `formatLiveLedgerTimestamp`, `lib/live-ledger-deletion.ts`); the recap helper `pointsAfterNight`; uncalled routes `GET /api/auth/admin/session`, `GET` and `DELETE /api/admin/live-ledger/sessions`, and `POST /api/clubs/current/sessions`. `GET /api/clubs/current/tournaments` stays: the tournament CSV export tests list stored tournaments through it. Every other route the site, smoke, or tests still call is unchanged, including ledger backup and reset and the cash and tournament CSV downloads. `@opentelemetry/api` stays on the API: the production bundle leaves those imports external, and Better Auth and Drizzle load them at startup.
 - Done, no schema change: the cash CSV (`GET /api/clubs/current/export.csv`, club owner or admin, same as before) includes jackpot rows. A surplus is a `Bad Beat Jackpot` row on that night (buy-in 0, cash-out the amount that went in). A payout is its own row, `Bad Beat Jackpot payout to <name>` (buy-in the amount that left, cash-out 0). Re-importing the file still records the players and skips those rows. Tournament log and results download from Club admin > Setup (`GET /api/clubs/current/tournaments/export/log.csv` and `.../results.csv`) and import back through the existing tournament CSV import.
-- Not done, and not part of the simplification plan: avatars still stored in Postgres, a public landing page. S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3), the platform usage page (S4), and the Leaderboard label and Home content (S5) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only.
+- Not done, and not part of the simplification plan: avatars still stored in Postgres. (The public landing page is done, see S6.) S1 (Me vs Club admin), merging two names (S2), Games-tab edit and delete (S3), the platform usage page (S4), and the Leaderboard label and Home content (S5) are done. Reopen still covers editing the latest closed live night; older live nights are delete-only.
+
+### S6. Monthly-points revamp (PRs #27 and #28)
+Done. No schema change, no API change; it is all in the site.
+- **Home:** a monthly points podium (places 4 and 5 and your own row) sits between your last game and the profit podium. If the club has no game yet this month it shows the latest month with scored nights and says so. The points pill on the summary names its month.
+- **Leaderboard:** one scrolling page: profit podium, monthly points podium, full profit table, full monthly points table, then the profit bar chart (collapsed), season highlights and running totals. All-time points are gone: with "All time" chosen, points show the latest month; pick a month for another. `App.tsx` (`pointsSeasonKey`) decides this.
+- **Profiles:** "You vs them" is replaced by `shared-games-card.tsx`: what each of you won or lost in the games you both played, the gap, and the last 8 shared games (`buildSharedGames` in `lib/achievements.ts`). The closest-rival card is removed.
+- **Club tab and admin:** the Club tab is members-only (Club Buzz, invite, rules, jackpot, members). Admin tools live on their own `admin` view (`ClubAdmin` in `components/club-panel.tsx`), opened from the Club admin button or the menu. The usage report has no separate admin section, so the page counts as the Club tab there. Home's "Import results" step opens it at `#admin-setup`.
+- **Club Buzz:** `buildBuzz` ranks a new money leader, a new monthly points leader, podium entries, the last month's champion, shared top spots, then streaks (worded "finished in profit N games in a row") and the biggest pot. Points news only appears when the latest game was a scored night. `PointsProvider` exposes `rowsBeforeLatest` for this.
+- **Reloads:** importing, undoing an import, and closing or reopening a night call `invalidateQueries()` so Home, Games and the leaderboards update at once.
+- **Landing page:** `Landing` in `views/welcome.tsx` wraps the sign-in form with a headline, five feature cards and three steps. Every claim on it should stay true; check it when features change.
+- **Install banner:** from the third visit (`install-card.tsx`), 90-day snooze after dismissing. Install app stays in the menu.
+- **Live ledger:** cash-outs read "Out $x" and buy-ins "In $x" in neutral colours, not red minus amounts. The NET box still shows buy-ins minus cash-outs.
+- **Header:** Sign out, Refresh and Install moved into the menu on desktop too.
