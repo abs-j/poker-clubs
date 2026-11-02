@@ -141,3 +141,15 @@ test("hiding amounts leaves names and places but no money", () => {
   assert.equal(hiddenCash.slides[0].headline, "Ana took the night");
   assert.deepEqual(hiddenCash.slides[1].rows.map((row) => row.name), ["Ana", "Cy", "Di", "Ben"]);
 });
+
+test("a hidden cover leads with a neutral figure, not a win or loss word", () => {
+  const wrapped = buildWrappedRecap({
+    monthKey: "2026-10", label: "Oct 2026", games: 3, players: 2, totalPot: 180,
+    leader: { name: "Ben", net: 45, wins: 2, games: 3 }, bestNight: null,
+    standings: [{ name: "Ben", net: 45, wins: 2, games: 3 }, { name: "Ana", net: -20, wins: 1, games: 3 }],
+    viewer: { name: "Ana", rank: 2, of: 2, net: -20, games: 3, wins: 1, bestGame: 10 },
+  });
+  const cover = redactAmounts(wrapped).slides[0];
+  assert.equal(cover.value, "3 games");
+  assert.deepEqual(cover.chips, ["2 players"]);
+});

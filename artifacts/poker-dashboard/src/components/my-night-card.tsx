@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Copy, Image as ImageIcon, Images, Share2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { FirstView } from "@/components/first-view";
+import { useClubSettings } from "@/components/club-settings-context";
 import { ShareImageDialog } from "@/components/share-image-dialog";
+import { nightSeenId } from "@/lib/home-seen";
 import { buildMyNight, normalizeName, type ChartSession, type MyNight } from "@/lib/club-charts";
 import { copyTextToClipboard } from "@/lib/live-player-summary";
 import { buildNightCardModel, buildShareCardModel, buildTournamentCardModel } from "@/lib/share-card";
@@ -92,6 +95,7 @@ type MyNightCardProps = {
 
 export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   const night = useMemo(() => buildMyNight(sessions, viewer), [sessions, viewer]);
+  const { settings: clubSettings } = useClubSettings();
   const { careers } = useAchievements();
   const { rowsFor } = usePoints();
   const { tournaments } = usePoints();
@@ -204,6 +208,7 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   };
 
   return (
+    <FirstView scope={`club-${clubSettings.id}`} member={viewer} id={nightSeenId(last)}>
     <section
       data-testid="card-my-night"
       aria-label="Your latest game"
@@ -301,5 +306,6 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
       )}
       <p role="status" className="sr-only">{status === "copied" ? "Summary copied to the clipboard" : ""}</p>
     </section>
+    </FirstView>
   );
 }

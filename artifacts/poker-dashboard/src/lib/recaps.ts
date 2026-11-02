@@ -392,11 +392,10 @@ export function redactAmounts(pack: RecapPack): RecapPack {
 
   const slides = pack.slides.map((slide): RecapSlide => {
     if (slide.kind === "cover") {
-      return {
-        ...slide,
-        value: word(slide.value, slide.positive),
-        chips: slide.chips.filter((chip) => !hasMoney(chip)),
-      };
+      const chips = slide.chips.filter((chip) => !hasMoney(chip));
+      // A neutral figure (games or players) instead of a win/loss word, kinder to a bad month.
+      if (hasMoney(slide.value) && chips.length) return { ...slide, value: chips[0], chips: chips.slice(1) };
+      return { ...slide, value: word(slide.value, slide.positive), chips };
     }
     if (slide.kind === "ranking") {
       return {
