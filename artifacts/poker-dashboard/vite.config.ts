@@ -19,8 +19,6 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// The public demo is a second static build served under /demo (see package.json build:demo).
-const isDemo = process.env.VITE_DEMO === 'true';
 const basePath = process.env.BASE_PATH;
 
 if (!basePath) {
@@ -57,7 +55,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    outDir: path.resolve(import.meta.dirname, isDemo ? 'dist/public/demo' : 'dist/public'),
+    outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
     rollupOptions: {
       output: {

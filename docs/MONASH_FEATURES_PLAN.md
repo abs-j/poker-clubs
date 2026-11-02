@@ -7,7 +7,7 @@ Decided 2 Nov 2026. Work happens here only; the Monash repo is read-only referen
 | 1 | Share cards (night, tournament, points, season, my result) with a per-share Hide amounts switch | Done |
 | 2 | Monthly Wrapped modal, Me-page archive, and recap studio (Feed, Story, Square) with the same Hide amounts switch | Done |
 | 3a | First-view Home card: the last-game card shows on the first day it is on screen, then hides until a newer game (per club, per member, per device) | Done |
-| 3b | Static `/demo` build with a guided tour, a How it's built step and Try the demo links (see `docs/DEMO.md`) | Done |
+| 3b | The `/demo` route (same app, fake in-browser API) with a guided tour, a How it's built step and Try the demo links (see `docs/DEMO.md`) | Done |
 
 Skipped on purpose: rivalry / head-to-head (profile "You vs them" covers it), Monash admin screens, Monash branding.
 
