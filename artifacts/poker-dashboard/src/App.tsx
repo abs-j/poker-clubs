@@ -24,6 +24,7 @@ import { PrivacyPage, TermsPage } from "./views/legal";
 import { accountApi } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
 import { ClubSettingsProvider, useClubSettings } from "@/components/club-settings-context";
+import { WrappedHost } from "@/components/wrapped-host";
 import type { GamesMode } from "./views/games-view";
 import { browserSessionDeps, checkMemberSession, type MemberAuthSession } from "@/lib/member-session";
 import { Toaster } from "@/components/ui/toaster";
@@ -509,6 +510,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
     <AvatarProvider avatars={memberAvatars}>
     <AchievementsProvider sessions={homeSessions} players={homePlayers} history={history}>
     <PointsProvider cashNights={sessions} tournaments={tournaments} rules={clubSettings.points.rules}>
+    <WrappedHost sessions={homeSessions} viewer={memberName}>
     <NewBadgeNotice viewer={memberName} />
     <InstallHelpDialog open={helpOpen} onOpenChange={setHelpOpen} platform={platform} />
     <div className="min-h-[100dvh] bg-background text-foreground">
@@ -705,6 +707,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
       </main>
       <BottomTabBar active={activeView} onNavigate={navigate} liveOpen={liveOpen} />
     </div>
+    </WrappedHost>
     </PointsProvider>
     </AchievementsProvider>
     </AvatarProvider>

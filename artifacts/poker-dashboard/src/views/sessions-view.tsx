@@ -3,6 +3,8 @@ import { type PerformanceScope, type DashboardSession as Session } from "@/lib/e
 import { ArrowDown, ChevronDown, Trophy } from "lucide-react";
 import { plural } from "@/lib/utils";
 import { ShareButton } from "@/components/share-button";
+import { RecapButton } from "@/components/recap-button";
+import { buildCashRecap } from "@/lib/recaps";
 import { buildNightCardModel } from "@/lib/share-card";
 import { clubName } from "@/lib/club-format";
 import { SettleBadge, SettleForSession } from "@/components/settle-up";
@@ -147,10 +149,11 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer 
             </div>
           ))}
         </div>
+        <div className="mt-3 flex gap-2">
         <ShareButton
           testId={`button-share-night-${session.sessionNumber}`}
           fileSlug={`night-${session.date}`}
-          className="mt-3 w-full justify-center"
+          className="flex-1 justify-center"
           title={isTournament ? "The tournament, as a picture" : "The night, as a picture"}
           build={(hideAmounts) =>
             buildNightCardModel({
@@ -167,6 +170,21 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer 
             return `${lead} · ${formatDate(session.date)} · ${clubName()}`;
           }}
         />
+        {!isTournament && (
+          <RecapButton
+            testId={`button-recap-night-${session.sessionNumber}`}
+            className="flex-1 justify-center"
+            build={() =>
+              buildCashRecap({
+                date: session.date,
+                sessionNumber: session.sessionNumber,
+                totalBuyIn: session.totalBuyIn,
+                players: session.players.map((player) => ({ player: player.player, buyIn: player.buyIn, cashOut: player.cashOut, net: player.net })),
+              })
+            }
+          />
+        )}
+        </div>
         {!isTournament && <SettleForSession sessionNumber={session.sessionNumber} />}
       </div>
     )}

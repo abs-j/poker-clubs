@@ -1,17 +1,8 @@
 import { useEffect, useState } from "react";
 import { Download, Share2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { readHideAmounts, writeHideAmounts } from "@/lib/share-prefs";
 import { renderShareCard, type GroupCardModel, type ShareCardModel } from "@/lib/share-card";
-
-const HIDE_KEY = "pc.shareHideAmounts";
-
-const readHidePreference = () => {
-  try {
-    return window.localStorage.getItem(HIDE_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
 
 type ShareImageDialogProps = {
   open: boolean;
@@ -42,18 +33,14 @@ export function ShareImageDialog({
   const [blob, setBlob] = useState<Blob | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [hide, setHide] = useState(readHidePreference);
+  const [hide, setHide] = useState(readHideAmounts);
   const hidden = Boolean(hiddenModel) && hide;
   const model = hidden && hiddenModel ? hiddenModel : shownModel;
   const shareText = hidden && hiddenShareText ? hiddenShareText : shownText;
 
   const toggleHide = (value: boolean) => {
     setHide(value);
-    try {
-      window.localStorage.setItem(HIDE_KEY, value ? "1" : "0");
-    } catch {
-      // The choice just applies to this visit.
-    }
+    writeHideAmounts(value);
   };
 
   useEffect(() => {

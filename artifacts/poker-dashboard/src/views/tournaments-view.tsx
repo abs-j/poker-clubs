@@ -2,6 +2,8 @@ import { useMemo, type ReactNode } from "react";
 import { ArrowLeft, Crown, Swords, Trophy } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ShareButton } from "@/components/share-button";
+import { RecapButton } from "@/components/recap-button";
+import { tournamentRecapFromEvent } from "@/lib/recaps";
 import { buildTournamentCardModel } from "@/lib/share-card";
 import { clubName } from "@/lib/club-format";
 import type { TournamentEvent, TournamentResultRow } from "@/lib/earnings-analytics";
@@ -111,6 +113,8 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer, footer }: { eve
             <p className="mt-1 text-sm text-muted-foreground">{event.title}{event.format ? ` · ${event.format}` : ""}{event.startTime ? ` · ${event.startTime}` : ""}</p>
             <p className="mt-2 text-xs text-muted-foreground">{rulesSummary(event)}</p>
           </div>
+          <div className="flex gap-2 self-start">
+          <RecapButton testId="button-recap-tournament" build={() => tournamentRecapFromEvent(event)} />
           <ShareButton
             testId="button-share-tournament"
             fileSlug={`tournament-${event.date}`}
@@ -132,6 +136,7 @@ function TournamentDetail({ event, viewer, onBack, onOpenPlayer, footer }: { eve
             }
             caption={() => `${event.winner ? `${event.winner} took down the tournament` : event.title} · ${formatDate(event.date)} · ${clubName()}`}
           />
+          </div>
         </div>
         {footer && <div className="-mx-5 mt-4 sm:-mx-6">{footer}</div>}
         {!dataCheckPasses(event) && (

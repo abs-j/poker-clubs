@@ -35,7 +35,7 @@ One open night per club.
 
 ## Remove
 
-Legacy Monash mode (access codes, admin password, Google Sheet reader and mirror, public snapshot, Monash rules, default club). Head-to-head Compare tab. Share cards, season recap and Wrapped (share cards came back on 2 Nov 2026, see below). Hashtag setting. Custom points numbers (keep the three presets). Admin avatar management. Emailed invites (keep link, copy/share and QR). Year and Quarter filters. The separate "Add a player who hasn't joined yet" form (names appear when typed in a ledger or import; members claim on join). "Start/Join another club" forms on the account page (club switcher menu instead). Currency and timezone become defaults from the browser, edited under Advanced.
+Legacy Monash mode (access codes, admin password, Google Sheet reader and mirror, public snapshot, Monash rules, default club). Head-to-head Compare tab. Share cards, season recap and Wrapped (share cards, the recap studio and Wrapped came back on 2 Nov 2026, see below). Hashtag setting. Custom points numbers (keep the three presets). Admin avatar management. Emailed invites (keep link, copy/share and QR). Year and Quarter filters. The separate "Add a player who hasn't joined yet" form (names appear when typed in a ledger or import; members claim on join). "Start/Join another club" forms on the account page (club switcher menu instead). Currency and timezone become defaults from the browser, edited under Advanced.
 
 ## Keep
 
@@ -55,4 +55,4 @@ Done: months are real calendar months ("2026-10", shown "Oct 2026") everywhere, 
 
 ## Restored on 2 Nov 2026: share cards
 
-Share is back as a picture you can save or send to a chat: your last game (Home, with a "whole night" and "copy as text" option), a night (Games), a tournament, the points table and the season card. Each picture dialog has a **Hide amounts** switch (remembered on the device) that leaves money figures off and keeps names, places and counts. Compare, the old recap studio and Wrapped stay out for now (see `docs/MONASH_FEATURES_PLAN.md`).
+Share is back as a picture you can save or send to a chat: your last game (Home, with a "whole night" and "copy as text" option), a night (Games), a tournament, the points table and the season card. Each picture dialog has a **Hide amounts** switch (remembered on the device) that leaves money figures off and keeps names, places and counts. The recap studio and monthly Wrapped came back too (see `docs/MONASH_FEATURES_PLAN.md`). Compare stays out.
