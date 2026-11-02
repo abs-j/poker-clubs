@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { BookOpen, CalendarDays, CircleDollarSign, House, Users, type LucideIcon } from "lucide-react";
+import { House, LayoutList, Radio, Trophy, UserRound, type LucideIcon } from "lucide-react";
 
 export type DashboardView =
   | "overview"
@@ -20,13 +20,13 @@ export type Section = {
   views: DashboardView[];
 };
 
-// Five sections. Section ids are the existing view ids, so usage tracking is unchanged.
+// Five sections. Section ids are the existing view ids (usage tracking validates them), so "Me" keeps the account id.
 export const SECTIONS: Section[] = [
   { id: "overview", label: "Home", icon: House, views: ["overview"] },
-  { id: "sessions", label: "Games", icon: CalendarDays, views: ["sessions"] },
-  { id: "live", label: "Live", icon: CircleDollarSign, views: ["live"] },
-  { id: "months", label: "Leaderboard", icon: Users, views: ["months", "players"] },
-  { id: "guidelines", label: "Club", icon: BookOpen, views: ["guidelines", "admin"] },
+  { id: "live", label: "Live", icon: Radio, views: ["live"] },
+  { id: "months", label: "Leaderboard", icon: Trophy, views: ["months", "players"] },
+  { id: "sessions", label: "Games", icon: LayoutList, views: ["sessions"] },
+  { id: "account", label: "Me", icon: UserRound, views: ["account", "guidelines", "admin"] },
 ];
 
 export const isActiveSection = (section: Section, view: DashboardView) => section.views.includes(view);
@@ -150,7 +150,7 @@ export function BottomTabBar({ active, onNavigate, liveOpen }: NavProps) {
 
 const PLAYER_VIEWS: Array<{ id: DashboardView; label: string }> = [
   { id: "months", label: "Leaderboard" },
-  { id: "players", label: "Profile" },
+  { id: "players", label: "Player profiles" },
 ];
 
 /** Switches between the ranking and a profile inside the Leaderboard section. */

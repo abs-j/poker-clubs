@@ -4,7 +4,7 @@ import { getPokerDashboard, getGetPokerLiveActivityQueryKey, useGetPokerDashboar
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HomeOverview } from "@/components/home-overview";
 import { SettleUpCard } from "@/components/settle-up";
-import { BottomTabBar, PlayersSubnav, TopTabs } from "@/components/app-nav";
+import { BottomTabBar, PlayersSubnav, TopTabs, type DashboardView } from "@/components/app-nav";
 import { FilterBar } from "@/components/filter-bar";
 import { MyNightCard } from "@/components/my-night-card";
 import { LiveBanner } from "@/components/live-banner";
@@ -53,7 +53,7 @@ const GamesView = lazy(() => import("./views/games-view").then((m) => ({ default
 const PointsLeaderboard = lazy(() => import("./views/points-leaderboard").then((m) => ({ default: m.PointsLeaderboard })));
 const PeriodLeaderboards = lazy(() => import("./views/period-leaderboards").then((m) => ({ default: m.PeriodLeaderboards })));
 const PlayersView = lazy(() => import("./views/players-view").then((m) => ({ default: m.PlayersView })));
-import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, Settings, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, House, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, Settings, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
 
 import { Route, Router as WouterRouter, Switch } from "wouter";
 import { EmptyPanel, MetricCard, MonthFilter, PageIntro, buildRankMovementMap, buildScopedPlayers, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency, slug } from "./views/shared";
@@ -95,7 +95,6 @@ type PeriodSummary = {
   positiveSessions: number;
   negativeSessions: number;
 };
-type View = "overview" | "sessions" | "live" | "months" | "players" | "guidelines" | "admin" | "account";
 
 function buildScopePeriods(
   basePeriods: PeriodSummary[],
@@ -263,7 +262,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
       return true;
     }
   });
-  const [activeView, setActiveView] = useState<View>(() => getInitialDashboardView(window.location.search));
+  const [activeView, setActiveView] = useState<DashboardView>(() => getInitialDashboardView(window.location.search));
   const [performanceScope, setPerformanceScope] = useState<PerformanceScope>("all");
   const [monthFilter, setMonthFilter] = useState<MonthFilter | null>("ALL");
   const [refreshing, setRefreshing] = useState(false);
@@ -411,7 +410,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
   const updatedLabel = dashboard?.isStale
     ? `Last successful sync ${formatSyncTime(dashboard.lastUpdated)}`
     : `Synced ${formatSyncTime(dashboard?.lastUpdated ?? "")}`;
-  const navigate = (view: View) => {
+  const navigate = (view: DashboardView) => {
     setActiveView(view);
     const search = dashboardSearchForView(window.location.search, view);
     window.history.replaceState(
@@ -521,7 +520,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
           <header className="rise-in border-b border-border">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open overview"><CalendarDays className="h-5 w-5" /></button>
+                <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open home"><House className="h-5 w-5" /></button>
                 <div className="flex min-w-0 items-baseline gap-2">
                   <p data-testid="text-dashboard-title" className="min-w-0 truncate text-lg font-semibold tracking-[-0.03em] sm:text-xl">{dashboard.title || "Poker Session Log & Months"}</p>
                 </div>
@@ -695,6 +694,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
                 onInstall={() => void install()}
                 onLogout={() => void onLogout()}
                 onOpenProfile={() => openPlayer(memberName)}
+                onOpenRules={() => navigate("guidelines")}
               />
             )}
             </Suspense>
