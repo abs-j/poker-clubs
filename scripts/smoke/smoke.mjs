@@ -684,14 +684,14 @@ await check("tapping a podium name opens that player's profile", async () => {
 await check("Live ledger and Club pages load", async () => {
   await page.tap('[data-testid="tab-live"]');
   await visible('[data-testid="section-live-ledger"]');
-  await page.tap('[data-testid="tab-guidelines"]');
+  await page.tap('[data-testid="tab-account"]');
+  await visible('[data-testid="button-me-rules"]');
+  await page.tap('[data-testid="button-me-rules"]');
   await visible('[data-testid="section-guidelines"]');
 });
 
-await check("My account page loads from the menu", async () => {
-  await page.tap('[data-testid="button-mobile-dashboard-menu"]');
-  await visible('[data-testid="menu-open-account"]');
-  await page.tap('[data-testid="menu-open-account"]');
+await check("Me page loads from the tab bar", async () => {
+  await page.tap('[data-testid="tab-account"]');
   await visible('[data-testid="section-account"]');
 });
 

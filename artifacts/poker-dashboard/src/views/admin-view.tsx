@@ -63,7 +63,7 @@ const usageSectionLabels: Record<string, string> = {
   live: "Live ledger",
   months: "Leaderboards",
   "head-to-head": "Head-to-head",
-  account: "My account",
+  account: "Me",
   players: "Players",
   guidelines: "Guidelines & Rules",
 };

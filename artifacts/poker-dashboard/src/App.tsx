@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getPokerDashboard, getGetPokerLiveActivityQueryKey, useGetPokerDashboard, useGetPokerLiveActivity } from "@workspace/api-client-react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HomeOverview } from "@/components/home-overview";
-import { BottomTabBar, PlayersSubnav, TopTabs } from "@/components/app-nav";
+import { BottomTabBar, PlayersSubnav, TopTabs, type DashboardView } from "@/components/app-nav";
 import { FilterBar } from "@/components/filter-bar";
 import { MyNightCard } from "@/components/my-night-card";
 import { LiveBanner } from "@/components/live-banner";
@@ -50,7 +50,7 @@ const GamesView = lazy(() => import("./views/games-view").then((m) => ({ default
 const PointsLeaderboard = lazy(() => import("./views/points-leaderboard").then((m) => ({ default: m.PointsLeaderboard })));
 const PeriodLeaderboards = lazy(() => import("./views/period-leaderboards").then((m) => ({ default: m.PeriodLeaderboards })));
 const PlayersView = lazy(() => import("./views/players-view").then((m) => ({ default: m.PlayersView })));
-import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Activity, BarChart3, CalendarDays, House, Check, ChevronDown, ChevronRight, CircleDollarSign, Copy, Download, ExternalLink, Eye, EyeOff, LayoutDashboard, LockKeyhole, LogOut, Menu, MoreHorizontal, Moon, Pencil, Printer, QrCode, Plus, RefreshCw, ShieldCheck, Sun, Trash2, Users, X } from "lucide-react";
 
 import { Route, Router as WouterRouter, Switch } from "wouter";
 import { EmptyPanel, MetricCard, MonthFilter, PageIntro, buildRankMovementMap, buildScopedPlayers, compactCurrency, formatCurrency, formatDate, monthLabel, normalizePlayerName, signedCurrency, slug } from "./views/shared";
@@ -92,7 +92,6 @@ type PeriodSummary = {
   positiveSessions: number;
   negativeSessions: number;
 };
-type View = "overview" | "sessions" | "live" | "months" | "players" | "guidelines" | "account";
 
 function buildScopePeriods(
   basePeriods: PeriodSummary[],
@@ -260,7 +259,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
       return true;
     }
   });
-  const [activeView, setActiveView] = useState<View>(() => getInitialDashboardView(window.location.search));
+  const [activeView, setActiveView] = useState<DashboardView>(() => getInitialDashboardView(window.location.search));
   const [performanceScope, setPerformanceScope] = useState<PerformanceScope>("all");
   const [monthFilter, setMonthFilter] = useState<MonthFilter | null>("ALL");
   const [refreshing, setRefreshing] = useState(false);
@@ -400,7 +399,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
   const updatedLabel = dashboard?.isStale
     ? `Last successful sync ${formatSyncTime(dashboard.lastUpdated)}`
     : `Synced ${formatSyncTime(dashboard?.lastUpdated ?? "")}`;
-  const navigate = (view: View) => {
+  const navigate = (view: DashboardView) => {
     setActiveView(view);
     const search = dashboardSearchForView(window.location.search, view);
     window.history.replaceState(
@@ -508,7 +507,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
           <header className="rise-in border-b border-border">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open overview"><CalendarDays className="h-5 w-5" /></button>
+                <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open home"><House className="h-5 w-5" /></button>
                 <div className="flex min-w-0 items-baseline gap-2">
                   <p data-testid="text-dashboard-title" className="min-w-0 truncate text-lg font-semibold tracking-[-0.03em] sm:text-xl">{dashboard.title || "Poker Session Log & Months"}</p>
                 </div>
@@ -529,26 +528,8 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64">
                     <DropdownMenuLabel className="truncate text-xs text-muted-foreground">Signed in as {memberName}</DropdownMenuLabel>
-                    <DropdownMenuItem onSelect={() => navigate("account")} data-testid="menu-open-account">
-                      <Avatar name={memberName} size={20} />My account
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => void handleRefresh()} disabled={refreshing} data-testid="menu-refresh-dashboard">
                       <Activity className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />{refreshing ? "Refreshing…" : "Refresh dashboard"}
-                    </DropdownMenuItem>
-                    {canInstall && (
-                      <DropdownMenuItem onSelect={() => void install()} data-testid="menu-install-app">
-                        <Download className="h-4 w-4" />Install app
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onSelect={toggleTheme} data-testid="menu-toggle-theme">
-                      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                      Switch to {isDark ? "light" : "dark"} mode
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => void onLogout()} data-testid="menu-member-logout" className="text-destructive focus:text-destructive">
-                      <LogOut className="h-4 w-4" />Sign out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -682,6 +663,7 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 onInstall={() => void install()}
                 onLogout={() => void onLogout()}
                 onOpenProfile={() => openPlayer(memberName)}
+                onOpenRules={() => navigate("guidelines")}
               />
             )}
             </Suspense>

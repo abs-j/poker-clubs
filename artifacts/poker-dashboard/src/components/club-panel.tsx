@@ -194,6 +194,13 @@ export function ClubPanel() {
       )}
 
       {isAdmin && (
+        <a href="/admin" data-testid="link-me-admin" className="mt-6 flex min-h-[44px] items-center justify-between rounded-xl border border-border bg-secondary/40 px-4 text-sm font-semibold hover:bg-secondary">
+          Admin page
+          <span className="text-xs font-normal text-muted-foreground">Members, imports, data</span>
+        </a>
+      )}
+
+      {isAdmin && (
         <div className="mt-6" data-testid="section-invites">
           <div className="flex items-center justify-between gap-3">
             <div>

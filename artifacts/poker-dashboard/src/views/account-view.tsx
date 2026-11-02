@@ -26,6 +26,7 @@ type AccountViewProps = {
   onInstall: () => void;
   onLogout: () => void;
   onOpenProfile: () => void;
+  onOpenRules: () => void;
 };
 
 function Stat({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: "pos" | "neg" }) {
@@ -61,6 +62,7 @@ export function AccountView({
   onInstall,
   onLogout,
   onOpenProfile,
+  onOpenRules,
 }: AccountViewProps) {
   const memberAvatars = useMemberAvatars();
   const { currentSeason, rowsFor } = usePoints();
@@ -78,7 +80,7 @@ export function AccountView({
 
   return (
     <section data-testid="section-account" className="space-y-4">
-      <PageIntro eyebrow="Account" title="My account" description="Your picture, record, badges and settings." count={`${stats?.games ?? 0} ${stats?.games === 1 ? "game" : "games"} played`} />
+      <PageIntro eyebrow="Account" title="Me" description="Your picture, record, badges, club and settings." count={`${stats?.games ?? 0} ${stats?.games === 1 ? "game" : "games"} played`} />
 
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
@@ -160,6 +162,14 @@ export function AccountView({
       )}
 
       <TrophyShelf sessions={sessions} playerName={memberName} badgeMap={badgeMap} careerGames={career?.games} />
+
+      <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <SettingRow title="Club rules" detail="Blind schedule, buy-in and house rules.">
+          <button type="button" onClick={onOpenRules} data-testid="button-me-rules" className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary">
+            Open
+          </button>
+        </SettingRow>
+      </div>
 
       <ClubPanel />
 
