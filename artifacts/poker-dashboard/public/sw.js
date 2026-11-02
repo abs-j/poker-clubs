@@ -5,6 +5,7 @@
 //   so the app still opens with a weak connection.
 // - /api/* and anything cross-origin is never intercepted or stored: member data,
 //   session cookies and live ledger responses stay out of the cache.
+// - /demo is a separate static app and is left alone.
 
 const CACHE = "poker-static-v1";
 const SHELL = "/index.html";
@@ -30,6 +31,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname === "/sw.js") return;
+  // The public demo is a separate app under /demo. Never cache it as this app's shell.
+  if (url.pathname === "/demo" || url.pathname.startsWith("/demo/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(

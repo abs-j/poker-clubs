@@ -4,6 +4,8 @@ import { Avatar } from "@/components/avatar";
 import { AvatarPickerDialog } from "@/components/avatar-picker-dialog";
 import { BadgeChips, FormDots } from "@/components/form-dots";
 import { TrophyShelf } from "@/components/trophy-shelf";
+import { useWrappedArchive } from "@/components/wrapped-host";
+import { monthTitle } from "@/lib/wrapped";
 import { badgesFor, buildAccountStats, buildFormDots } from "@/lib/achievements";
 import { useAchievements } from "@/components/achievements-context";
 import { careerFor } from "@/lib/career";
@@ -168,6 +170,7 @@ export function AccountView({
       )}
 
       <TrophyShelf sessions={sessions} playerName={memberName} badgeMap={badgeMap} careerGames={career?.games} />
+      <WrappedArchive />
 
       {me?.options.email && me.user && !me.user.emailVerified && <VerifyEmailNotice email={me.user.email} />}
       {me?.user && <AccountSecurity user={me.user} part="password" />}
@@ -231,6 +234,31 @@ export function AccountView({
       {me?.user && <AccountSecurity user={me.user} part="danger" />}
 
       <AvatarPickerDialog open={pickerOpen} onOpenChange={setPickerOpen} name={memberName} current={current} />
+    </section>
+  );
+}
+
+/** Past months as Poker Wrapped. The newest finished month also opens by itself once. */
+function WrappedArchive() {
+  const { months, openMonth } = useWrappedArchive();
+  if (months.length === 0) return null;
+  return (
+    <section id="poker-wrapped" data-testid="section-wrapped-archive" className="soft-shadow rounded-2xl border border-border bg-card p-5">
+      <p className="section-label text-primary">Poker Wrapped</p>
+      <h2 className="mt-1 text-lg font-semibold tracking-tight">Your months, replayed</h2>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {months.slice(0, 12).map((month) => (
+          <button
+            key={month}
+            type="button"
+            onClick={() => openMonth(month)}
+            data-testid={`button-wrapped-${month}`}
+            className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
+          >
+            {monthTitle(month)}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }

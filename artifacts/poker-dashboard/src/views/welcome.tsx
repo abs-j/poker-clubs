@@ -354,6 +354,14 @@ function Landing({ children }: { children: ReactNode }) {
           <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
             Track buy-ins, cash-outs, leaderboards and monthly club points for your group. Free, and invite-only.
           </p>
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <a href="/demo/" data-testid="link-try-demo" className="inline-flex h-11 items-center rounded-xl border border-primary/40 bg-primary/10 px-4 text-sm font-semibold text-primary hover:bg-primary/15">
+              Try the demo
+            </a>
+            <a href="/demo/?tour=built" data-testid="link-how-built" className="text-sm font-semibold text-muted-foreground hover:text-primary hover:underline">
+              How it&apos;s built
+            </a>
+          </div>
         </div>
 
         <div className="soft-shadow rounded-2xl border border-border bg-card p-6 sm:p-8 lg:col-start-2 lg:row-span-2 lg:row-start-1">

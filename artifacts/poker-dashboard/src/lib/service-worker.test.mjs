@@ -100,3 +100,11 @@ test("activation clears old poker caches only", async () => {
   await waited;
   assert.deepEqual(worker.deleted, ["poker-static-v0"]);
 });
+
+test("the public demo is never intercepted or cached as the app shell", async () => {
+  const worker = createWorker();
+  assert.equal(await worker.dispatch(worker.request("/demo/", { mode: "navigate" })), undefined);
+  assert.equal(await worker.dispatch(worker.request("/demo", { mode: "navigate" })), undefined);
+  assert.equal(await worker.dispatch(worker.request("/demo/assets/index-abc.js")), undefined);
+  assert.equal(worker.store.has("/index.html"), false);
+});

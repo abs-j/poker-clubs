@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
 import { HelpCircle } from "lucide-react";
+import { ShareButton } from "@/components/share-button";
+import { buildPointsCardModel } from "@/lib/share-card";
+import { clubName } from "@/lib/club-format";
 import { Avatar } from "@/components/avatar";
 import { ChartCard } from "@/components/club-charts";
 import { usePointsSeason } from "@/components/points-season-context";
@@ -71,6 +74,7 @@ export function PointsLeaderboard({ viewer, onOpenPlayer }: PointsLeaderboardPro
 
   const viewerKey = viewer.trim().toLocaleLowerCase();
   const visible = showAll ? rows : rows.slice(0, 15);
+  const nightsCounted = rows.reduce((max, row) => Math.max(max, row.nights), 0);
   if (!hasNights) {
     return <EmptyPanel title="No scored nights in this period" description="Club points count nights with at least four players. Pick another month above." />;
   }
@@ -84,6 +88,16 @@ export function PointsLeaderboard({ viewer, onOpenPlayer }: PointsLeaderboardPro
         testId="card-points-header"
         eyebrow="Club points"
         title={`${seasonLabel(active)} points table`}
+        action={
+          <ShareButton
+            testId="button-share-points"
+            fileSlug={`points-${active}`}
+            hasAmounts={false}
+            title="The points table, as a picture"
+            build={() => buildPointsCardModel({ label: seasonLabel(active), rows, nights: nightsCounted })}
+            caption={() => `${seasonLabel(active)} club points · ${clubName()}`}
+          />
+        }
         description={`Points for turning up and for where you finished, scaled to how many played. ${rows.length} players have a scored night here${firstNight ? `, and scoring starts on ${formatDate(firstNight)}, so it lists fewer people than the profit table` : ""}.`}
       >
         <button

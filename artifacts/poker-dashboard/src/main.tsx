@@ -2,8 +2,15 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { IS_DEMO } from '@/lib/demo-flag';
 
 import './index.css';
+
+// The demo answers /api requests in the browser, so it must be in place before anything fetches.
+if (IS_DEMO) {
+  const { installDemoApi } = await import('@/demo/mock-api');
+  installDemoApi();
+}
 
 createRoot(document.getElementById('root')!, {
   // Keeps caught errors off reportError(), which would raise the dev overlay.
@@ -17,7 +24,7 @@ createRoot(document.getElementById('root')!, {
 );
 
 // Offline support and installability. Production only, so dev servers never get a stale cache.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if (import.meta.env.PROD && !IS_DEMO && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`)
