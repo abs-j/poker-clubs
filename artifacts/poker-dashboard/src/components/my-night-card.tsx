@@ -269,7 +269,7 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
 
       <dl className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
         <div className="min-w-0 rounded-xl bg-secondary/45 p-2.5 sm:p-3">
-          <dt className="text-[11px] uppercase leading-4 tracking-[0.06em] text-muted-foreground">Leaderboard move</dt>
+          <dt className="text-[11px] uppercase leading-4 tracking-[0.04em] text-muted-foreground">Rank move</dt>
           <dd data-testid="text-my-night-rank" className="mt-1.5 break-words font-mono text-[13px] font-semibold leading-5">
             {moveHeadline(standing ? standing.movement : night.standing.movement)}
           </dd>
@@ -278,14 +278,14 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
           </dd>
         </div>
         <div className="min-w-0 rounded-xl bg-secondary/45 p-2.5 sm:p-3">
-          <dt className="text-[11px] uppercase leading-4 tracking-[0.06em] text-muted-foreground">Form</dt>
+          <dt className="text-[11px] whitespace-nowrap uppercase leading-4 tracking-[0.04em] text-muted-foreground">Form</dt>
           <dd className="mt-1.5 break-words font-mono text-[13px] font-semibold leading-5">{streak ?? "No streak"}</dd>
           <dd className="mt-0.5 text-[11px] text-muted-foreground">
             {career ? `Across ${career.games} games` : `Over ${night.season.games} ${night.season.games === 1 ? "game" : "games"} on record`}
           </dd>
         </div>
         <div className="min-w-0 rounded-xl bg-secondary/45 p-2.5 sm:p-3">
-          <dt className="text-[11px] uppercase leading-4 tracking-[0.06em] text-muted-foreground">Best game</dt>
+          <dt className="text-[11px] whitespace-nowrap uppercase leading-4 tracking-[0.04em] text-muted-foreground">Best game</dt>
           <dd className={`mt-1.5 font-mono text-[13px] font-semibold leading-5 ${bestGameValue >= 0 ? "text-chart-1" : "text-destructive"}`}>{signedCurrency(bestGameValue)}</dd>
           <dd className="mt-0.5 text-[11px] text-muted-foreground">
             {career ? `${Math.round(career.inProfitPct)}% of games in profit` : `${night.season.positiveGames} of ${night.season.games} in profit`}

@@ -112,7 +112,7 @@ export function HomeOverview({
                 <span className="sf-blob sf-blob-a" aria-hidden="true" />
                 <span className="sf-blob sf-blob-b" aria-hidden="true" />
                 <p className="sf-label" data-testid="text-personal-net-label">Your all-time net</p>
-                <div className="sf-money" data-testid="text-personal-net">
+                <div className={`sf-money${total !== null && total < 0 ? " is-negative" : ""}`} data-testid="text-personal-net">
                   {total === null ? "—" : <AnimatedNumber value={total} format={signedCurrency} />}
                 </div>
                 <div className="sf-hero-bottom">

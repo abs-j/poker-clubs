@@ -45,7 +45,8 @@
 @keyframes sf-float-a { from { transform: translate(0, 0) scale(1); } to { transform: translate(-60px, 40px) scale(1.2); } }
 @keyframes sf-float-b { from { transform: translate(0, 0) scale(1); } to { transform: translate(70px, -30px) scale(1.15); } }
 .sf-hero-card:after { content: ""; position: absolute; right: -55px; bottom: -120px; width: 300px; height: 300px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 50%; box-shadow: 0 0 0 24px rgba(255, 255, 255, .025), 0 0 0 49px rgba(255, 255, 255, .022); pointer-events: none; }
-.sf-hero-card .sf-label { color: rgba(244, 242, 255, .72); }
+.sf-hero-card .sf-label { color: rgba(244, 242, 255, .82); }
+.sf-money.is-negative { color: hsl(350 90% 85%); }
 .sf-money { position: relative; z-index: 1; margin-top: 22px; font-family: var(--app-font-mono); font-size: clamp(43px, 6vw, 64px); letter-spacing: -.07em; line-height: 1; font-weight: 500; }
 .sf-hero-bottom { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 20px; font-size: 12px; color: rgba(244, 242, 255, .82); }
 .sf-rank-pill { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 999px; padding: 6px 11px; color: #fff; background: rgba(255, 255, 255, .08); }
@@ -71,7 +72,7 @@
 .sf-rank-row:hover { background: var(--sf-tint); }
 .sf-rank-row.is-member { margin: 2px 0; border: 1px solid hsl(var(--primary) / .3); border-radius: 11px; background: hsl(var(--primary) / .07); }
 .sf-rank-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: hsl(var(--secondary)); color: var(--sf-muted); font-family: var(--app-font-mono); font-size: 11px; }
-.sf-rank-row:first-child .sf-rank-num { background: hsl(var(--accent) / .25); color: hsl(var(--accent-foreground)); }
+.sf-rank-row:first-child:not(.is-member) .sf-rank-num { background: hsl(var(--accent) / .25); color: hsl(var(--accent-foreground)); }
 .sf-rank-name { font-size: 13px; font-weight: 600; }
 .sf-you { margin-left: 6px; color: var(--sf-primary); font-family: var(--app-font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
 .sf-rank-value { font-family: var(--app-font-mono); font-size: 12px; font-weight: 600; white-space: nowrap; }

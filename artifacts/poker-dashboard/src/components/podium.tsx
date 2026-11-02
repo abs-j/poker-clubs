@@ -1,7 +1,15 @@
 import { useMemo } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Avatar } from "@/components/avatar";
 import { buildPodium, type PodiumPlace, type PodiumSource } from "@/lib/podium";
 import { formatCurrency } from "@/views/shared";
+
+/** Phone sizes: shorter blocks and slightly smaller avatars so the podium does not take a screen on its own. */
+const PHONE_SIZES: Record<PodiumPlace, { height: number; avatar: number }> = {
+  1: { height: 76, avatar: 64 },
+  2: { height: 54, avatar: 52 },
+  3: { height: 38, avatar: 48 },
+};
 
 const MEDALS: Record<PodiumPlace, { ring: string; block: string; label: string; height: number; avatar: number }> = {
   1: {
@@ -60,14 +68,15 @@ type PodiumProps = {
 /** Top three as a podium. First place stands in the middle and wears a crown. */
 export function Podium({ players, viewer, onOpenPlayer, formatValue, onOpenBoard }: PodiumProps) {
   const slots = useMemo(() => buildPodium(players), [players]);
+  const phone = useIsMobile();
   if (slots.length === 0) return null;
   const viewerKey = viewer?.trim().toLowerCase();
 
   return (
-    <div data-testid="podium" className="relative flex items-end justify-center gap-3 px-2 pt-6 sm:gap-6">
+    <div data-testid="podium" className="relative flex items-end justify-center gap-3 px-2 pt-3 sm:gap-6 sm:pt-6">
       <div aria-hidden="true" className="podium-glow pointer-events-none absolute left-1/2 top-4 h-40 w-72 rounded-full" />
       {slots.map((slot, index) => {
-        const medal = MEDALS[slot.place];
+        const medal = { ...MEDALS[slot.place], ...(phone ? PHONE_SIZES[slot.place] : {}) };
         const isViewer = viewerKey !== undefined && slot.name.trim().toLowerCase() === viewerKey;
         const valueText = formatValue ? formatValue(slot.net) : `${slot.net >= 0 ? "+" : "−"}${formatCurrency(Math.abs(slot.net))}`;
         const openBoard = onOpenBoard ?? (() => onOpenPlayer(slot.name));
@@ -109,7 +118,7 @@ export function Podium({ players, viewer, onOpenPlayer, formatValue, onOpenBoard
             >
               <span className={`font-mono text-xs font-semibold ${formatValue || slot.net >= 0 ? "text-chart-1" : "text-destructive"}`}>{valueText}</span>
               <span
-                className="bar-y up mt-3 flex w-full items-start justify-center rounded-t-xl pt-2 font-mono text-lg font-semibold text-white/95 shadow-sm"
+                className="bar-y up mt-1.5 sm:mt-3 flex w-full items-start justify-center rounded-t-xl pt-2 font-mono text-lg font-semibold text-white/95 shadow-sm"
                 style={{ height: medal.height, backgroundImage: medal.block, "--i": index * 3 + 2 } as React.CSSProperties}
               >
                 {slot.place}

@@ -480,6 +480,27 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
     navigate("sessions");
   };
 
+  // Once the dashboard is on screen, fetch the other tabs' code in idle time so switching tabs is instant.
+  const ready = !!dashboard;
+  useEffect(() => {
+    if (!ready) return;
+    const prefetch = () => {
+      void import("./views/live-view");
+      void import("./views/account-view");
+      void import("./views/guidelines-view");
+      void import("./views/games-view");
+      void import("./views/points-leaderboard");
+      void import("./views/period-leaderboards");
+      void import("./views/players-view");
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetch, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(prefetch, 1500);
+    return () => window.clearTimeout(id);
+  }, [ready]);
+
   if (isLoading) return <DashboardSkeleton />;
   if (isError && (error as { status?: number } | null)?.status === 401) return <SessionExpiredState onSignIn={() => void onLogout()} />;
   if (isError) return <ErrorState refreshing={refreshing} onRetry={handleRefresh} />;
@@ -637,7 +658,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
             )}
 
           <div className="mt-4">
-            <Suspense fallback={<div data-testid="state-view-loading" className="h-64 skeleton rounded-2xl" />}>
+            <Suspense fallback={<ViewSkeleton />}>
             {activeView === "sessions" && <GamesView mode={gamesMode} onMode={(mode) => { setGamesMode(mode); setSelectedTournament(null); }} cashSessions={cashGamesInView} tournaments={tournamentsInView} viewer={memberName} selectedSession={selectedSession} onSelectSession={setSelectedSession} selectedTournament={selectedTournament} onSelectTournament={setSelectedTournament} onOpenPlayer={openPlayer} />}
               {activeView === "live" && (
                 <>
@@ -701,10 +722,10 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
           </div>
 
           </div>
-          <footer className="mt-8 grid gap-4 border-t border-border py-7 text-xs text-muted-foreground sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          {activeView === "overview" && (          <footer className="mt-8 grid gap-4 border-t border-border py-7 text-xs text-muted-foreground sm:grid-cols-[1fr_auto_auto] sm:items-end">
              <div className="space-y-1"><p className="font-mono text-[11px] uppercase tracking-[0.14em] text-foreground">{sessions.length} cash games{tournamentSessions.length ? ` · ${tournamentSessions.length} ${tournamentSessions.length === 1 ? "tournament" : "tournaments"}` : ""} · {dashboard.totals.totalRecords} player results</p><p data-testid="text-footer-latest">{dashboard.totals.latestSession ? `Latest game #${dashboard.totals.latestSession}` : "Season in progress"}</p></div>
             <span className="font-mono text-[11px] uppercase tracking-[0.14em]">Numbers from the nights this club has recorded</span>
-          </footer>
+          </footer>)}
         </div>
       </main>
       <BottomTabBar active={activeView} onNavigate={navigate} liveOpen={liveOpen} />
@@ -772,7 +793,18 @@ function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar 
   );
 }
 function EmptyDashboard() { return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-foreground"><EmptyPanel title="No season figures yet" description="The connected sheet is ready, but there are no recorded poker sessions to display." /></div>; }
-function DashboardSkeleton() { return <div data-testid="state-dashboard-loading" className="min-h-[100dvh] bg-background p-5 text-foreground sm:p-10"><div className="mx-auto max-w-[1200px] animate-pulse space-y-5"><div className="h-8 w-56 rounded-lg bg-secondary" /><div className="h-16 w-3/4 rounded-xl bg-secondary" /><div className="grid grid-cols-2 gap-3 md:grid-cols-6">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-28 rounded-2xl bg-secondary" />)}</div><div className="h-80 rounded-2xl bg-secondary" /><div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-44 rounded-2xl bg-secondary" />)}</div></div></div>; }
+function ViewSkeleton() {
+  return (
+    <div data-testid="state-view-loading" aria-hidden="true" className="space-y-4">
+      <div className="h-9 w-40 skeleton rounded-lg" />
+      <div className="h-28 skeleton rounded-2xl" />
+      <div className="h-28 skeleton rounded-2xl" />
+      <div className="h-28 skeleton rounded-2xl" />
+    </div>
+  );
+}
+// Shaped like Home: header, hero, last game, podium.
+function DashboardSkeleton() { return <div data-testid="state-dashboard-loading" className="min-h-[100dvh] bg-background px-4 pt-4 text-foreground sm:px-7 lg:px-10 lg:pt-6"><div className="mx-auto max-w-[1450px] animate-pulse space-y-4"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-xl bg-secondary" /><div className="h-6 w-48 rounded-lg bg-secondary" /></div><div className="h-12 w-3/4 rounded-xl bg-secondary" /><div className="h-52 rounded-2xl bg-secondary" /><div className="h-28 rounded-2xl bg-secondary" /><div className="h-72 rounded-2xl bg-secondary" /></div></div>; }
 function formatSyncTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "recently"; return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
 function App() {
   return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter base={IS_DEMO ? "/demo" : ""}><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><PlatformUsagePage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
