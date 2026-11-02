@@ -1,24 +1,29 @@
 import { useState } from "react";
 import { Download, X } from "lucide-react";
+import { shouldPromptInstall } from "@/lib/install-platform";
+import { recordVisit } from "@/lib/preferences";
 
 const DISMISS_KEY = "install-card-dismissed-at";
-const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
 
-function dismissedRecently(): boolean {
+function readDismissedAt(): number | null {
   try {
     const at = Number(window.localStorage.getItem(DISMISS_KEY));
-    return Number.isFinite(at) && at > 0 && Date.now() - at < SNOOZE_MS;
+    return Number.isFinite(at) && at > 0 ? at : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** A phone-only prompt near the top of Home. Dismissing hides it for a month. */
+function shouldShow(): boolean {
+  return shouldPromptInstall({ visits: recordVisit(), dismissedAt: readDismissedAt(), now: Date.now() });
+}
+
+/** A phone-only prompt at the end of Home, shown to returning visitors. Dismissing hides it for a month. */
 export function InstallCard({ oneTap, onInstall }: { oneTap: boolean; onInstall: () => void }) {
-  const [hidden, setHidden] = useState(dismissedRecently);
+  const [hidden, setHidden] = useState(() => !shouldShow());
   if (hidden) return null;
   return (
-    <div data-testid="card-install-app" className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/[0.06] p-3 pl-4 lg:hidden">
+    <div data-testid="card-install-app" className="flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/[0.06] p-3 pl-4 lg:hidden">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
         <Download className="h-5 w-5" aria-hidden="true" />
       </span>

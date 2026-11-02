@@ -562,7 +562,6 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
 
             {activeView === "overview" && (
               <div className="mt-4">
-                {canInstall && <InstallCard oneTap={oneTap} onInstall={() => void install()} />}
                 {liveOpen && (
                   <LiveBanner
                     startedBy={liveStatusQuery.data?.startedBy ?? null}
@@ -572,15 +571,13 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                   />
                 )}
                 <HomeOverview
-                  afterHero={<MyNightCard sessions={homeSessions} viewer={memberName} standing={myStanding} />}
+                  afterHero={<MyNightCard sessions={homeSessions} viewer={memberName} standing={myStanding} compact />}
                   memberName={memberName}
                   standings={homePlayers}
                   cashPlayers={players}
                   tournament={tournamentSnapshot}
                   tournamentCount={tournamentSessions.length}
-                  sessions={homeSessions}
                   latestDate={dashboard.totals.latestGameDate ?? null}
-                  onOpenSession={openGame}
                   onSeeGames={() => navigate("sessions")}
                   onSeePlayers={() => navigate("months")}
                   onOpenPlayer={openPlayer}
@@ -591,47 +588,13 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                     window.setTimeout(() => document.getElementById("club-points")?.scrollIntoView({ behavior: "smooth", block: "start" }), 350);
                   }}
                 />
-                {tournaments[0] && (
-                  <div className="mt-4">
-                    <LatestTournamentCard
-                      event={tournaments[0]}
-                      viewer={memberName}
-                      totalEvents={tournaments.length}
-                      onOpen={() => openTournament(tournaments[0].id)}
-                      onSeeAll={() => openTournament(null)}
-                    />
-                  </div>
-                )}
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <SeasonCard sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />
-                  <ClubBuzz sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />
-                </div>
-                <div className="mt-4">
-                  {showHistoryChart ? (
-                    <Suspense fallback={<div className="h-72 skeleton rounded-2xl" />}>
-                      <CumulativeProfitCard sessions={homeSessions} viewer={memberName} />
-                    </Suspense>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowHistoryChart(true)}
-                      data-testid="button-show-history-chart"
-                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border bg-card px-5 py-4 text-left transition-colors hover:border-primary/50 hover:bg-secondary/40"
-                    >
-                      <span>
-                        <span className="block text-sm font-semibold">Show everyone&apos;s running totals</span>
-                        <span className="block text-xs text-muted-foreground">A line chart of net profit game by game, with you highlighted.</span>
-                      </span>
-                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
+                {canInstall && <div className="mt-4"><InstallCard oneTap={oneTap} onInstall={() => void install()} /></div>}
               </div>
             )}
 
           <div className="mt-4">
             <Suspense fallback={<div data-testid="state-view-loading" className="h-64 skeleton rounded-2xl" />}>
-            {activeView === "sessions" && <GamesView mode={gamesMode} onMode={(mode) => { setGamesMode(mode); setSelectedTournament(null); }} cashSessions={cashGamesInView} tournaments={tournamentsInView} viewer={memberName} selectedSession={selectedSession} onSelectSession={setSelectedSession} selectedTournament={selectedTournament} onSelectTournament={setSelectedTournament} onOpenPlayer={openPlayer} />}
+            {activeView === "sessions" && <GamesView mode={gamesMode} onMode={(mode) => { setGamesMode(mode); setSelectedTournament(null); }} cashSessions={cashGamesInView} tournaments={tournamentsInView} viewer={memberName} selectedSession={selectedSession} onSelectSession={setSelectedSession} selectedTournament={selectedTournament} onSelectTournament={setSelectedTournament} onOpenPlayer={openPlayer} latestTournament={tournaments[0] ? <LatestTournamentCard event={tournaments[0]} viewer={memberName} totalEvents={tournaments.length} onOpen={() => openTournament(tournaments[0].id)} onSeeAll={() => openTournament(null)} /> : undefined} />}
               {activeView === "live" && (
                 <>
                   <button type="button" onClick={() => navigate("guidelines")} data-testid="link-live-rules" className="mb-1 inline-flex min-h-[44px] items-center text-xs font-semibold text-primary hover:underline">Blind schedule &amp; rules →</button>
@@ -645,6 +608,30 @@ function DashboardHome({ memberName, onLogout }: { memberName: string; onLogout:
                 afterOverview={
                   <div id="club-points" className="scroll-mt-4">
                     <PointsLeaderboard viewer={memberName} onOpenPlayer={openPlayer} />
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <SeasonCard sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />
+                      <ClubBuzz sessions={homeSessions} viewer={memberName} onOpenPlayer={openPlayer} />
+                    </div>
+                    <div className="mt-4">
+                      {showHistoryChart ? (
+                        <Suspense fallback={<div className="h-72 skeleton rounded-2xl" />}>
+                          <CumulativeProfitCard sessions={homeSessions} viewer={memberName} />
+                        </Suspense>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setShowHistoryChart(true)}
+                          data-testid="button-show-history-chart"
+                          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border bg-card px-5 py-4 text-left transition-colors hover:border-primary/50 hover:bg-secondary/40"
+                        >
+                          <span>
+                            <span className="block text-sm font-semibold">Show everyone&apos;s running totals</span>
+                            <span className="block text-xs text-muted-foreground">A line chart of net profit game by game, with you highlighted.</span>
+                          </span>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 }
               />

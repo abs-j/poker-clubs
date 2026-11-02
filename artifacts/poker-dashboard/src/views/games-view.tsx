@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Search } from "lucide-react";
 import { SessionCard, SessionsView } from "./sessions-view";
 import { TournamentCard, TournamentsView } from "./tournaments-view";
@@ -18,6 +18,8 @@ type GamesViewProps = {
   selectedTournament: string | null;
   onSelectTournament: (id: string | null) => void;
   onOpenPlayer: (name: string) => void;
+  /** The latest tournament, shown above the list when there is one. */
+  latestTournament?: ReactNode;
 };
 
 function Tile({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -136,6 +138,7 @@ export function GamesView(props: GamesViewProps) {
         count={`${cashSessions.length + tournaments.length} in view`}
         compactOnMobile
       />
+      {props.latestTournament && props.mode !== "cash" && !needle && props.selectedSession === null && props.selectedTournament === null && props.latestTournament}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div role="group" aria-label="Game type" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-secondary/55 p-1">
           {choices.map((choice) => (

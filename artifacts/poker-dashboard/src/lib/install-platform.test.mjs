@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { detectInstallPlatform, installSteps } from "./install-platform.ts";
+import { detectInstallPlatform, installSteps, shouldPromptInstall } from "./install-platform.ts";
 
 const env = (userAgent, extra = {}) => ({ userAgent, standalone: false, maxTouchPoints: 0, ...extra });
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
@@ -29,4 +29,15 @@ test("an installed app is reported as installed", () => {
 test("links opened inside social apps are flagged", () => {
   assert.equal(detectInstallPlatform(env(`${IPHONE} Instagram 320.0`)), "inapp");
   assert.equal(detectInstallPlatform(env(`${ANDROID} FB_IAB/FB4A`)), "inapp");
+});
+
+test("the install prompt waits for a second visit", () => {
+  assert.equal(shouldPromptInstall({ visits: 1, dismissedAt: null, now: 1000 }), false);
+  assert.equal(shouldPromptInstall({ visits: 2, dismissedAt: null, now: 1000 }), true);
+});
+
+test("a dismissed install prompt stays hidden for 30 days", () => {
+  const day = 24 * 60 * 60 * 1000;
+  assert.equal(shouldPromptInstall({ visits: 5, dismissedAt: 1000, now: 1000 + 29 * day }), false);
+  assert.equal(shouldPromptInstall({ visits: 5, dismissedAt: 1000, now: 1000 + 31 * day }), true);
 });

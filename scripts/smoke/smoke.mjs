@@ -576,22 +576,25 @@ await check("signing in lands on Home with the tab bar on screen", async () => {
   await page.screenshot({ path: `${OUT}/home.png` });
 });
 
-await check("Home shows two podiums, net profit first then club points", async () => {
+await check("Home shows one podium, net profit first, with a toggle to club points", async () => {
   await sleep(1500);
-  const ids = await testIdsInOrder(/^(card-home-standings|card-home-points-podium)$/);
-  expect(ids.join() === "card-home-standings,card-home-points-podium", `order was ${ids.join(", ")}`);
+  await visible('[data-testid="card-home-standings"]');
   const podiums = await page.evaluate(() => document.querySelectorAll('[data-testid="podium"]').length);
-  expect(podiums === 2, `expected 2 podiums, found ${podiums}`);
+  expect(podiums === 1, `expected 1 podium, found ${podiums}`);
+  await page.tap('[data-testid="toggle-home-podium-points"]');
+  await visible('[data-testid="card-home-points-podium"]');
+  await page.tap('[data-testid="toggle-home-podium-profit"]');
+  await visible('[data-testid="card-home-standings"]');
 });
 
-await check("Home states your tournament finish the same way everywhere", async () => {
-  const text = await page.evaluate(() => ({
-    night: document.querySelector('[data-testid="card-my-night"]')?.innerText ?? "",
-    latest: document.querySelector('[data-testid="text-latest-tournament-mine"]')?.innerText ?? "",
-  }));
+await check("Home states your tournament finish the same way as the Games tab", async () => {
+  const night = await page.evaluate(() => document.querySelector('[data-testid="card-my-night"]')?.innerText ?? "");
+  await page.tap('[data-testid="tab-sessions"]');
+  await visible('[data-testid="section-games"]');
+  const latest = await page.evaluate(() => document.querySelector('[data-testid="text-latest-tournament-mine"]')?.innerText ?? "");
   const place = (t) => (t.match(/(\d+(?:st|nd|rd|th)) of (\d+)/) ?? []).slice(1, 3).join(" of ");
-  if (/Your last tournament/.test(text.night) && /of \d+/.test(text.latest)) {
-    expect(place(text.night) === place(text.latest), `last-game card says "${place(text.night)}", tournament card says "${place(text.latest)}"`);
+  if (/Your last tournament/.test(night) && /of \d+/.test(latest)) {
+    expect(place(night) === place(latest), `last-game card says "${place(night)}", tournament card says "${place(latest)}"`);
   }
 });
 

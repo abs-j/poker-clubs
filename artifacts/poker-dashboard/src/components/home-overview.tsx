@@ -1,7 +1,7 @@
-import { useMemo, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { CalendarDays } from "lucide-react";
-import { ChartCard, ColumnChart, type Column } from "@/components/club-charts";
-import { buildResultsByGame, normalizeName, type ChartSession } from "@/lib/club-charts";
+import { ChartCard } from "@/components/club-charts";
+import { normalizeName } from "@/lib/club-charts";
 import type { DashboardPlayer as Player, TournamentSnapshot } from "@/lib/earnings-analytics";
 import { AnimatedNumber } from "@/components/animated-number";
 import { usePoints } from "@/components/points-context";
@@ -20,10 +20,7 @@ type HomeOverviewProps = {
   /** Cash-only totals, used for the cash/tournament split. */
   cashPlayers: Player[];
   tournament: TournamentSnapshot | undefined;
-  /** Every game, cash and tournament, for the results-by-game chart. */
-  sessions: ChartSession[];
   latestDate: string | null;
-  onOpenSession: (sessionNumber: number) => void;
   onSeeGames: () => void;
   onSeePlayers: () => void;
   onOpenPlayer: (name: string) => void;
@@ -36,15 +33,13 @@ type HomeOverviewProps = {
   afterHero?: ReactNode;
 };
 
-/** The top of the Home page: where you stand, how it breaks down, and your game-by-game form. */
+/** The top of the Home page: where you stand, your last game and one podium. */
 export function HomeOverview({
   memberName,
   standings,
   cashPlayers,
   tournament,
-  sessions,
   latestDate,
-  onOpenSession,
   onSeeGames,
   onSeePlayers,
   onOpenPlayer,
@@ -62,23 +57,7 @@ export function HomeOverview({
     ? tournament.players.find((player) => normalizeName(player.player) === key)?.netProfit ?? 0
     : null;
   const total = me ? me.profitTotal : null;
-  const rest = standings.slice(3, 5);
-
-  const results = useMemo(() => buildResultsByGame(sessions, memberName), [sessions, memberName]);
-  const columns = useMemo<Column[]>(
-    () =>
-      results.map((game) => ({
-        key: String(game.sessionNumber),
-        value: game.net,
-        axis: formatDate(game.date, "d MMM"),
-        title: formatDate(game.date),
-        rows: [
-          { label: "Result", value: signedCurrency(game.net) },
-          { label: "Players at the table", value: String(game.playerCount) },
-        ],
-      })),
-    [results],
-  );
+  const [podium, setPodium] = useState<"profit" | "points">("profit");
 
   return (
     <section data-testid="section-home-overview" className="story-first">
@@ -95,9 +74,9 @@ export function HomeOverview({
               <Avatar name={memberName} size={52} />
             </button>
             <div className="min-w-0">
-              <p className="sf-kicker">Welcome back, {memberName}</p>
+              <p className="sf-kicker">Home</p>
               <h1>
-                Your game, <em>in numbers.</em>
+                Welcome back, <em>{memberName}</em>
               </h1>
             </div>
           </div>
@@ -169,91 +148,65 @@ export function HomeOverview({
 
         {afterHero && <div style={{ marginTop: 16 }}>{afterHero}</div>}
 
-        <div className="sf-content" style={{ marginTop: 16, alignItems: "stretch" }}>
-          <ChartCard
-            testId="card-home-standings"
-            eyebrow="All-time profit"
-            title="The profit podium"
-            action={
-              <button type="button" onClick={onSeePlayers} className="inline-flex min-h-[44px] items-center self-start whitespace-nowrap text-xs font-semibold text-primary hover:underline sm:self-auto">
-                Full leaderboard →
-              </button>
-            }
-          >
-            <Podium players={standings} viewer={memberName} onOpenPlayer={onOpenPlayer} onOpenBoard={onSeePlayers} />
-            <div className="sf-ranking" style={{ padding: 0, marginTop: 20 }}>
-              {rest.map((row) => {
-                const isMe = normalizeName(row.name) === key;
-                return (
+        <div role="tablist" aria-label="Podium" className="mt-4 inline-flex gap-1 rounded-xl bg-secondary/55 p-1" style={{ marginTop: 16 }}>
+          {([["profit", "Profit"], ["points", "Club points"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={podium === id}
+              onClick={() => setPodium(id)}
+              data-testid={`toggle-home-podium-${id}`}
+              className={`min-h-[40px] rounded-lg px-4 text-sm font-semibold transition-colors ${podium === id ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          {podium === "profit" ? (
+            <ChartCard
+              testId="card-home-standings"
+              eyebrow="All-time profit"
+              title="The profit podium"
+              action={
+                <button type="button" onClick={onSeePlayers} className="inline-flex min-h-[44px] items-center self-start whitespace-nowrap text-xs font-semibold text-primary hover:underline sm:self-auto">
+                  Full leaderboard →
+                </button>
+              }
+            >
+              <Podium players={standings} viewer={memberName} onOpenPlayer={onOpenPlayer} onOpenBoard={onSeePlayers} />
+              {me && me.rank > 3 && (
+                <div className="sf-ranking" style={{ padding: 0, marginTop: 20 }}>
                   <button
                     type="button"
-                    key={row.name}
-                    onClick={() => onOpenPlayer(row.name)}
-                    data-testid={`row-earnings-standing-${normalizeName(row.name).replace(/[^a-z0-9]+/g, "-")}`}
-                    className={`sf-rank-row w-full text-left ${isMe ? "is-member" : ""}`}
+                    onClick={() => onOpenPlayer(me.name)}
+                    data-testid="row-home-me"
+                    className="sf-rank-row is-member w-full text-left"
                   >
-                    <span className="sf-rank-num">{row.rank}</span>
-                    <span className="sf-rank-name">
-                      {row.name}
-                      {isMe && <span className="sf-you">you</span>}
-                    </span>
-                    <span className={`sf-rank-value ${row.profitTotal >= 0 ? "sf-positive" : "sf-negative"}`}>
-                      {signedCurrency(row.profitTotal)}
-                    </span>
+                    <span className="sf-rank-num">{me.rank}</span>
+                    <span className="sf-rank-name">{me.name}<span className="sf-you">you</span></span>
+                    <span className={`sf-rank-value ${me.profitTotal >= 0 ? "sf-positive" : "sf-negative"}`}>{signedCurrency(me.profitTotal)}</span>
                   </button>
-                );
-              })}
-              {me && me.rank > 5 && (
-                <button
-                  type="button"
-                  onClick={() => onOpenPlayer(me.name)}
-                  className="sf-rank-row is-member w-full text-left"
-                >
-                  <span className="sf-rank-num">{me.rank}</span>
-                  <span className="sf-rank-name">{me.name}<span className="sf-you">you</span></span>
-                  <span className={`sf-rank-value ${me.profitTotal >= 0 ? "sf-positive" : "sf-negative"}`}>{signedCurrency(me.profitTotal)}</span>
-                </button>
+                </div>
               )}
-            </div>
-          </ChartCard>
-
-          <PointsPodiumCard
-            viewer={memberName}
-            onOpenPlayer={onOpenPlayer}
-            season={currentSeason ?? undefined}
-            eyebrow="Club points"
-            onSeeAll={onSeePoints}
-            withRunnersUp
-            testId="card-home-points-podium"
-          />
+            </ChartCard>
+          ) : (
+            <PointsPodiumCard
+              viewer={memberName}
+              onOpenPlayer={onOpenPlayer}
+              season={currentSeason ?? undefined}
+              eyebrow="Club points"
+              onSeeAll={onSeePoints}
+              testId="card-home-points-podium"
+            />
+          )}
         </div>
 
-        <div style={{ marginTop: 16 }}>
-          <ChartCard
-            testId="card-home-results"
-            eyebrow="Your form"
-            title="Result by game"
-            description="Net profit or loss each time you played. Click a column to open the game."
-            action={
-              <button type="button" onClick={onSeeGames} className="inline-flex min-h-[44px] items-center self-start whitespace-nowrap text-xs font-semibold text-primary hover:underline sm:self-auto">
-                All games →
-              </button>
-            }
-          >
-            {columns.length ? (
-              <ColumnChart
-                columns={columns}
-                diverging
-                height={300}
-                label={`${memberName} result by game`}
-                onSelect={(key) => onOpenSession(Number(key))}
-                testId="chart-home-results"
-              />
-            ) : (
-              <p className="py-10 text-center text-sm text-muted-foreground">Your results will appear here after your first recorded game.</p>
-            )}
-          </ChartCard>
-        </div>
+        <nav aria-label="More" className="mt-3 flex flex-wrap gap-x-5" data-testid="nav-home-see-all">
+          <button type="button" onClick={onSeeGames} className="inline-flex min-h-[44px] items-center text-sm font-semibold text-primary hover:underline">All games →</button>
+        </nav>
       </div>
     </section>
   );

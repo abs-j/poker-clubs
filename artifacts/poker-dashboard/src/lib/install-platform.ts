@@ -64,3 +64,12 @@ export function installSteps(platform: InstallPlatform): InstallSteps {
       };
   }
 }
+
+const PROMPT_MIN_VISITS = 2;
+const PROMPT_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** The Home install prompt waits for a returning visitor and stays hidden for a month after a dismissal. */
+export function shouldPromptInstall({ visits, dismissedAt, now }: { visits: number; dismissedAt: number | null; now: number }): boolean {
+  if (visits < PROMPT_MIN_VISITS) return false;
+  return !(dismissedAt && dismissedAt > 0 && now - dismissedAt < PROMPT_SNOOZE_MS);
+}

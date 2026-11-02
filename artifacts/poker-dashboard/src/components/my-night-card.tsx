@@ -74,9 +74,11 @@ type MyNightCardProps = {
   viewer: string;
   /** The same rank the headline and leaderboards show, so the card never disagrees with them. */
   standing?: OfficialStanding;
+  /** One line instead of the three stat tiles (Home). */
+  compact?: boolean;
 };
 
-export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
+export function MyNightCard({ sessions, viewer, standing, compact = false }: MyNightCardProps) {
   const night = useMemo(() => buildMyNight(sessions, viewer), [sessions, viewer]);
   const { careers } = useAchievements();
   const { rowsFor } = usePoints();
@@ -156,6 +158,11 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
         </div>
       </div>
 
+      {compact ? (
+        <p data-testid="text-my-night-rank" className="mt-3 text-xs text-muted-foreground">
+          {moveHeadline(standing ? standing.movement : night.standing.movement)} · now {ordinal(rank)} of {of}
+        </p>
+      ) : (
       <dl className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
         <div className="min-w-0 rounded-xl bg-secondary/45 p-2.5 sm:p-3">
           <dt className="text-[11px] uppercase leading-4 tracking-[0.06em] text-muted-foreground">Leaderboard move</dt>
@@ -181,6 +188,7 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
           </dd>
         </div>
       </dl>
+      )}
     </section>
   );
 }
