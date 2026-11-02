@@ -24,3 +24,4 @@ Things that bit:
 - `public/sw.js` ignores `/demo`. Without that, visiting the demo would cache its HTML as the real app's offline shell.
 - The demo does not register a service worker and turns off Wrapped's automatic popup so it does not cover the tour.
 - Deep links under `/demo/` other than `/demo/` fall through to the real site's index on a static host. The demo uses query strings only.
+- If the host rewrites `/demo/` to the real app, its not-found page sends `/demo` and `/demo/` to `/demo/index.html` (a real file), and the demo treats `/index.html` as home. If `/demo/index.html` is missing, the demo was not deployed: publish again.
