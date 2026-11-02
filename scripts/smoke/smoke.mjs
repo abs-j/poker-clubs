@@ -791,11 +791,9 @@ const browser = await puppeteer.launch({
 const pageErrors = [];
 const serverErrors = [];
 
-async function newPage(viewport) {
-  const page = await browser.newPage();
-  await page.setViewport(viewport);
-  // The seeded nights are in past months, so Poker Wrapped opens by itself over the first page a member
-  // sees and swallows taps. Close it the way a person would, so every flow below starts uncovered.
+// The seeded nights are in past months, so Poker Wrapped opens by itself over the first page a member
+// sees and swallows taps. Close it the way a person would, so every flow starts uncovered.
+async function closeWrappedPopup(page) {
   await page.evaluateOnNewDocument(() => {
     setInterval(() => {
       const dialog = document.querySelector('[role="dialog"]');
@@ -804,6 +802,12 @@ async function newPage(viewport) {
       close?.click();
     }, 200);
   });
+}
+
+async function newPage(viewport) {
+  const page = await browser.newPage();
+  await page.setViewport(viewport);
+  await closeWrappedPopup(page);
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
@@ -1077,6 +1081,7 @@ await check("a member sees Members and the invite, and cannot reset it or see Ad
 
   const context = await browser.createBrowserContext();
   const phone = await context.newPage();
+  await closeWrappedPopup(phone);
   await phone.setViewport(PHONE);
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   const wait = (selector) => phone.waitForSelector(selector, { timeout: 15000 });
@@ -1178,6 +1183,7 @@ await check("the platform owner sees usage across clubs and cannot change them f
 
   const context = await browser.createBrowserContext();
   const phone = await context.newPage();
+  await closeWrappedPopup(phone);
   await phone.setViewport(PHONE);
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   try {
@@ -1232,6 +1238,7 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
 
   const context = await browser.createBrowserContext();
   const phone = await context.newPage();
+  await closeWrappedPopup(phone);
   await phone.setViewport(PHONE);
   phone.on("pageerror", (error) => pageErrors.push(error.message));
   phone.on("response", (response) => { if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`); });
@@ -1319,6 +1326,7 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
 
   const context = await browser.createBrowserContext();
   const phone = await context.newPage();
+  await closeWrappedPopup(phone);
   try {
     await phone.setViewport(PHONE);
     phone.on("pageerror", (error) => pageErrors.push(error.message));
@@ -1466,6 +1474,7 @@ await check("an admin can preview and merge two names; a member cannot, and anot
 
   const context = await browser.createBrowserContext();
   const phone = await context.newPage();
+  await closeWrappedPopup(phone);
   try {
     await phone.setViewport(PHONE);
     phone.on("pageerror", (error) => pageErrors.push(error.message));
@@ -1577,8 +1586,10 @@ await check("an admin edits and deletes games from the Games tab; a member canno
 
   const context = await browser.createBrowserContext();
   const phone = await context.newPage();
+  await closeWrappedPopup(phone);
   const memberContext = await browser.createBrowserContext();
   const memberPhone = await memberContext.newPage();
+  await closeWrappedPopup(memberPhone);
   try {
     const wire = (page) => {
       page.on("pageerror", (error) => pageErrors.push(error.message));
