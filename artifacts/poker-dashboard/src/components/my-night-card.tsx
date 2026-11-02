@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { buildMyNight, normalizeName, type ChartSession } from "@/lib/club-charts";
+import { ChevronDown, Copy, Image as ImageIcon, Images, Share2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ShareImageDialog } from "@/components/share-image-dialog";
+import { buildMyNight, normalizeName, type ChartSession, type MyNight } from "@/lib/club-charts";
+import { copyTextToClipboard } from "@/lib/live-player-summary";
+import { buildNightCardModel, buildShareCardModel, buildTournamentCardModel } from "@/lib/share-card";
+import { clubName } from "@/lib/club-format";
+import { ordinal } from "@/lib/utils";
 import { useAchievements } from "@/components/achievements-context";
 import { usePoints } from "@/components/points-context";
 import { nightPointsFor } from "@/lib/points";
 import { careerFor } from "@/lib/career";
 import { formatCurrency, formatDate, signedCurrency } from "@/views/shared";
-
-function ordinal(n: number) {
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
-  return `${n}${["th", "st", "nd", "rd"][n % 10 > 3 ? 0 : n % 10] ?? "th"}`;
-}
 
 function streakText(streak: number) {
   const count = Math.abs(streak);
@@ -23,6 +24,19 @@ function moveHeadline(movement: number | null) {
   if (movement === 0) return "Held your place";
   const places = Math.abs(movement);
   return `${movement > 0 ? "Up" : "Down"} ${places} ${places === 1 ? "place" : "places"}`;
+}
+
+function shareSummary(night: MyNight, rank: number, of: number, streakValue: number, finishText: string, hideAmounts: boolean) {
+  const parts = [
+    hideAmounts
+      ? `${night.playerName} on ${formatDate(night.last.date)}`
+      : `${night.playerName}: ${signedCurrency(night.last.net)} on ${formatDate(night.last.date)}`,
+    finishText,
+    `${ordinal(rank)} of ${of} on the leaderboard`,
+  ];
+  const streak = streakText(streakValue);
+  if (streak) parts.push(streak);
+  return `${parts.join(" · ")} · ${clubName()}`;
 }
 
 export type OfficialStanding = {
@@ -86,6 +100,8 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   const streakValue = career && career.results.length ? career.currentStreak : night?.streak ?? 0;
   const bestGameValue = career ? career.bestGame : night?.bestGame ?? 0;
   const [burst, setBurst] = useState(false);
+  const [picture, setPicture] = useState<null | "personal" | "night">(null);
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   // Celebrate a winning night once per game per browser session.
   const winKey = night && night.last.net > 0 ? `my-night-burst-${night.last.sessionNumber}-${night.last.date}` : null;
@@ -126,6 +142,67 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
   const rank = standing?.rank ?? night.standing.rank;
   const of = standing?.of ?? night.standing.of;
 
+  // The same night for the whole table: a cash night, or the tournament.
+  const nightSession = last.isTournament
+    ? null
+    : sessions.find((session) => session.sessionNumber === last.sessionNumber && session.date === last.date) ?? null;
+  const shareDate = formatDate(last.date);
+  const personalCard = (hideAmounts: boolean) =>
+    buildShareCardModel({
+      playerName: night.playerName,
+      date: shareDate,
+      net: last.net,
+      buyIn: last.buyIn,
+      cashOut: last.cashOut,
+      tableRank: last.tableRank,
+      tableSize: last.playerCount,
+      isTournament: last.isTournament,
+      rank,
+      of,
+      movement: standing ? standing.movement : night.standing.movement,
+      streak: streakValue,
+      bestGame: bestGameValue,
+      allTimeNet: standing?.net ?? null,
+      hideAmounts,
+    });
+  const nightCard = (hideAmounts: boolean) => {
+    if (nightSession) {
+      return buildNightCardModel({
+        date: shareDate,
+        isTournament: false,
+        totalBuyIn: nightSession.totalBuyIn,
+        players: nightSession.players.map((player) => ({ player: player.player, net: player.net })),
+        hideAmounts,
+      });
+    }
+    if (tournamentEvent) {
+      return buildTournamentCardModel({
+        date: shareDate,
+        title: tournamentEvent.title,
+        players: tournamentEvent.players,
+        entries: tournamentEvent.entries,
+        mainPrizePool: tournamentEvent.mainPrizePool,
+        knockouts: tournamentEvent.knockouts,
+        results: tournamentEvent.results,
+        winner: tournamentEvent.winner ?? null,
+        hideAmounts,
+      });
+    }
+    return null;
+  };
+  const activeCard = picture === "personal" ? { shown: personalCard(false), hidden: personalCard(true) } : picture === "night" ? { shown: nightCard(false), hidden: nightCard(true) } : null;
+  const fileBase = `${clubName().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "poker"}-${last.date}`;
+
+  const copyText = async () => {
+    try {
+      await copyTextToClipboard(shareSummary(night, rank, of, streakValue, finishText, false));
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+    window.setTimeout(() => setStatus("idle"), 2500);
+  };
+
   return (
     <section
       data-testid="card-my-night"
@@ -154,6 +231,35 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
             </p>
           )}
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              data-testid="button-share-menu"
+              className="inline-flex h-10 shrink-0 items-center gap-2 self-start rounded-lg bg-primary px-3.5 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              {status === "copied" ? "Copied" : status === "failed" ? "Couldn't copy" : "Share"}
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem onSelect={() => setPicture("personal")} data-testid="menu-share-my-result">
+              <ImageIcon className="h-4 w-4" />
+              My result as a picture
+            </DropdownMenuItem>
+            {(nightSession || tournamentEvent) && (
+              <DropdownMenuItem onSelect={() => setPicture("night")} data-testid="menu-share-the-night">
+                <Images className="h-4 w-4" />
+                {last.isTournament ? "The whole tournament" : "The whole night"} as a picture
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => void copyText()} data-testid="menu-share-text">
+              <Copy className="h-4 w-4" />
+              Copy as text
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <dl className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
@@ -181,6 +287,19 @@ export function MyNightCard({ sessions, viewer, standing }: MyNightCardProps) {
           </dd>
         </div>
       </dl>
+      {activeCard?.shown && (
+        <ShareImageDialog
+          open
+          onOpenChange={(open) => !open && setPicture(null)}
+          model={activeCard.shown}
+          hiddenModel={activeCard.hidden ?? undefined}
+          fileName={`${fileBase}-${picture === "night" ? "night" : "result"}.png`}
+          shareText={shareSummary(night, rank, of, streakValue, finishText, false)}
+          hiddenShareText={shareSummary(night, rank, of, streakValue, finishText, true)}
+          title={picture === "night" ? (last.isTournament ? "The tournament, as a picture" : "The night, as a picture") : undefined}
+        />
+      )}
+      <p role="status" className="sr-only">{status === "copied" ? "Summary copied to the clipboard" : ""}</p>
     </section>
   );
 }

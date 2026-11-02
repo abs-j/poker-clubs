@@ -1,5 +1,8 @@
 import { useMemo } from "react";
 import { ChartCard } from "@/components/club-charts";
+import { ShareButton } from "@/components/share-button";
+import { buildSeasonCardModel } from "@/lib/share-card";
+import { clubName } from "@/lib/club-format";
 import { buildSeason, type Season } from "@/lib/achievements";
 import type { ChartSession } from "@/lib/club-charts";
 import { formatDate } from "@/views/shared";
@@ -38,6 +41,24 @@ export function SeasonCard({ sessions, viewer, onOpenPlayer }: SeasonCardProps) 
       eyebrow={season.closed ? `${season.label} · final` : `${season.label} · so far`}
       title="Season highlights"
       description={`${season.games} ${season.games === 1 ? "game" : "games"} from ${formatDate(season.from, "d MMM")} to ${formatDate(season.to, "d MMM")}.`}
+      action={
+        <ShareButton
+          testId="button-share-season-image"
+          fileSlug={`standings-${season.key}`}
+          label="Share standings"
+          title="The standings, as a picture"
+          build={(hideAmounts) =>
+            buildSeasonCardModel({
+              label: season.label,
+              games: season.games,
+              standings: season.standings,
+              mostWins: season.mostWins ? { name: season.mostWins.name, wins: season.mostWins.wins } : null,
+              hideAmounts,
+            })
+          }
+          caption={() => `${season.label} standings · ${clubName()}`}
+        />
+      }
     >
       {(season.mostWins || season.mostGames) && (
         <div className="grid grid-cols-2 gap-3">

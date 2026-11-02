@@ -2,6 +2,9 @@ import { useMemo, type ReactNode } from "react";
 import { type PerformanceScope, type DashboardSession as Session } from "@/lib/earnings-analytics";
 import { ArrowDown, ChevronDown, Trophy } from "lucide-react";
 import { plural } from "@/lib/utils";
+import { ShareButton } from "@/components/share-button";
+import { buildNightCardModel } from "@/lib/share-card";
+import { clubName } from "@/lib/club-format";
 import { SettleBadge, SettleForSession } from "@/components/settle-up";
 import { EmptyPanel, PageIntro, formatCurrency, formatDate, monthLabel, signedCurrency, slug } from "./shared";
 
@@ -144,6 +147,26 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer 
             </div>
           ))}
         </div>
+        <ShareButton
+          testId={`button-share-night-${session.sessionNumber}`}
+          fileSlug={`night-${session.date}`}
+          className="mt-3 w-full justify-center"
+          title={isTournament ? "The tournament, as a picture" : "The night, as a picture"}
+          build={(hideAmounts) =>
+            buildNightCardModel({
+              date: formatDate(session.date),
+              isTournament,
+              totalBuyIn: session.totalBuyIn,
+              players: session.players.map((player) => ({ player: player.player, net: player.net })),
+              hideAmounts,
+            })
+          }
+          caption={(hideAmounts) => {
+            const top = session.players.slice().sort((a, b) => b.net - a.net)[0];
+            const lead = top && top.net > 0 ? `${top.player}${hideAmounts ? "" : ` ${signedCurrency(top.net)}`} took the night` : "Game night";
+            return `${lead} · ${formatDate(session.date)} · ${clubName()}`;
+          }}
+        />
         {!isTournament && <SettleForSession sessionNumber={session.sessionNumber} />}
       </div>
     )}

@@ -7,7 +7,7 @@ This is the general product. The separate Monash Poker Society site lives in ano
 
 ## State
 
-MVP-ready. Phases 1 to 5 are done: multi-club data, accounts and invites, native results and CSV/Sheet import,
+Share cards are back (2 Nov 2026), see `docs/MONASH_FEATURES_PLAN.md` for Wrapped and the demo. MVP-ready. Phases 1 to 5 are done: multi-club data, accounts and invites, native results and CSV/Sheet import,
 club settings and points rules, years, tournaments, email (Resend), Terms/Privacy, account and club deletion,
 CSV export. Pushed to the private repo `abs-j/poker-clubs` as one clean commit; the old 234-commit Monash-derived
 history exists only on the local branch `full-history` (it contains Monash screenshots; don't push it public).
