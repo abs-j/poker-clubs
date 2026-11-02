@@ -794,6 +794,16 @@ const serverErrors = [];
 async function newPage(viewport) {
   const page = await browser.newPage();
   await page.setViewport(viewport);
+  // The seeded nights are in past months, so Poker Wrapped opens by itself over the first page a member
+  // sees and swallows taps. Close it the way a person would, so every flow below starts uncovered.
+  await page.evaluateOnNewDocument(() => {
+    setInterval(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog || !/Poker Wrapped/.test(dialog.textContent || "")) return;
+      const close = [...dialog.querySelectorAll("button")].find((button) => /close/i.test(button.textContent || "") || /close/i.test(button.getAttribute("aria-label") || ""));
+      close?.click();
+    }, 200);
+  });
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
