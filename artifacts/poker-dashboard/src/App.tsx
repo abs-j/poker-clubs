@@ -25,6 +25,8 @@ import { accountApi } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
 import { ClubSettingsProvider, useClubSettings } from "@/components/club-settings-context";
 import { WrappedHost } from "@/components/wrapped-host";
+import { DemoTour } from "@/demo/tour";
+import { IS_DEMO } from "@/lib/demo-flag";
 import type { GamesMode } from "./views/games-view";
 import { browserSessionDeps, checkMemberSession, type MemberAuthSession } from "@/lib/member-session";
 import { Toaster } from "@/components/ui/toaster";
@@ -510,7 +512,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
     <AvatarProvider avatars={memberAvatars}>
     <AchievementsProvider sessions={homeSessions} players={homePlayers} history={history}>
     <PointsProvider cashNights={sessions} tournaments={tournaments} rules={clubSettings.points.rules}>
-    <WrappedHost sessions={homeSessions} viewer={memberName}>
+    <WrappedHost sessions={homeSessions} viewer={memberName} autoOpen={!IS_DEMO}>
     <NewBadgeNotice viewer={memberName} />
     <InstallHelpDialog open={helpOpen} onOpenChange={setHelpOpen} platform={platform} />
     <div className="min-h-[100dvh] bg-background text-foreground">
@@ -707,6 +709,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
       </main>
       <BottomTabBar active={activeView} onNavigate={navigate} liveOpen={liveOpen} />
     </div>
+    {IS_DEMO && <DemoTour activeView={activeView} onNavigate={navigate} />}
     </WrappedHost>
     </PointsProvider>
     </AchievementsProvider>
@@ -772,7 +775,7 @@ function EmptyDashboard() { return <div className="flex min-h-[100dvh] items-cen
 function DashboardSkeleton() { return <div data-testid="state-dashboard-loading" className="min-h-[100dvh] bg-background p-5 text-foreground sm:p-10"><div className="mx-auto max-w-[1200px] animate-pulse space-y-5"><div className="h-8 w-56 rounded-lg bg-secondary" /><div className="h-16 w-3/4 rounded-xl bg-secondary" /><div className="grid grid-cols-2 gap-3 md:grid-cols-6">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-28 rounded-2xl bg-secondary" />)}</div><div className="h-80 rounded-2xl bg-secondary" /><div className="grid gap-3 md:grid-cols-3">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-44 rounded-2xl bg-secondary" />)}</div></div></div>; }
 function formatSyncTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "recently"; return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><PlatformUsagePage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter base={IS_DEMO ? "/demo" : ""}><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><PlatformUsagePage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
 }
 
 export default App;

@@ -42,10 +42,12 @@ type WrappedHostProps = {
   sessions: ChartSession[];
   viewer: string;
   children: ReactNode;
+  /** Open the latest finished month by itself once. The demo turns this off so its tour is not covered. */
+  autoOpen?: boolean;
 };
 
 /** Owns the Wrapped popup and the archive opener. A failure here does not take the page down. */
-export function WrappedHost({ sessions, viewer, children }: WrappedHostProps) {
+export function WrappedHost({ sessions, viewer, children, autoOpen = true }: WrappedHostProps) {
   const asOf = useMemo(
     () => resolveAsOf(typeof window === "undefined" ? "" : window.location.search, import.meta.env.DEV),
     [],
@@ -66,7 +68,7 @@ export function WrappedHost({ sessions, viewer, children }: WrappedHostProps) {
     () => (latest ? Boolean(safeRecap(sessions, viewer, latest)) : false),
     [sessions, viewer, latest],
   );
-  const auto = !skipAuto && !manual && latest && latestReady && !dismissed.includes(latest) ? latest : null;
+  const auto = autoOpen && !skipAuto && !manual && latest && latestReady && !dismissed.includes(latest) ? latest : null;
   const shown = manual ?? auto;
 
   const value = useMemo<WrappedContextValue>(() => ({ months, openMonth: (month) => setManual(month) }), [months]);
