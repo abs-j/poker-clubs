@@ -865,7 +865,7 @@ await check("Home shows your summary, last game, monthly points and the profit p
   const tabs = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="nav-bottom-tabs"] button')].map((button) => button.textContent.trim()),
   );
-  expect(tabs.join(",") === "Home,Games,Live,Leaderboard,Club", `tabs were ${tabs.join(", ")}`);
+  expect(tabs.join(",") === "Home,Live,Leaderboard,Games,Me", `tabs were ${tabs.join(", ")}`);
   const gone = await page.evaluate(() => ({
     chart: !!document.querySelector('[data-testid="card-home-results"]'),
     tournament: !!document.querySelector('[data-testid="card-latest-tournament"]'),
@@ -1009,7 +1009,9 @@ await check("tapping a podium name opens that player's profile", async () => {
 await check("Live ledger and Club pages load", async () => {
   await page.tap('[data-testid="tab-live"]');
   await visible('[data-testid="section-live-ledger"]');
-  await page.tap('[data-testid="tab-guidelines"]');
+  await page.tap('[data-testid="tab-account"]');
+  await visible('[data-testid="button-me-rules"]');
+  await page.tap('[data-testid="button-me-rules"]');
   await visible('[data-testid="section-guidelines"]');
   await visible('[data-testid="section-members"]');
   await visible('[data-testid="section-invites"]');
@@ -1090,8 +1092,10 @@ await check("a member sees Members and the invite, and cannot reset it or see Ad
   await phone.type('[data-testid="input-email"]', email);
   await phone.type('[data-testid="input-password"]', password);
   await phone.tap('[data-testid="button-account-submit"]');
-  await wait('[data-testid="tab-guidelines"]');
-  await phone.tap('[data-testid="tab-guidelines"]');
+  await wait('[data-testid="tab-account"]');
+  await phone.tap('[data-testid="tab-account"]');
+  await wait('[data-testid="button-me-rules"]');
+  await phone.tap('[data-testid="button-me-rules"]');
   await wait('[data-testid="section-members"]');
   await wait('[data-testid="button-copy-invite"]');
   await wait('[data-testid="button-invite-qr"]');
@@ -1410,7 +1414,8 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     await phone.screenshot({ path: `${OUT}/live-jackpot-tournament.png`, fullPage: true });
 
     await phone.evaluate(() => window.scrollTo(0, 0));
-    await press('[data-testid="tab-guidelines"]');
+    await press('[data-testid="tab-account"]');
+    await press('[data-testid="button-me-rules"]');
     await press('[data-testid="button-open-club-admin"]');
     await wait('[data-testid="section-admin-setup"]');
     await wait('[data-testid="section-import"]');
@@ -1502,7 +1507,8 @@ await check("an admin can preview and merge two names; a member cannot, and anot
     await phone.type('[data-testid="input-password"]', secret);
     await press('[data-testid="button-account-submit"]');
     await wait('[data-testid="section-home-overview"]');
-    await press('[data-testid="tab-guidelines"]');
+    await press('[data-testid="tab-account"]');
+    await press('[data-testid="button-me-rules"]');
     await press('[data-testid="button-open-club-admin"]');
     await wait('[data-testid="section-admin-people"]');
     const peopleOpen = await phone.$eval('[data-testid="section-admin-people"]', (node) => node.open);
@@ -1672,7 +1678,8 @@ await check("an admin edits and deletes games from the Games tab; a member canno
     await press(`[data-testid="button-confirm-delete-tournament-${tournamentId}"]`);
     await phone.waitForFunction((id) => !document.querySelector(`[data-testid="card-tournament-club-${id}"]`), { timeout: 15000 }, tournamentId);
 
-    await press('[data-testid="tab-guidelines"]');
+    await press('[data-testid="tab-account"]');
+    await press('[data-testid="button-me-rules"]');
     await press('[data-testid="button-open-club-admin"]');
     await phone.waitForSelector('[data-testid="section-admin-setup"]', { timeout: 15000 });
     const nightList = await phone.$('[data-testid="section-night-list"]');

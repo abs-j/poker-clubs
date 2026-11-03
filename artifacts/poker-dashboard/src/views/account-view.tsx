@@ -30,6 +30,7 @@ type AccountViewProps = {
   onInstall: () => void;
   onLogout: () => void;
   onOpenProfile: () => void;
+  onOpenRules: () => void;
 };
 
 function Stat({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: "pos" | "neg" }) {
@@ -65,6 +66,7 @@ export function AccountView({
   onInstall,
   onLogout,
   onOpenProfile,
+  onOpenRules,
 }: AccountViewProps) {
   const memberAvatars = useMemberAvatars();
   const { currentSeason, rowsFor } = usePoints();
@@ -174,6 +176,14 @@ export function AccountView({
 
       {me?.options.email && me.user && !me.user.emailVerified && <VerifyEmailNotice email={me.user.email} />}
       {me?.user && <AccountSecurity user={me.user} part="password" />}
+
+      <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <SettingRow title="Club" detail="Rules, members, invites and admin.">
+          <button type="button" onClick={onOpenRules} data-testid="button-me-rules" className="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary">
+            Open
+          </button>
+        </SettingRow>
+      </div>
 
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         <p className="section-label text-primary">Settings</p>
