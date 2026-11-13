@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from
 import { CalendarDays, ChevronRight, CircleDollarSign, History, LoaderCircle, Spade, Trophy, UserRound, type LucideIcon } from "lucide-react";
 import type { MemberAuthSession } from "@/lib/member-session";
 import { APP_NAME, AccountError, accountApi, extractInviteCode, type InvitePreview, type MeResponse } from "@/lib/account-api";
+import { afterJoinPath, joinCarrySearch, movedFromParam, rememberMovedFrom } from "@/lib/moved-notice";
 
 const inputClass =
   "h-12 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none focus:border-primary";
@@ -450,6 +451,8 @@ export function WelcomeFlow({ onAuthenticated }: { onAuthenticated: (session: Me
 /** /join/:code. Shows the club, signs the person in if needed, and lets them pick or claim their name. */
 export function JoinPage({ code: rawCode }: { code: string }) {
   const code = extractInviteCode(rawCode);
+  const carry = joinCarrySearch(window.location.search);
+  const destination = afterJoinPath(carry);
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -476,6 +479,12 @@ export function JoinPage({ code: rawCode }: { code: string }) {
     void loadMe();
   }, [code, loadMe]);
 
+  // Arrived from a club's old website: remember it so Home can say where the club lives now.
+  useEffect(() => {
+    const from = movedFromParam(window.location.search);
+    if (from) rememberMovedFrom(from);
+  }, []);
+
   // With no names to claim, the only choice is a new one.
   useEffect(() => {
     if (preview && preview.claimable.length === 0) setChoice((current) => current ?? "new");
@@ -485,8 +494,8 @@ export function JoinPage({ code: rawCode }: { code: string }) {
   useEffect(() => {
     if (!preview || !me?.user) return;
     const mine = me.clubs.find((club) => club.slug === preview.club.slug);
-    if (mine) void accountApi.switchClub(mine.slug).then(() => window.location.replace("/dashboard"));
-  }, [preview, me]);
+    if (mine) void accountApi.switchClub(mine.slug).then(() => window.location.replace(destination));
+  }, [preview, me, destination]);
 
   if (previewError) {
     return (
@@ -506,7 +515,7 @@ export function JoinPage({ code: rawCode }: { code: string }) {
         <AccountForm
           googleSignIn={me.options.googleSignIn}
           emailEnabled={me.options.email}
-          callbackURL={`/join/${code}`}
+          callbackURL={`/join/${code}${carry}`}
           defaultMode="signup"
           onDone={() => void loadMe()}
         />
@@ -521,7 +530,7 @@ export function JoinPage({ code: rawCode }: { code: string }) {
     setError("");
     try {
       await accountApi.acceptInvite(code, claiming ? { claimPlayerId: choice as number } : { name: name.trim() });
-      window.location.replace("/dashboard");
+      window.location.replace(destination);
     } catch (caught) {
       setError(caught instanceof AccountError ? caught.message : "Couldn't join the club.");
       setBusy(false);
