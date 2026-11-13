@@ -3,7 +3,9 @@
 Invite-only poker club results tracker (React + Vite site, Express 5 API, Better Auth, Drizzle + Postgres).
 Read `README.md` first, then `docs/MULTI_CLUB_PLAN.md` (what was built, phase by phase, and what is left).
 This is the general product. The separate Monash Poker Society site lives in another repo and folder
-(`../Monash Poker Dashboard`, `abs-j/monash-poker-dashboard`) and must not be touched from here.
+(`../Monash Poker Dashboard`, `abs-j/monash-poker-dashboard`). It may be changed from here for the move onto
+Poker Clubs (`docs/MONASH_MIGRATION_PLAN.md`), on its own branch (e.g. `redirect-to-pokerclubs`), never on its `main`.
+Publishing it on Replit stays the user's step.
 
 ## State
 

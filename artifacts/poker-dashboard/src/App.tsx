@@ -9,6 +9,8 @@ import { FilterBar } from "@/components/filter-bar";
 import { MyNightCard } from "@/components/my-night-card";
 import { LiveBanner } from "@/components/live-banner";
 import { InstallCard } from "@/components/install-card";
+import { MovedCard } from "@/components/moved-card";
+import { clearMovedFrom, readMovedFrom } from "@/lib/moved-notice";
 import { InstallHelpDialog } from "@/components/install-help-dialog";
 import { SeasonCard } from "@/components/season-card";
 import { PointsPodiumCard } from "@/components/points-podium-card";
@@ -252,6 +254,7 @@ function SessionExpiredState({ onSignIn }: { onSignIn: () => void }) {
 function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: string; platformAdmin: boolean; onLogout: () => Promise<void> }) {
   const { settings: clubSettings } = useClubSettings();
   const { canInstall, oneTap, platform, install, helpOpen, setHelpOpen } = useInstallPrompt();
+  const [movedFrom, setMovedFrom] = useState(() => readMovedFrom());
   const dashboardQuery = useGetPokerDashboard();
   const { data: dashboard, isLoading, isError, error } = dashboardQuery;
   // Dark is the default. Only an explicit choice of light is remembered.
@@ -622,7 +625,20 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
 
             {activeView === "overview" && (
               <div className="mt-4">
-                {canInstall && <InstallCard oneTap={oneTap} onInstall={() => void install()} />}
+                {movedFrom ? (
+                  <MovedCard
+                    clubName={dashboard.title}
+                    canInstall={canInstall}
+                    oneTap={oneTap}
+                    onInstall={() => void install()}
+                    onDismiss={() => {
+                      clearMovedFrom();
+                      setMovedFrom(null);
+                    }}
+                  />
+                ) : (
+                  canInstall && <InstallCard oneTap={oneTap} onInstall={() => void install()} />
+                )}
                 {liveOpen && (
                   <LiveBanner
                     startedBy={liveStatusQuery.data?.startedBy ?? null}
