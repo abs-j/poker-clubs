@@ -35,7 +35,7 @@ export function AiReaderSettings() {
 
   if (!status) return null;
   return (
-    <section className="mt-6 rounded-xl border border-border p-4" data-testid="section-ai-reader">
+    <section id="ai-reader" className="mt-6 rounded-xl border border-border p-4" data-testid="section-ai-reader">
       <h3 className="text-sm font-semibold">AI notes reader (OpenRouter)</h3>
       <p className="mt-1 text-xs text-muted-foreground">
         Reads pasted notes and photos on the Record tab. Your club uses its own OpenRouter key, so any cost is billed to that account. Without a key, the plain reader still works.

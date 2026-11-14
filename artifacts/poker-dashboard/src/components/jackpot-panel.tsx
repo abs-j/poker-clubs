@@ -15,12 +15,13 @@ const when = (value: string) =>
 const describe = (error: unknown) => (error instanceof AccountError ? error.message : "Something went wrong. Try again.");
 
 /** The club's bad beat jackpot: the pot, and (for admins) add money, pay out, and fix any past entry. */
-export function JackpotPanel({ players, canPay, admin, showWhenEmpty = false }: { players: string[]; canPay: boolean; admin: boolean; showWhenEmpty?: boolean }) {
+export function JackpotPanel({ players, canPay, admin, showWhenEmpty = false, onManage }: { players: string[]; canPay: boolean; admin: boolean; showWhenEmpty?: boolean; onManage?: () => void }) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: JACKPOT_KEY, queryFn: () => accountApi.jackpot() });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [payName, setPayName] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [addAmount, setAddAmount] = useState("");
@@ -74,9 +75,31 @@ export function JackpotPanel({ players, canPay, admin, showWhenEmpty = false }: 
       <button type="button" onClick={() => setEditing({ key, amount: current.toFixed(2) })} className={small} data-testid={`button-jackpot-edit-${key.replace(":", "-")}`}>Edit</button>
     );
 
+  // One quiet row until someone needs the forms: the pot is rarely worth a whole card.
+  if (!expanded) {
+    return (
+      <section className="rounded-2xl border border-border bg-card px-4 py-3 sm:px-5" data-testid="section-jackpot">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="section-label">Bad beat jackpot</p>
+            <p className="font-mono text-xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
+          </div>
+          {onManage ? (
+            <button type="button" onClick={onManage} className={small} data-testid="button-jackpot-manage">Manage on Record →</button>
+          ) : (
+            <button type="button" onClick={() => setExpanded(true)} aria-expanded={false} className={small} data-testid="button-jackpot-open">{admin || canPay ? "Manage" : "Details"}</button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
-      <p className="section-label">Bad beat jackpot</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="section-label">Bad beat jackpot</p>
+        <button type="button" onClick={() => setExpanded(false)} className={small} data-testid="button-jackpot-close">Done</button>
+      </div>
       <p className="mt-1 font-mono text-2xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
       <p className="mt-1 text-xs text-muted-foreground">
         Built from the surplus of {jackpot.nights} {jackpot.nights === 1 ? "night" : "nights"}{jackpot.deposits.length > 0 ? ` and ${jackpot.deposits.length} ${jackpot.deposits.length === 1 ? "deposit" : "deposits"}` : ""}.

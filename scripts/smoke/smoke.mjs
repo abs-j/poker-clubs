@@ -1305,7 +1305,6 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
     setter.call(node, "2026-01-10");
     node.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await tapCentered('[data-testid="button-new-night"]');
   await wait('[data-testid="button-start-live-session"]');
   await tapCentered('[data-testid="button-start-live-session"]');
   await wait('[data-testid="text-live-night-date"]');
@@ -1374,8 +1373,11 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     await press('[data-testid="tab-live"]');
     await wait('[data-testid="text-jackpot-total"]');
     await phone.waitForFunction(() => /4\.00/.test(document.querySelector('[data-testid="text-jackpot-total"]')?.textContent ?? ""), { timeout: 15000 });
+    await press('[data-testid="button-jackpot-open"]');
     await wait('[data-testid="form-jackpot-payout"]');
     await phone.select('[data-testid="input-jackpot-player"]', "Ada Payout");
+    // Scrolled to the middle first so the fixed tab bar is never on top of what is tapped.
+    await phone.$eval('[data-testid="input-jackpot-amount"]', (node) => node.scrollIntoView({ block: "center" }));
     await phone.click('[data-testid="input-jackpot-amount"]');
     await phone.type('[data-testid="input-jackpot-amount"]', "1");
     await press('[data-testid="button-jackpot-payout"]');
@@ -1386,9 +1388,7 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     expect(sideways <= 1, `the jackpot card scrolls sideways on a phone (${sideways}px)`);
 
     await openTable(phone);
-    await press('[data-testid="button-new-night"]');
-    await wait('[data-testid="menu-new-night-tournament"]');
-    await phone.$eval('[data-testid="menu-new-night-tournament"]', (node) => node.click());
+    await press('[data-testid="button-new-tournament"]');
     await wait('[data-testid="section-record-tournament"]');
     // Keystrokes into a field below the fold can miss the React input in headless Chrome.
     // Set the value the same way the date field is set, then click Save directly.

@@ -9,9 +9,9 @@ type Mode = "paste" | "table";
 
 /**
  * The Record tab. Two ways to put a night on the leaderboard: paste notes (or a photo), or run the table.
- * Pasting is for admins; anyone can open the table. The table mode is still the live ledger for now.
+ * Pasting is for admins; anyone can open the table (only the host records; everyone else watches).
  */
-export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded }: { memberName: string; availablePlayers: string[]; clubAdmin: boolean; onRecorded: () => void }) {
+export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded, onOpenSettings }: { memberName: string; availablePlayers: string[]; clubAdmin: boolean; onRecorded: () => void; onOpenSettings: () => void }) {
   const [mode, setMode] = useState<Mode>(clubAdmin ? "paste" : "table");
   const queryClient = useQueryClient();
   const [ai, setAi] = useState<AiStatus | null>(null);
@@ -43,7 +43,7 @@ export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded
         </div>
       )}
       {mode === "paste" && clubAdmin ? (
-        <RecordNight roster={availablePlayers} ai={ai} onSaved={() => { void queryClient.invalidateQueries({ queryKey: ["jackpot"] }); onRecorded(); }} />
+        <RecordNight roster={availablePlayers} ai={ai} onOpenSettings={onOpenSettings} onSaved={() => { void queryClient.invalidateQueries({ queryKey: ["jackpot"] }); onRecorded(); }} />
       ) : (
         <LiveSessionView memberName={memberName} availablePlayers={availablePlayers} />
       )}

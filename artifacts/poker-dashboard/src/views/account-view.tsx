@@ -188,7 +188,7 @@ export function AccountView({
       <div className="soft-shadow rounded-2xl border border-border bg-card p-5 sm:p-6">
         <p className="section-label text-primary">Settings</p>
         <h2 className="mb-4 mt-1 text-lg font-semibold tracking-tight">This device</h2>
-        <SettingRow title="Appearance" detail={isDark ? "Dark mode is on." : "Light mode is on."}>
+        <SettingRow title="Appearance" detail={isDark ? "Currently dark." : "Currently light."}>
           <button
             type="button"
             onClick={onToggleTheme}
@@ -196,7 +196,7 @@ export function AccountView({
             className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
           >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {isDark ? "Light" : "Dark"}
+            {isDark ? "Switch to light" : "Switch to dark"}
           </button>
         </SettingRow>
         <SettingRow title="Badge pop-ups" detail="Show a message when you earn a new badge.">

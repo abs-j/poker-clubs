@@ -36,7 +36,7 @@ export function ClubDataPanel({ embedded = false }: { embedded?: boolean }) {
       {!embedded && <p className="section-label text-primary">Results</p>}
       <h2 className={`${embedded ? "" : "mt-1 "}text-lg font-semibold tracking-tight`}>Club history</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Nights you close in the live ledger are recorded automatically. To catch up a night you missed, start it on the Live tab with its date. Bring older results in here. Edit or delete a recorded night from the Games tab.
+        Nights you close at the table are recorded automatically. To catch up a night you missed, paste your notes on the Record tab with its date. Bring older results in here. Edit or delete a recorded night from the Games tab.
       </p>
       <p className="mt-3 text-xs text-muted-foreground">
         Your results are yours.{" "}
