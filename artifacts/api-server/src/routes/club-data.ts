@@ -10,6 +10,7 @@ import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
+import { addJackpotDeposit, deleteJackpotDeposit, deleteJackpotPayout, setNightJackpot, updateJackpotPayout } from "../lib/club-sessions";
 import { AiNotesError, MAX_NOTES_CHARS, readNightWithAi } from "../lib/ai-notes";
 import { getClubAiConfig, getClubAiStatus, updateClubAi } from "../lib/club-ai";
 import { cleanNightNote, clubJackpot, commitImport, deleteNight, listNightNotes, recordManualNight, setNightNote, JackpotInputError, listClubNights, loadJackpotPayoutsForExport, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
@@ -211,7 +212,63 @@ router.put("/clubs/current/ledger/resolution", requireMemberSession, async (req,
 
 /** The club's bad beat jackpot so far: surplus from balanced nights, minus payouts. */
 router.get("/clubs/current/jackpot", requireMemberSession, async (_req, res): Promise<void> => {
-  res.json(await clubJackpot(memberClubId(res)));
+  const admin = isClubAdmin(res.locals.memberSession?.clubRole ?? "member");
+  res.json(await clubJackpot(memberClubId(res), { admin }));
+});
+
+/** Runs a jackpot change, turning an input problem into a 400 and recording it for the audit log. */
+async function jackpotChange(req: Request, res: ExpressResponse, detail: string, change: () => Promise<unknown | null>): Promise<void> {
+  try {
+    const result = await change();
+    if (result === null) {
+      res.status(404).json({ error: "That entry no longer exists." });
+      return;
+    }
+    await recordAdminAction("jackpot_changed", detail, req);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof JackpotInputError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}
+
+const entryId = (value: unknown): number | null => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+/** Admin: add money to the pot directly, with an optional note. */
+router.post("/clubs/current/jackpot/deposits", requireAdminSession, async (req, res): Promise<void> => {
+  await jackpotChange(req, res, "Added money to the jackpot.", () => addJackpotDeposit(adminClubId(res), res.locals.adminSession?.memberName ?? res.locals.memberSession?.memberName ?? "admin", req.body ?? {}));
+});
+
+router.delete("/clubs/current/jackpot/deposits/:id", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid entry." });
+  await jackpotChange(req, res, `Removed jackpot deposit #${id}.`, () => deleteJackpotDeposit(adminClubId(res), id));
+});
+
+/** Admin: change a payout's player or amount. */
+router.patch("/clubs/current/jackpot/payouts/:id", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid entry." });
+  await jackpotChange(req, res, `Edited jackpot payout #${id}.`, () => updateJackpotPayout(adminClubId(res), id, req.body ?? {}));
+});
+
+router.delete("/clubs/current/jackpot/payouts/:id", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid entry." });
+  await jackpotChange(req, res, `Removed jackpot payout #${id}.`, async () => ((await deleteJackpotPayout(adminClubId(res), id)) ? await clubJackpot(adminClubId(res), { admin: true }) : null));
+});
+
+/** Admin: set how much of a night's surplus is in the pot (0 takes it out). */
+router.put("/clubs/current/nights/:id/jackpot", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid night." });
+  await jackpotChange(req, res, `Changed the jackpot surplus of night #${id}.`, () => setNightJackpot(adminClubId(res), id, (req.body ?? {}).amount));
 });
 
 /** Host or admin: pay some of the jackpot to one player. The running total goes down by that amount. */
@@ -227,7 +284,7 @@ router.post("/clubs/current/jackpot/payouts", requireMemberSession, async (req, 
     return;
   }
   try {
-    const view = await recordJackpotPayout(memberClubId(res), actor.name, req.body ?? {});
+    const view = await recordJackpotPayout(memberClubId(res), actor.name, req.body ?? {}, { admin: actor.isAdmin });
     await recordAdminAction("jackpot_paid", `Paid ${view.payouts[0] ? `${view.payouts[0].amount.toFixed(2)} to ${view.payouts[0].name}` : "a jackpot payout"}. ${view.total.toFixed(2)} remains.`, req);
     res.status(201).json(view);
   } catch (error) {
@@ -482,7 +539,7 @@ router.post("/clubs/current/nights", requireAdminSession, async (req, res): Prom
     date: night.date,
     notes,
     resolution,
-    createdBy: res.locals.memberSession?.memberName ?? "admin",
+    createdBy: res.locals.adminSession?.memberName ?? res.locals.memberSession?.memberName ?? "admin",
     players: night.players.map((player) => ({ name: player.name, buyInCents: Math.round(player.buyIn * 100), cashOutCents: Math.round(player.cashOut * 100) })),
   });
   if ("error" in result) {

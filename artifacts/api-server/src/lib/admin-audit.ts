@@ -17,6 +17,7 @@ export type AdminAuditAction =
   | "night_note_changed"
   | "ai_settings_updated"
   | "jackpot_paid"
+  | "jackpot_changed"
   | "settings_updated"
   | "results_exported"
   | "tournaments_exported"

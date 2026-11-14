@@ -194,6 +194,26 @@ export const nightSettlements = pgTable(
 );
 
 /**
+ * Money added to the bad beat jackpot directly, not through a night's surplus. An admin enters it
+ * as an amount (and an optional note), so it never has to be faked as a player row.
+ */
+export const jackpotDeposits = pgTable(
+  "jackpot_deposits",
+  {
+    id: serial("id").primaryKey(),
+    clubId: integer("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    /** Amount added, in cents. Always greater than zero. */
+    cents: integer("cents").notNull(),
+    note: text("note"),
+    madeAt: timestamp("made_at", { withTimezone: true }).defaultNow().notNull(),
+    madeBy: text("made_by").notNull(),
+  },
+  (table) => [index("jackpot_deposits_club_id_idx").on(table.clubId)],
+);
+
+/**
  * Money paid out of the club's bad beat jackpot to one player.
  * The running total is the surplus recorded on nights minus these rows.
  */

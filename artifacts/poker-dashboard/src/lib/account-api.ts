@@ -184,11 +184,16 @@ export type JackpotPayout = {
   at: string;
   by: string;
 };
+export type JackpotDeposit = { id: number; amount: number; note: string | null; at: string; by: string };
+/** A night that added surplus. `id` is only present for admins, who can change it. */
+export type JackpotNightEntry = { id?: number; number: number | null; date: string; amount: number };
 export type JackpotSummary = {
   /** Dollars still in the pot. */
   total: number;
   nights: number;
   payouts: JackpotPayout[];
+  deposits: JackpotDeposit[];
+  nightEntries: JackpotNightEntry[];
 };
 
 export type LiveSessionRole = {
@@ -245,6 +250,12 @@ export const accountApi = {
   /** Host or admin: pay some of the jackpot to a player. Amount is dollars, as typed. */
   payJackpot: (input: { name: string; amount: string }) =>
     request<JackpotSummary>("/api/clubs/current/jackpot/payouts", send("POST", input)),
+  /** Admin: add money to the pot without a night. */
+  addJackpotDeposit: (input: { amount: string; note?: string }) => request<JackpotSummary>("/api/clubs/current/jackpot/deposits", send("POST", input)),
+  deleteJackpotDeposit: (id: number) => request<JackpotSummary>(`/api/clubs/current/jackpot/deposits/${id}`, { method: "DELETE" }),
+  updateJackpotPayout: (id: number, input: { name?: string; amount?: string }) => request<JackpotSummary>(`/api/clubs/current/jackpot/payouts/${id}`, send("PATCH", input)),
+  deleteJackpotPayout: (id: number) => request<JackpotSummary>(`/api/clubs/current/jackpot/payouts/${id}`, { method: "DELETE" }),
+  setNightJackpot: (nightId: number, amount: string) => request<JackpotSummary>(`/api/clubs/current/nights/${nightId}/jackpot`, send("PUT", { amount })),
   me: () => request<MeResponse>("/api/clubs/me", { cache: "no-store" }),
   signUp: (input: { name: string; email: string; password: string }) =>
     // The confirmation email's link brings the person back to the app, on this address.

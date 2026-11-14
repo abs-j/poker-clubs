@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { accountApi, type AiStatus } from "@/lib/account-api";
+import { JackpotPanel } from "@/components/jackpot-panel";
 import { RecordNight } from "@/components/record-night";
 import { LiveSessionView } from "./live-view";
 
@@ -11,6 +13,7 @@ type Mode = "paste" | "table";
  */
 export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded }: { memberName: string; availablePlayers: string[]; clubAdmin: boolean; onRecorded: () => void }) {
   const [mode, setMode] = useState<Mode>(clubAdmin ? "paste" : "table");
+  const queryClient = useQueryClient();
   const [ai, setAi] = useState<AiStatus | null>(null);
 
   useEffect(() => {
@@ -19,6 +22,10 @@ export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded
     accountApi.aiStatus().then((status) => { if (!cancelled) setAi(status); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [clubAdmin]);
+
+  // A night's host who isn't an admin can still pay out the jackpot.
+  const role = useQuery({ queryKey: ["live-session-role"], queryFn: () => accountApi.liveSessionRole() });
+  const canPay = clubAdmin || role.data?.canManage === true;
 
   const tab = (id: Mode, label: string) => (
     <button type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)} data-testid={`tab-record-${id}`}
@@ -36,10 +43,11 @@ export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded
         </div>
       )}
       {mode === "paste" && clubAdmin ? (
-        <RecordNight roster={availablePlayers} ai={ai} onSaved={onRecorded} />
+        <RecordNight roster={availablePlayers} ai={ai} onSaved={() => { void queryClient.invalidateQueries({ queryKey: ["jackpot"] }); onRecorded(); }} />
       ) : (
         <LiveSessionView memberName={memberName} availablePlayers={availablePlayers} />
       )}
+      <JackpotPanel players={availablePlayers} canPay={canPay} admin={clubAdmin} showWhenEmpty={clubAdmin} />
     </div>
   );
 }
