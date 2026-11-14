@@ -7,7 +7,7 @@ import { formatCurrency } from "@/views/shared";
 export const JACKPOT_KEY = ["jackpot"];
 
 const field = "h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm font-normal text-foreground outline-none focus:border-primary";
-const small = "inline-flex h-8 items-center rounded-lg border border-border px-2.5 text-[11px] font-semibold hover:bg-secondary disabled:opacity-60";
+const small = "inline-flex h-11 items-center rounded-lg border border-border px-3 sm:h-8 sm:px-2.5 text-[11px] font-semibold hover:bg-secondary disabled:opacity-60";
 const primary = "h-10 shrink-0 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60";
 
 const when = (value: string) =>

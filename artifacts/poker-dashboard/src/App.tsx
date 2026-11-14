@@ -545,9 +545,9 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
           <header className="rise-in border-b border-border">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open home"><House className="h-5 w-5" /></button>
+                <button onClick={() => navigate("overview")} data-testid="button-brand-home" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl brand-mark bg-primary text-primary-foreground shadow-[0_3px_0_hsl(262_80%_40%)]" aria-label="Open home"><House className="h-5 w-5" /></button>
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <p data-testid="text-dashboard-title" className="min-w-0 truncate text-lg font-semibold tracking-[-0.03em] sm:text-xl">{dashboard.title || "Poker Session Log & Months"}</p>
+                  <p data-testid="text-dashboard-title" className="line-clamp-2 min-w-0 text-lg font-semibold leading-tight tracking-[-0.03em] sm:text-xl">{dashboard.title || "Poker Session Log & Months"}</p>
                 </div>
               </div>
               <div className="hidden flex-wrap items-center gap-2 print-hidden lg:flex">
@@ -558,7 +558,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
               <div className="print-hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button type="button" data-testid="button-mobile-dashboard-menu" aria-label="Open dashboard menu" className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-foreground">
+                    <button type="button" data-testid="button-mobile-dashboard-menu" aria-label="Open dashboard menu" className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-foreground">
                       <Menu className="h-5 w-5" />
                     </button>
                   </DropdownMenuTrigger>

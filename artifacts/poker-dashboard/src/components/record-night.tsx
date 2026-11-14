@@ -8,9 +8,9 @@ import { balanceGap, shareShortfall } from "@/lib/record-night";
 import { plural } from "@/lib/utils";
 
 const button =
-  "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary disabled:opacity-60";
+  "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary disabled:opacity-60";
 const primary =
-  "inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60";
+  "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60";
 const field = "h-10 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
 const money = (cents: number) => `$${(Math.abs(cents) / 100).toFixed(2)}`;
 
@@ -139,7 +139,7 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
           <label className={`${button} cursor-pointer ${reading ? "opacity-60" : ""}`}>
             <FileUp className="h-4 w-4" />
             Or choose a photo
-            <input type="file" accept="image/*" disabled={reading} onChange={(event) => void readPicture(event)} className="sr-only" data-testid="input-record-image" />
+            <input type="file" accept="image/*" disabled={reading} onChange={(event) => void readPicture(event)} className="sr-only" aria-label="Choose a photo of the notes" data-testid="input-record-image" />
           </label>
         )}
       </div>
