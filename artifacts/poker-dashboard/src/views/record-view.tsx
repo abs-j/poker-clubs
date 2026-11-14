@@ -36,6 +36,7 @@ export function RecordView({ memberName, availablePlayers, clubAdmin, onRecorded
 
   return (
     <div className="space-y-4" data-testid="view-record">
+      <h1 className="sr-only">Record a night</h1>
       {clubAdmin && (
         <div role="tablist" aria-label="How to record" className="flex gap-1 rounded-xl border border-border bg-card p-1">
           {tab("paste", "Paste notes")}
