@@ -654,7 +654,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
                     <div className="space-y-4">
                       {!liveOpen && <MyNightCard sessions={homeSessions} viewer={memberName} standing={myStanding} />}
                       <SettleUpCard onOpenSession={openGame} />
-                      <JackpotPanel players={availablePlayers} canPay={false} admin={false} />
+                      <JackpotPanel players={availablePlayers} canPay={false} admin={false} onManage={clubAdmin ? () => navigate("live") : undefined} />
                     </div>
                   }
                   memberName={memberName}
@@ -681,7 +681,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
               {activeView === "live" && (
                 <>
                   <button type="button" onClick={() => navigate("guidelines")} data-testid="link-live-rules" className="mb-1 inline-flex min-h-[44px] items-center text-xs font-semibold text-primary hover:underline">Blind schedule &amp; rules →</button>
-                  <RecordView memberName={memberName} availablePlayers={availablePlayers} clubAdmin={clubAdmin} onRecorded={() => void handleRefresh()} />
+                  <RecordView memberName={memberName} availablePlayers={availablePlayers} clubAdmin={clubAdmin} onRecorded={() => void handleRefresh()} onOpenSettings={() => { window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#admin-settings`); navigate("admin"); }} />
                 </>
               )}
              {activeView === "months" && (
@@ -775,8 +775,8 @@ function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar 
           {platformAdmin && <a href="/admin" data-testid="link-platform-usage" className="mt-4 inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm font-semibold">Site usage</a>}
           <div className="soft-shadow mt-6 rounded-2xl border border-border bg-card p-5" data-testid="box-member-waiting">
             <h2 className="text-base font-semibold">Waiting for the first night</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">Standings, games and your results appear here as soon as a club admin records or imports a night. Check the Live tab on game night.</p>
-            <button type="button" onClick={() => onNavigate("live")} data-testid="button-start-live" className="mt-4 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">Open the live ledger</button>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">Standings, games and your results appear here as soon as a club admin records or imports a night. Check the Record tab on game night.</p>
+            <button type="button" onClick={() => onNavigate("live")} data-testid="button-start-live" className="mt-4 inline-flex h-10 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground">Open the Record tab</button>
           </div>
         </main>
         {tabBar}
@@ -786,7 +786,7 @@ function NewClubStart({ clubName, memberName, platformAdmin, onNavigate, tabBar 
   const steps: Array<{ title: string; body: string; action: string; view: "live" | "guidelines" | "admin"; hash?: string; testId: string }> = [
     { title: "Bring your club in", body: "Copy your invite link or show the QR code. Anyone who opens it can join and pick their name.", action: "Invite people", view: "guidelines", hash: "section-invites", testId: "button-start-invite" },
     { title: "Bring in your history", body: "Import past results from a spreadsheet. The leaderboard, points and profiles fill in straight away.", action: "Import results", view: "admin", hash: "admin-setup", testId: "button-start-import" },
-    { title: "Run a night", body: "Start a live session to record buy-ins and cash-outs as people play. Close it and the night joins the leaderboard.", action: "Open the live ledger", view: "live", testId: "button-start-live" },
+    { title: "Run a night", body: "Start a game to record buy-ins and cash-outs as people play. Close it and the night joins the leaderboard.", action: "Open the Record tab", view: "live", testId: "button-start-live" },
   ];
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">

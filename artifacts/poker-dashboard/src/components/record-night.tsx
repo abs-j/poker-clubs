@@ -14,13 +14,13 @@ const primary =
 const field = "h-10 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
 const money = (cents: number) => `$${(Math.abs(cents) / 100).toFixed(2)}`;
 
-type Props = { roster: string[]; ai: AiStatus | null; onSaved: () => void };
+type Props = { roster: string[]; ai: AiStatus | null; onSaved: () => void; onOpenSettings: () => void };
 
 /**
  * Record a finished night from notes. Paste text or choose a photo, read it (with the club's AI reader when
  * it is set up, otherwise the plain reader), correct the rows, settle any gap and save. Admins only.
  */
-export function RecordNight({ roster, ai, onSaved }: Props) {
+export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
   const [text, setText] = useState("");
   const [rows, setRows] = useState<NoteRow[]>([]);
   const [date, setDate] = useState(clubToday());
@@ -122,8 +122,14 @@ export function RecordNight({ roster, ai, onSaved }: Props) {
       <h2 className="text-base font-semibold">Paste your notes</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         Write it however you do in your notes app, like "abhay in 20, out 30, +10", one player per line.
-        {ai?.enabled ? " The club's AI reader tidies it up." : " Photos need an AI reader, which an admin can switch on in club settings."}
+        {ai?.enabled ? " The club's AI reader tidies it up." : ""}
       </p>
+      {ai && !ai.enabled && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="text-record-ai-off">
+          AI reader is off, so photos and messy notes won't work.{" "}
+          <button type="button" onClick={onOpenSettings} className="font-semibold text-primary hover:underline" data-testid="button-record-ai-setup">Turn it on in club settings →</button>
+        </p>
+      )}
       <textarea value={text} onChange={(event) => setText(event.target.value)} rows={6} placeholder={"abhay in 20, out 30, +10\nann 10 -> 48\nbo in 30 out 5.10"} className="mt-3 w-full rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary" data-testid="input-record-text" />
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" disabled={!text.trim() || reading} onClick={() => void readText()} className={primary} data-testid="button-record-read">

@@ -143,7 +143,7 @@ export function CashGameActions({
           <p className="text-xs text-muted-foreground" data-testid={`text-delete-night-irreversible-${session.sessionNumber}`}>
             Delete the night of {formatDate(session.date)}? This cannot be undone.
             {" "}Everyone&apos;s totals change, and any settle-up or jackpot from this night is removed.
-            {live ? " The live ledger for this night is removed too." : ""}
+            {live ? " The table record for this night is removed too." : ""}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" className={danger} disabled={busy} onClick={remove} data-testid={`button-confirm-delete-night-${session.sessionNumber}`}>

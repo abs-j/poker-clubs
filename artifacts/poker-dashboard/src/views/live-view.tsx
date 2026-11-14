@@ -454,10 +454,10 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   return (
     <section className="space-y-5" data-testid="section-live-ledger">
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <PageIntro eyebrow="Live session ledger" title="Track tonight as it happens" description="Log buy-ins and cash-outs, check the balance, and keep a separate record of each session. Times use the club's time zone." count={`${snapshot.sessionStatus === "ended" ? "Closed" : snapshot.sessionStatus === "open" ? "Open" : "Not started"} · ${formatActivitySessionDate(snapshot.sessionDate)}`} compactOnMobile />
+        <PageIntro eyebrow="At the table" title={snapshot.sessionStatus === "open" ? "Tonight's game" : "Start tonight's game"} description={snapshot.sessionStatus === "open" ? "One person records buy-ins and cash-outs for the table. Everyone else watches this page update." : "Open a game, add players as they sit down, cash them out at the end. Times use the club's time zone."} count={`${snapshot.sessionStatus === "ended" ? "Closed" : snapshot.sessionStatus === "open" ? "Open" : "Not started"} · ${formatActivitySessionDate(snapshot.sessionDate)}`} compactOnMobile />
         <div className="flex shrink-0 items-center gap-2">
           <div className="hidden items-center gap-2 lg:flex">
-            <button type="button" onClick={() => setShowQr((value) => !value)} aria-expanded={showQr} aria-controls={showQr ? "live-ledger-qr" : undefined} data-testid="button-toggle-live-qr" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold"><QrCode className="h-3.5 w-3.5" />{showQr ? "Hide QR" : "Share Live"}</button>
+            <button type="button" onClick={() => setShowQr((value) => !value)} aria-expanded={showQr} aria-controls={showQr ? "live-ledger-qr" : undefined} data-testid="button-toggle-live-qr" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold"><QrCode className="h-3.5 w-3.5" />{showQr ? "Hide QR" : "Share link"}</button>
           </div>
           <div className="lg:hidden">
             <DropdownMenu>
@@ -486,9 +486,9 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           <Suspense fallback={<div className="h-[220px] w-[220px]" />}><LiveLedgerQr value={liveLedgerUrl} /></Suspense>
         </div>
         <div className="min-w-0">
-          <p className="section-label text-primary">Share the live ledger</p>
-          <h2 className="mt-1 text-lg font-semibold">Scan to open Live</h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">The link opens the Live ledger directly. Member sign-in is still required; the QR code contains no access code or token.</p>
+          <p className="section-label text-primary">Share this game</p>
+          <h2 className="mt-1 text-lg font-semibold">Scan to open the game</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">The link opens the Record tab directly. Member sign-in is still required; the QR code contains no access code or token.</p>
           <p className="mt-3 break-all rounded-lg bg-secondary/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">{liveLedgerUrl}</p>
           <div className="live-qr-actions mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={downloadQr} data-testid="button-download-live-qr" className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground"><Download className="h-3.5 w-3.5" />Download SVG</button>
@@ -507,7 +507,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.08em] ${snapshot.sessionStatus === "open" ? "bg-chart-1/10 text-chart-1" : "bg-secondary text-muted-foreground"}`}>
               {snapshot.sessionStatus === "open" ? "Open" : snapshot.sessionStatus === "ended" ? "Closed" : "Ready"}
             </span>
-            {snapshot.hasRecordedActivity && <span className={`hidden rounded-md px-1.5 py-0.5 text-[11px] font-bold sm:inline-flex ${Math.abs(balance) < 0.01 ? "bg-secondary text-muted-foreground" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+            {snapshot.sessionStatus === "open" && snapshot.hasRecordedActivity && <span className={`hidden rounded-md px-1.5 py-0.5 text-[11px] font-bold sm:inline-flex ${Math.abs(balance) < 0.01 ? "bg-secondary text-muted-foreground" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
               {Math.abs(balance) < 0.01 ? "Balanced" : "Unbalanced"}
             </span>}
           </div>
@@ -527,7 +527,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
                   : "Start a ledger when the game begins."}
             </span>
           </p>
-          {hostLabel && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-host">Host: {hostLabel}</p>}
+          {isOpen && hostLabel && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-host">Host: {hostLabel}</p>}
           {isOpen && roleQuery.isSuccess && !canManage && hostLabel && <p className="mt-1 text-[11px] leading-4 text-muted-foreground sm:text-xs" data-testid="text-live-close-locked">Only {hostLabel} or an admin can close this night.</p>}
           {canManage && isOpen && !handOverOpen && <button type="button" onClick={openHandOver} data-testid="button-hand-over-live" className="mt-2 text-xs font-semibold text-primary">Hand over</button>}
           {canManage && isOpen && handOverOpen && <form onSubmit={confirmHandOver} className="mt-2 flex flex-wrap items-end gap-2" data-testid="form-hand-over-live">
@@ -541,7 +541,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             <button type="submit" disabled={handingOver || !hostChoice} data-testid="button-confirm-hand-over" className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60">{handingOver ? "Saving…" : "Make host"}</button>
             <button type="button" onClick={() => setHandOverOpen(false)} className="h-9 rounded-lg border border-border px-3 text-xs font-semibold">Cancel</button>
           </form>}
-          {snapshot.sessionStatus !== "not_started" && roleQuery.isSuccess && (canManage
+          {isOpen && roleQuery.isSuccess && (canManage
             ? <label className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground sm:text-xs">
               <span className="shrink-0">Bank</span>
               <select value={bankLabel ?? ""} onChange={(event) => changeBank(event.target.value)} disabled={savingBank} data-testid="select-live-bank" className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground disabled:opacity-60">
@@ -551,25 +551,19 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             </label>
             : bankLabel && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-bank">Bank: {bankLabel}</p>)}
           {snapshot.sessionStatus !== "not_started" && snapshot.sessionDate.slice(0, 10) !== clubToday() && <p className="mt-1 text-[11px] font-semibold text-foreground sm:text-xs" data-testid="text-live-night-date">Night of {formatDate(snapshot.sessionDate.slice(0, 10))}</p>}
-          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <label className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-muted-foreground sm:text-xs">
-            <span className="shrink-0">{snapshot.sessionStatus === "ended" ? "Next night's date" : "Night date"}</span>
-            <input type="date" value={nightDate} max={clubToday()} onChange={(event) => setNightDate(event.target.value)} disabled={isSaving} data-testid="input-live-night-date" className="h-9 min-w-0 rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground disabled:opacity-60" />
+          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <label className="mt-2 block text-[11px] font-semibold text-muted-foreground sm:text-xs">
+            <span className="mb-1 block">Date of the game</span>
+            <input type="date" value={nightDate} max={clubToday()} onChange={(event) => setNightDate(event.target.value)} disabled={isSaving} data-testid="input-live-night-date" className="w-full max-w-[11rem] h-9 rounded-lg border border-border bg-background px-2 text-xs font-normal text-foreground disabled:opacity-60" />
           </label>}
         </div>
         <div className="flex flex-col items-end gap-2">
-          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button type="button" disabled={isSaving} data-testid="button-new-night" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">
-                <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                <span>{starting ? "Starting…" : "New night"}</span>
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onSelect={start} data-testid="button-start-live-session" className="min-h-11">Cash night</DropdownMenuItem>
-              {canManage && <DropdownMenuItem onSelect={() => setShowTournament(true)} data-testid="menu-new-night-tournament" className="min-h-11">Tournament</DropdownMenuItem>}
-            </DropdownMenuContent>
-          </DropdownMenu>}
+          {(snapshot.sessionStatus === "not_started" || snapshot.sessionStatus === "ended") && <div className="flex flex-col items-end gap-1.5">
+            <button type="button" onClick={start} disabled={isSaving} data-testid="button-start-live-session" className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <Activity className="h-4 w-4" />
+              {starting ? "Starting…" : "Start tonight's game"}
+            </button>
+            {canManage && <button type="button" onClick={() => setShowTournament(true)} disabled={isSaving} data-testid="button-new-tournament" className="text-xs font-semibold text-primary disabled:opacity-60">Record a tournament instead</button>}
+          </div>}
           {isOpen && canManage && <button onClick={end} disabled={isSaving} aria-label={snapshot.hasRecordedActivity ? "End session" : "Discard empty session"} data-testid="button-end-live-session" className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-destructive/35 bg-destructive/10 px-2.5 text-[11px] font-semibold text-destructive disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-5 sm:text-sm">{snapshot.hasRecordedActivity ? <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}<span className="sm:hidden">{endMutation.isPending ? "Saving…" : snapshot.hasRecordedActivity ? "End" : "Discard"}</span><span className="hidden sm:inline">{endMutation.isPending ? snapshot.hasRecordedActivity ? "Ending…" : "Discarding…" : snapshot.hasRecordedActivity ? "End session" : "Discard empty session"}</span></button>}
           {roleQuery.data?.status === "ended" && canManage && <button type="button" onClick={reopen} disabled={isSaving} data-testid="button-reopen-live-session" className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-border bg-background px-2.5 text-[11px] font-semibold disabled:opacity-60 sm:h-11 sm:px-5 sm:text-sm">{reopening ? "Reopening…" : "Reopen"}</button>}
         </div>
@@ -591,8 +585,8 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
         <LiveMetric label="Net balance" compactLabel="NET" value={signedCurrency(balance)} detail="Buy-ins minus cash-outs" tone={Math.abs(balance) < 0.01 ? "neutral" : balance < 0 ? "positive" : "negative"} />
         <div className="hidden sm:block"><LiveMetric
           label="Balance"
-          value={entries.length === 0 ? "No entries" : Math.abs(balance) < 0.01 ? "Balanced" : "Unbalanced"}
-          detail={entries.length === 0 ? "Add activity to calculate" : snapshot.sessionStatus === "ended" ? "Closed ledger" : "Updates as entries are added"}
+          value={snapshot.sessionStatus === "ended" ? "Closed" : entries.length === 0 ? "No entries" : Math.abs(balance) < 0.01 ? "Balanced" : "Unbalanced"}
+          detail={snapshot.sessionStatus === "ended" ? "Saved to the leaderboard" : entries.length === 0 ? "Add activity to calculate" : "Updates as entries are added"}
           tone={entries.length === 0 || Math.abs(balance) < 0.01 ? "neutral" : "negative"}
         /></div>
       </div>

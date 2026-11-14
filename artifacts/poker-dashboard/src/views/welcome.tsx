@@ -325,7 +325,7 @@ function Onboarding({ user, onDone }: { user: { name: string }; onDone: () => vo
 
 /** The member sign-in screen: account first, then a club. Hands back the session once both exist. */
 const FEATURES: Array<{ icon: LucideIcon; title: string; body: string }> = [
-  { icon: CircleDollarSign, title: "A live ledger for game night", body: "Log buy-ins and cash-outs as people play, check the night balances, then settle up at the end." },
+  { icon: CircleDollarSign, title: "Record game night", body: "Paste your notes or log buy-ins and cash-outs at the table, check the night balances, then settle up at the end." },
   { icon: Trophy, title: "Leaderboards that mean something", body: "All-time profit and monthly club points, with podiums, badges and a season to chase every month." },
   { icon: UserRound, title: "Your own numbers", body: "Your net, form and best game, and how you have done against each player in the games you both played." },
   { icon: CalendarDays, title: "Tournaments too", body: "Record buy-ins, finishing places and prizes, and let them count towards club points." },

@@ -35,7 +35,7 @@ const STEPS: Step[] = [
   },
   {
     view: "live",
-    title: "Live ledger: run tonight",
+    title: "Record: run tonight",
     body: "One game is already running. Add a buy-in or cash-out, edit an entry (a reason is recorded), then close the night to check the table balances. Changes only last until you refresh.",
     targets: ["nav-live"],
   },

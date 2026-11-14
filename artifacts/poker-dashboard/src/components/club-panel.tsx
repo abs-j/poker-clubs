@@ -352,7 +352,7 @@ function ClubJackpot() {
           ? `Built from the surplus of ${jackpot.nights} ${jackpot.nights === 1 ? "night" : "nights"} that closed over.${jackpot.payouts.length > 0 ? ` ${jackpot.payouts.length} ${jackpot.payouts.length === 1 ? "payout" : "payouts"} so far.` : ""}`
           : "Loading the pot."}
       </p>
-      <p className="mt-2 text-xs text-muted-foreground">The host or an admin records a payout from the Live tab.</p>
+      <p className="mt-2 text-xs text-muted-foreground">The host or an admin records a payout from the Record tab.</p>
       {jackpot && jackpot.payouts.length > 0 && (
         <ul className="mt-4 divide-y divide-border/70 rounded-xl border border-border" data-testid="list-club-jackpot-payouts">
           {jackpot.payouts.map((payout) => (
