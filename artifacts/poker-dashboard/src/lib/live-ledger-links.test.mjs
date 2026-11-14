@@ -19,6 +19,14 @@ test("opens Overview by default on every screen size while respecting explicit L
   assert.equal(getInitialDashboardView("?view=overview"), "overview");
 });
 
+test("opens the screen that holds a hash link on a cold load", () => {
+  assert.equal(getInitialDashboardView("", "#admin-settings"), "admin");
+  assert.equal(getInitialDashboardView("", "#admin-setup"), "admin");
+  assert.equal(getInitialDashboardView("", "#section-invites"), "guidelines");
+  assert.equal(getInitialDashboardView("", "#something-else"), "overview");
+  assert.equal(getInitialDashboardView("?view=live", "#admin-settings"), "live");
+});
+
 test("builds QR URLs using the app base path and no credentials", () => {
   assert.equal(
     buildLiveLedgerUrl("https://poker.example", "/"),

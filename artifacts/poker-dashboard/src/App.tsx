@@ -266,7 +266,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
       return true;
     }
   });
-  const [activeView, setActiveView] = useState<DashboardView>(() => getInitialDashboardView(window.location.search));
+  const [activeView, setActiveView] = useState<DashboardView>(() => getInitialDashboardView(window.location.search, window.location.hash));
   const [performanceScope, setPerformanceScope] = useState<PerformanceScope>("all");
   const [monthFilter, setMonthFilter] = useState<MonthFilter | null>("ALL");
   const [refreshing, setRefreshing] = useState(false);
