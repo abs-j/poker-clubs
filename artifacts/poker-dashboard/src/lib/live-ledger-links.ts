@@ -1,9 +1,17 @@
-export type InitialDashboardView = "overview" | "live";
+export type InitialDashboardView = "overview" | "live" | "admin" | "guidelines";
 
-export function getInitialDashboardView(search: string): InitialDashboardView {
+/**
+ * The view to open on a cold load. "?view=live" is the QR deep link. A hash such as "#admin-settings" (the
+ * club admin blocks) or "#section-invites" opens the screen that holds that block, so links to them work
+ * from a bookmark or an email, not only from inside the app.
+ */
+export function getInitialDashboardView(search: string, hash = ""): InitialDashboardView {
   const requestedView = new URLSearchParams(search).get("view");
   if (requestedView === "live") return "live";
   if (requestedView === "overview") return "overview";
+  const anchor = hash.replace(/^#/, "");
+  if (anchor.startsWith("admin-")) return "admin";
+  if (anchor === "section-invites") return "guidelines";
   return "overview";
 }
 

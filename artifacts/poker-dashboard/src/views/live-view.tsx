@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { getGetPokerLiveActivityQueryKey, getGetPokerLiveActivityHistoryQueryKey, useGetPokerLiveActivityHistory, useCreatePokerLiveActivity, useDeletePokerLiveActivity, useEndPokerLiveSession, useGetPokerLiveActivity, startPokerLiveSession, useUpdatePokerLiveActivity, type LiveActivityHistoryRecord, type LiveActivityEntry, type LiveActivityInputAction, type LivePlayerSummary } from "@workspace/api-client-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { buildLiveLedgerUrl } from "@/lib/live-ledger-links";
@@ -579,15 +579,18 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
       )}
       {isOpen && canManage && <LedgerNotes roster={bankOptions} onAdded={setSnapshot} />}
 
+      {roleQuery.data?.status === "ended" && roleQuery.data.nightId !== null && <SettleList nightId={roleQuery.data.nightId} />}
+
+      <LastGameFold folded={snapshot.sessionStatus === "ended"} summary={`Last game · ${formatActivitySessionDate(snapshot.sessionDate)} · ${snapshot.playerSummaries.length} ${snapshot.playerSummaries.length === 1 ? "player" : "players"}`}>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
         <LiveMetric label="Buy-ins" compactLabel="IN" value={formatCurrency(snapshot.totals.buyIns)} detail="Total added" tone="neutral" />
         <LiveMetric label="Cash-outs" compactLabel="OUT" value={formatCurrency(snapshot.totals.cashOuts)} detail="Total returned" tone="neutral" />
-        <LiveMetric label="Net balance" compactLabel="NET" value={signedCurrency(balance)} detail="Buy-ins minus cash-outs" tone={Math.abs(balance) < 0.01 ? "neutral" : balance < 0 ? "positive" : "negative"} />
+        <LiveMetric label="Net balance" compactLabel="NET" value={signedCurrency(balance)} detail="Buy-ins minus cash-outs" tone={snapshot.sessionStatus === "ended" || Math.abs(balance) < 0.01 ? "neutral" : balance < 0 ? "positive" : "negative"} />
         <div className="hidden sm:block"><LiveMetric
           label="Balance"
           value={snapshot.sessionStatus === "ended" ? "Closed" : entries.length === 0 ? "No entries" : Math.abs(balance) < 0.01 ? "Balanced" : "Unbalanced"}
           detail={snapshot.sessionStatus === "ended" ? "Saved to the leaderboard" : entries.length === 0 ? "Add activity to calculate" : "Updates as entries are added"}
-          tone={entries.length === 0 || Math.abs(balance) < 0.01 ? "neutral" : "negative"}
+          tone={snapshot.sessionStatus === "ended" || entries.length === 0 || Math.abs(balance) < 0.01 ? "neutral" : "negative"}
         /></div>
       </div>
 
@@ -676,7 +679,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
 
         <details open data-testid="section-live-activity" className="group min-w-0 rounded-2xl border border-border bg-card">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
-            <span className="min-w-0"><span className="section-label block">Recent activity</span><span id="live-activity-heading" className="mt-1 block text-base font-semibold sm:text-lg">Tonight’s ledger</span></span>
+            <span className="min-w-0"><span className="section-label block">Recent activity</span><span id="live-activity-heading" className="mt-1 block text-base font-semibold sm:text-lg">{snapshot.sessionStatus === "open" ? "Tonight’s ledger" : "Ledger"}</span></span>
             <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground"><span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-semibold">{entries.length} {entries.length === 1 ? "entry" : "entries"}</span><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></span>
           </summary>
           <div className="border-t border-border">
@@ -709,8 +712,9 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           </div>
           <p className="mt-2 text-xs text-muted-foreground">Closed {formatActivityTime(snapshot.closeSummary.closedAt)}. "Saved to ledger history and counted as a game on the leaderboard."</p>
         </div>}
-        {roleQuery.data?.status === "ended" && roleQuery.data.nightId !== null && <SettleList nightId={roleQuery.data.nightId} />}
       </div>
+
+      </LastGameFold>
 
       <section className="rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="section-live-ledger-history">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -970,6 +974,20 @@ function LiveMetric({ label, compactLabel, value, detail, tone }: { label: strin
     <p className={`mt-1.5 truncate font-mono text-[18px] font-semibold tracking-[-0.045em] sm:mt-2 sm:text-2xl ${tone === "positive" ? "text-chart-1" : tone === "negative" ? "text-destructive" : "text-foreground"}`}>{value}</p>
     <p className="mt-1 hidden truncate text-[11px] text-muted-foreground sm:block sm:text-[11px]">{detail}</p>
   </article>;
+}
+
+/** A finished night folds away under the start button, so it never reads as tonight's game. */
+function LastGameFold({ folded, summary, children }: { folded: boolean; summary: string; children: ReactNode }) {
+  if (!folded) return <>{children}</>;
+  return (
+    <details className="group rounded-2xl border border-border bg-card/60 p-4 sm:p-5" data-testid="details-last-game">
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+        <span>{summary}<span className="ml-2 font-normal text-muted-foreground">Results and ledger</span></span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="mt-4 space-y-5">{children}</div>
+    </details>
+  );
 }
 
 function LiveActivityLoading() {
