@@ -865,7 +865,7 @@ await check("Home shows your summary, last game, monthly points and the profit p
   const tabs = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="nav-bottom-tabs"] button')].map((button) => button.textContent.trim()),
   );
-  expect(tabs.join(",") === "Home,Live,Leaderboard,Games,Me", `tabs were ${tabs.join(", ")}`);
+  expect(tabs.join(",") === "Home,Record,Leaderboard,Games,Me", `tabs were ${tabs.join(", ")}`);
   const gone = await page.evaluate(() => ({
     chart: !!document.querySelector('[data-testid="card-home-results"]'),
     tournament: !!document.querySelector('[data-testid="card-latest-tournament"]'),

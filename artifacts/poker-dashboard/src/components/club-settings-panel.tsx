@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { pointsExamples } from "@/lib/points";
+import { AiReaderSettings } from "@/components/ai-reader-settings";
 import { useClubSettings, type PresetChoice } from "@/components/club-settings-context";
 
 const input = "h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
@@ -156,6 +157,7 @@ export function ClubSettingsPanel({ embedded = false }: { embedded?: boolean }) 
         </button>
         {saved && <span data-testid="status-settings-saved" className="text-xs font-semibold">Saved.</span>}
       </div>
+      <AiReaderSettings />
     </div>
   );
 }

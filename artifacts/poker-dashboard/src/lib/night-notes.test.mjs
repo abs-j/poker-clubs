@@ -36,3 +36,14 @@ test("trailing notes in brackets, blank lines and lines without amounts", () => 
   assert.deepEqual(rows.map((r) => [r.name, r.buyIn, r.cashOut]), [["Ann", "10", "48"], ["Bo Lee", "10", "0"]]);
   assert.deepEqual(skipped, ["Poker night 30 Oct"]);
 });
+
+test("reads 'name in X, out Y, +net' notes and ignores the net", () => {
+  const read = parseNightNotes("abhay in 20, out 30, +10\nAnn in $20 + 20 out 55 (+15)\nbo bought in 30, cashed out 5.10 -24.90\nJustin in 10 out 0", ["Ann"]);
+  assert.deepEqual(read.rows, [
+    { name: "abhay", buyIn: "20", cashOut: "30" },
+    { name: "Ann", buyIn: "40", cashOut: "55" },
+    { name: "bo", buyIn: "30", cashOut: "5.10" },
+    { name: "Justin", buyIn: "10", cashOut: "0" },
+  ]);
+  assert.deepEqual(read.skipped, []);
+});

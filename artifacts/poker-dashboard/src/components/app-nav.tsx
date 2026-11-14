@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { House, LayoutList, Radio, Trophy, UserRound, type LucideIcon } from "lucide-react";
+import { House, LayoutList, NotebookPen, Trophy, UserRound, type LucideIcon } from "lucide-react";
 
 export type DashboardView =
   | "overview"
@@ -23,7 +23,7 @@ export type Section = {
 // Five sections. Section ids are the existing view ids (usage tracking validates them), so "Me" keeps the account id.
 export const SECTIONS: Section[] = [
   { id: "overview", label: "Home", icon: House, views: ["overview"] },
-  { id: "live", label: "Live", icon: Radio, views: ["live"] },
+  { id: "live", label: "Record", icon: NotebookPen, views: ["live"] },
   { id: "months", label: "Leaderboard", icon: Trophy, views: ["months", "players"] },
   { id: "sessions", label: "Games", icon: LayoutList, views: ["sessions"] },
   { id: "account", label: "Me", icon: UserRound, views: ["account", "guidelines", "admin"] },

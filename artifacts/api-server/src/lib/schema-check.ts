@@ -5,7 +5,7 @@ import { db } from "@workspace/db";
 // Check it was, at start-up, so a missed step is a clear message instead of a 500 on first sign-up.
 const TABLES = ["users", "user_sessions", "clubs", "players", "memberships", "invites", "club_sessions", "session_results", "club_tournaments", "tournament_results", "live_sessions", "live_activity_events", "night_settlements", "jackpot_payouts"];
 // Columns added after the first release, so an out-of-date database is caught too.
-const COLUMNS: Array<[string, string]> = [["clubs", "points_preset"], ["invites", "emailed_to"], ["admin_audit_log", "club_id"], ["users", "terms_accepted_at"], ["club_tournaments", "winner_keeps_bounty"], ["club_sessions", "jackpot_cents"], ["live_sessions", "balance_resolution"], ["live_sessions", "host_name"], ["live_sessions", "bank_name"], ["live_sessions", "settle_up"]];
+const COLUMNS: Array<[string, string]> = [["clubs", "points_preset"], ["invites", "emailed_to"], ["admin_audit_log", "club_id"], ["users", "terms_accepted_at"], ["club_tournaments", "winner_keeps_bounty"], ["club_sessions", "jackpot_cents"], ["live_sessions", "balance_resolution"], ["live_sessions", "host_name"], ["live_sessions", "bank_name"], ["live_sessions", "settle_up"], ["club_sessions", "notes"], ["clubs", "ai_model"], ["clubs", "ai_key_cipher"]];
 
 export async function assertSchemaReady(): Promise<void> {
   try {

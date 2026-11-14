@@ -30,6 +30,10 @@ export const clubs = pgTable(
     pointsPreset: varchar("points_preset", { length: 16 }).notNull().default("standard"),
     /** The full rule set when pointsPreset is "custom". */
     pointsRules: jsonb("points_rules"),
+    /** OpenRouter model id used to read pasted notes and photos. Null means the AI reader is off. */
+    aiModel: varchar("ai_model", { length: 120 }),
+    /** The club's OpenRouter key, encrypted (see lib/secret-box.ts). Never sent to the browser. */
+    aiKeyCipher: text("ai_key_cipher"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [uniqueIndex("clubs_slug_idx").on(table.slug)],
@@ -134,6 +138,8 @@ export const clubSessions = pgTable(
     importBatch: varchar("import_batch", { length: 36 }),
     /** Surplus from this night that went into the bad beat jackpot, in cents. */
     jackpotCents: integer("jackpot_cents").notNull().default(0),
+    /** A free-text note about the night, shown to every member. */
+    notes: text("notes"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

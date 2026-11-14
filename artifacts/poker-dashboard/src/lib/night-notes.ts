@@ -17,6 +17,9 @@ const AMOUNT = /\d+(?:\.\d{1,2})?/g;
 const ARROW = /(?:->|=>|→|➔|➜|>|\bto\b)/i;
 const format = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2));
 
+// "abhay in 20, out 30, +10": the words in/out label the amounts, and a trailing +/- is just the net, which is ignored.
+const IN_OUT = /^(.*?[^\s,;:-])[\s,:;-]+(?:buy[\s-]?in|bought in|in)\s*[:=]?\s*\$?(\d+(?:\.\d+)?(?:\s*\+\s*\$?\d+(?:\.\d+)?)*)[\s,;]+(?:cash(?:ed)?[\s-]?out|out)\s*[:=]?\s*\$?(\d+(?:\.\d+)?)/i;
+
 /** The name is everything before the first amount: the first "$", or else the first number after a separator. */
 function splitLine(line: string): { name: string; amounts: string } | null {
   const dollar = line.indexOf("$");
@@ -35,8 +38,10 @@ export function parseNightNotes(text: string, roster: string[] = []): NoteResult
   const index = new Map<string, number>();
 
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    let line = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
     if (!line) continue;
+    const labelled = IN_OUT.exec(line);
+    if (labelled) line = `${labelled[1]} - ${labelled[2]} -> ${labelled[3]}`;
     const parts = splitLine(line);
     const amounts = parts?.amounts.match(AMOUNT)?.map(Number) ?? [];
     if (!parts || amounts.length < 2) {

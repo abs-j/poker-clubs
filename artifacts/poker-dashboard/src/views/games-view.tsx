@@ -5,7 +5,7 @@ import { SessionCard, SessionsView } from "./sessions-view";
 import { TournamentCard, TournamentsView } from "./tournaments-view";
 import { EmptyPanel, PageIntro, formatCurrency } from "./shared";
 import { accountApi } from "@/lib/account-api";
-import { CashGameActions, TournamentGameActions, useRefreshGames } from "@/components/game-actions";
+import { CashGameActions, NightNote, TournamentGameActions, useRefreshGames } from "@/components/game-actions";
 import type { PerformanceScope, DashboardSession as Session, TournamentEvent } from "@/lib/earnings-analytics";
 
 export type GamesMode = "all" | "cash" | "tournaments";
@@ -121,12 +121,15 @@ export function GamesView(props: GamesViewProps) {
     return [...names].sort((left, right) => left.localeCompare(right));
   }, [props.cashSessions, props.tournaments]);
   const cashFooter = (session: Session) => (
+    <>
+    <NightNote sessionNumber={session.sessionNumber} tools={tools.data} />
     <CashGameActions
       session={session}
       tools={tools.data}
       onChanged={refresh}
-      onReopened={() => setNotice("Night reopened. Change the entries on the Live tab, then close it again.")}
+      onReopened={() => setNotice("Night reopened. Change the entries on the Record tab, then close it again.")}
     />
+    </>
   );
   const tournamentFooter = (event: TournamentEvent) => (
     <TournamentGameActions event={event} tools={tools.data} roster={roster} onChanged={refresh} />

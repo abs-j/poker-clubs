@@ -3,14 +3,16 @@ import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, t
 import { isClubAdmin, resolveClubContext } from "../lib/club-access";
 import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { liveSessionRole } from "../lib/live-activity";
-import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
+import { changeSettled, getNightSettlement, loadSettleUp, recordedSessionNumbers } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, getTournament, listTournaments, loadTournamentInputs, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadJackpotPayoutsForExport, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
+import { AiNotesError, MAX_NOTES_CHARS, readNightWithAi } from "../lib/ai-notes";
+import { getClubAiConfig, getClubAiStatus, updateClubAi } from "../lib/club-ai";
+import { cleanNightNote, clubJackpot, commitImport, deleteNight, listNightNotes, recordManualNight, setNightNote, JackpotInputError, listClubNights, loadJackpotPayoutsForExport, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
 import { loadGameTools } from "../lib/game-tools";
 import { parseResolution } from "../lib/night-balance";
 import { nightsToCsv, tournamentsToCsv } from "../lib/export-csv";
@@ -455,6 +457,139 @@ router.post("/clubs/current/sessions/notes-image", requireMemberSession, async (
     }
     req.log?.error({ err: error instanceof Anthropic.APIError ? { status: error.status, message: error.message } : error }, "notes image read failed");
     res.status(502).json({ error: "Couldn't read that picture right now. Paste the text instead." });
+  }
+});
+
+/** Record a finished night from notes: date, players, an optional note and how to settle any gap. Admin only. */
+router.post("/clubs/current/nights", requireAdminSession, async (req, res): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const night = readNightBody(body);
+  if ("error" in night) {
+    res.status(400).json({ error: night.error });
+    return;
+  }
+  const notes = cleanNightNote(body.notes);
+  if (notes === undefined) {
+    res.status(400).json({ error: "Keep the note under 2,000 characters." });
+    return;
+  }
+  const resolution = body.resolution === undefined || body.resolution === null ? null : parseResolution(body.resolution);
+  if (body.resolution && !resolution) {
+    res.status(400).json({ error: "Choose how to settle the difference." });
+    return;
+  }
+  const result = await recordManualNight(adminClubId(res), {
+    date: night.date,
+    notes,
+    resolution,
+    createdBy: res.locals.memberSession?.memberName ?? "admin",
+    players: night.players.map((player) => ({ name: player.name, buyInCents: Math.round(player.buyIn * 100), cashOutCents: Math.round(player.cashOut * 100) })),
+  });
+  if ("error" in result) {
+    res.status(409).json({ error: result.error });
+    return;
+  }
+  await recordAdminAction("night_recorded", `Recorded a night from notes (#${result.id}, ${result.players} players).`, req);
+  res.status(201).json(result);
+});
+
+/** Notes for every night, by game number (the numbering the Games cards use). Visible to members. */
+router.get("/clubs/current/night-notes", requireMemberSession, async (_req, res): Promise<void> => {
+  const clubId = memberClubId(res);
+  const [byId, numbers] = await Promise.all([listNightNotes(clubId), recordedSessionNumbers(clubId)]);
+  const notes: Record<number, string> = {};
+  for (const [id, note] of Object.entries(byId)) {
+    const number = numbers.get(Number(id));
+    if (number !== undefined) notes[number] = note;
+  }
+  res.json({ notes });
+});
+
+router.put("/clubs/current/nights/:id/notes", requireAdminSession, async (req, res): Promise<void> => {
+  const id = nightId(req.params.id);
+  const note = cleanNightNote((req.body ?? {}).notes);
+  if (id === null) {
+    res.status(400).json({ error: "Invalid night." });
+    return;
+  }
+  if (note === undefined) {
+    res.status(400).json({ error: "Keep the note under 2,000 characters." });
+    return;
+  }
+  if (!(await setNightNote(adminClubId(res), id, note))) {
+    res.status(404).json({ error: "That night no longer exists." });
+    return;
+  }
+  await recordAdminAction("night_note_changed", `Changed the note on night #${id}.`, req);
+  res.json({ id, notes: note });
+});
+
+const AI_READS_PER_CLUB_PER_DAY = 60;
+const aiReadUse = new Map<number, { day: string; count: number }>();
+function takeAiRead(clubId: number): boolean {
+  const day = new Date().toISOString().slice(0, 10);
+  const entry = aiReadUse.get(clubId);
+  const count = entry?.day === day ? entry.count : 0;
+  if (count >= AI_READS_PER_CLUB_PER_DAY) return false;
+  aiReadUse.set(clubId, { day, count: count + 1 });
+  return true;
+}
+
+/** Whether the AI reader is set up, for the Record tab. Members only learn on or off. */
+router.get("/clubs/current/ai", requireAdminSession, async (_req, res): Promise<void> => {
+  res.json(await getClubAiStatus(adminClubId(res)));
+});
+
+router.put("/clubs/current/ai", requireAdminSession, async (req, res): Promise<void> => {
+  const result = await updateClubAi(adminClubId(res), (req.body ?? {}) as Record<string, unknown>);
+  if ("error" in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  await recordAdminAction("ai_settings_updated", `Updated the AI reader (model ${result.model}, key ${result.keySet ? "set" : "not set"}).`, req);
+  res.json(result);
+});
+
+/** Reads pasted notes or a photo into lines with the club's own OpenRouter key. Nothing is saved. */
+router.post("/clubs/current/record/parse", requireAdminSession, async (req, res): Promise<void> => {
+  const clubId = adminClubId(res);
+  const config = await getClubAiConfig(clubId);
+  if (!config) {
+    res.status(503).json({ error: "The AI reader isn't set up. An admin can add an OpenRouter key in club settings, or you can use the plain reader." });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const text = typeof body.text === "string" ? body.text.slice(0, MAX_NOTES_CHARS + 1) : "";
+  if (text.length > MAX_NOTES_CHARS) {
+    res.status(400).json({ error: "Those notes are too long. Paste one night at a time." });
+    return;
+  }
+  let image;
+  if (body.image) {
+    const checked = validateNotesImage(body.image);
+    if ("error" in checked) {
+      res.status(400).json({ error: checked.error });
+      return;
+    }
+    image = checked.value;
+  }
+  if (!text.trim() && !image) {
+    res.status(400).json({ error: "Paste some notes or choose a picture." });
+    return;
+  }
+  if (!takeAiRead(clubId)) {
+    res.status(429).json({ error: "Your club has used its AI reads for today. Use the plain reader, or try tomorrow." });
+    return;
+  }
+  try {
+    res.json({ text: await readNightWithAi({ text, image }, config) });
+  } catch (error) {
+    if (error instanceof AiNotesError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+    req.log?.error({ err: error }, "AI notes read failed");
+    res.status(502).json({ error: "The AI reader couldn't answer right now. Use the plain reader instead." });
   }
 });
 

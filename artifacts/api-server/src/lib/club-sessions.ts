@@ -76,6 +76,7 @@ type NewNight = {
   createdBy?: string | null;
   /** Surplus that went into the bad beat jackpot. */
   jackpotCents?: number;
+  notes?: string | null;
   players: NightPlayer[];
 };
 
@@ -104,6 +105,7 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
       liveSessionKey: night.liveSessionKey ?? null,
       importBatch: night.importBatch ?? null,
       jackpotCents: night.jackpotCents ?? 0,
+      notes: night.notes ?? null,
       createdBy: night.createdBy ?? null,
     })
     .onConflictDoNothing({ target: clubSessions.liveSessionKey })
@@ -332,6 +334,72 @@ export async function undoImport(clubId: number, batchId: string): Promise<numbe
   return removed.length;
 }
 
+export const MAX_NIGHT_NOTE = 2000;
+
+/** Tidies a night note: trimmed, bounded, and null when empty. */
+export function cleanNightNote(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") return undefined;
+  const text = value.replace(/\r\n/g, "\n").trim();
+  if (text.length > MAX_NIGHT_NOTE) return undefined;
+  return text || null;
+}
+
+export type ManualNightResult = { id: number; players: number; jackpotCents: number; deductions: Array<{ name: string; cents: number }> };
+
+/**
+ * Records a finished night straight from notes: its date, players, an optional note and what to do
+ * about any gap (jackpot, or amounts taken off chosen players). The gap must be fully settled, or the
+ * night is refused, so the leaderboard is never skewed by a night that does not add up.
+ */
+export async function recordManualNight(
+  clubId: number,
+  input: { date: string; players: NightPlayer[]; notes: string | null; resolution: BalanceResolution | null; createdBy: string },
+): Promise<ManualNightResult | { error: string }> {
+  const gap = gapOf(input.players);
+  if (gap.direction !== "balanced") {
+    if (!input.resolution || input.resolution.mode === "none") {
+      return { error: "The buy-ins and cash-outs don't match. Choose how to settle the difference." };
+    }
+    const problem = checkResolution(input.players, input.resolution);
+    if (problem) return { error: problem };
+  }
+  const outcome = resolveBalance(input.players, input.resolution);
+  if (outcome.remainingCents !== 0) return { error: "The difference isn't fully settled." };
+  const id = await db.transaction((tx) =>
+    recordNight(tx, {
+      clubId,
+      date: input.date,
+      source: "manual",
+      createdBy: input.createdBy,
+      jackpotCents: outcome.jackpotCents,
+      notes: input.notes,
+      players: outcome.players,
+    }),
+  );
+  if (id === null) return { error: "Add at least one player." };
+  return { id, players: outcome.players.length, jackpotCents: outcome.jackpotCents, deductions: outcome.deductions };
+}
+
+/** Sets or clears a night's note. False when the night isn't this club's. */
+export async function setNightNote(clubId: number, id: number, note: string | null): Promise<boolean> {
+  const rows = await db
+    .update(clubSessions)
+    .set({ notes: note })
+    .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
+    .returning({ id: clubSessions.id });
+  return rows.length > 0;
+}
+
+/** Every night's note for the club, by night id. Only nights that have one. */
+export async function listNightNotes(clubId: number): Promise<Record<number, string>> {
+  const rows = await db
+    .select({ id: clubSessions.id, notes: clubSessions.notes })
+    .from(clubSessions)
+    .where(and(eq(clubSessions.clubId, clubId), sql`${clubSessions.notes} IS NOT NULL`));
+  return Object.fromEntries(rows.map((row) => [row.id, row.notes as string]));
+}
+
 export async function listClubNights(clubId: number) {
   await syncClosedLiveSessions(clubId);
   const rows = await db
@@ -341,6 +409,7 @@ export async function listClubNights(clubId: number) {
       source: clubSessions.source,
       importBatch: clubSessions.importBatch,
       jackpotCents: clubSessions.jackpotCents,
+      notes: clubSessions.notes,
       createdAt: clubSessions.createdAt,
       players: count(sessionResults.id),
       buyInCents: sql<number>`coalesce(sum(${sessionResults.buyInCents}), 0)`.mapWith(Number),
@@ -359,6 +428,7 @@ export async function listClubNights(clubId: number) {
     players: row.players,
     totalBuyIn: toDollars(row.buyInCents),
     jackpot: toDollars(row.jackpotCents),
+    notes: row.notes,
   }));
 }
 

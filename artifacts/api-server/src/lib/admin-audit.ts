@@ -14,6 +14,8 @@ export type AdminAuditAction =
   | "tournament_deleted"
   | "tournament_edited"
   | "night_recorded"
+  | "night_note_changed"
+  | "ai_settings_updated"
   | "jackpot_paid"
   | "settings_updated"
   | "results_exported"
