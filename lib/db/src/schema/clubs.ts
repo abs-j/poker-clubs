@@ -30,6 +30,10 @@ export const clubs = pgTable(
     pointsPreset: varchar("points_preset", { length: 16 }).notNull().default("standard"),
     /** The full rule set when pointsPreset is "custom". */
     pointsRules: jsonb("points_rules"),
+    /** OpenRouter model id used to read pasted notes and photos. Null means the AI reader is off. */
+    aiModel: varchar("ai_model", { length: 120 }),
+    /** The club's OpenRouter key, encrypted (see lib/secret-box.ts). Never sent to the browser. */
+    aiKeyCipher: text("ai_key_cipher"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [uniqueIndex("clubs_slug_idx").on(table.slug)],
@@ -134,6 +138,8 @@ export const clubSessions = pgTable(
     importBatch: varchar("import_batch", { length: 36 }),
     /** Surplus from this night that went into the bad beat jackpot, in cents. */
     jackpotCents: integer("jackpot_cents").notNull().default(0),
+    /** A free-text note about the night, shown to every member. */
+    notes: text("notes"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -185,6 +191,26 @@ export const nightSettlements = pgTable(
     uniqueIndex("night_settlements_session_player_idx").on(table.clubSessionId, table.playerId),
     index("night_settlements_club_id_idx").on(table.clubId),
   ],
+);
+
+/**
+ * Money added to the bad beat jackpot directly, not through a night's surplus. An admin enters it
+ * as an amount (and an optional note), so it never has to be faked as a player row.
+ */
+export const jackpotDeposits = pgTable(
+  "jackpot_deposits",
+  {
+    id: serial("id").primaryKey(),
+    clubId: integer("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    /** Amount added, in cents. Always greater than zero. */
+    cents: integer("cents").notNull(),
+    note: text("note"),
+    madeAt: timestamp("made_at", { withTimezone: true }).defaultNow().notNull(),
+    madeBy: text("made_by").notNull(),
+  },
+  (table) => [index("jackpot_deposits_club_id_idx").on(table.clubId)],
 );
 
 /**

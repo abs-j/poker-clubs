@@ -114,6 +114,13 @@ router.post("/poker/live-activity", requireMemberSession, async (req, res): Prom
       res.status(401).json({ error: "Member authentication required." });
       return;
     }
+    // One person records for the whole table. Everyone else watches the ledger read-only.
+    const actor = ledgerActor(res);
+    const role = actor ? await liveSessionRole(actor, memberClubId(res)) : null;
+    if (role && role.status === "open" && !role.canManage) {
+      res.status(403).json({ error: `Only ${role.hostName ?? "the host"} or an admin can add entries tonight. You can watch the ledger here.` });
+      return;
+    }
     const attributedPlayer = await validateAttributedPlayer(
       parsed.data.attributedPlayer,
       session.memberName,

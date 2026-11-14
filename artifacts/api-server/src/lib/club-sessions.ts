@@ -4,6 +4,7 @@ import {
   clubSessions,
   clubTournaments,
   db,
+  jackpotDeposits,
   jackpotPayouts,
   liveActivityEventComments,
   liveActivityEvents,
@@ -14,8 +15,9 @@ import {
   sessionResults,
 } from "@workspace/db";
 import { buildClubDashboard, type NightInput } from "./club-dashboard";
-import { nightFingerprint, type ParsedNight } from "./import-parse";
+import { nightFingerprint, parseMoney, type ParsedNight } from "./import-parse";
 import { loadTournamentEvents } from "./club-tournaments";
+import { recordedSessionNumbers } from "./night-settlement";
 import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
 import { payoutCents, remainingJackpotCents } from "./jackpot";
 import { canManageNight, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
@@ -76,6 +78,7 @@ type NewNight = {
   createdBy?: string | null;
   /** Surplus that went into the bad beat jackpot. */
   jackpotCents?: number;
+  notes?: string | null;
   players: NightPlayer[];
 };
 
@@ -104,6 +107,7 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
       liveSessionKey: night.liveSessionKey ?? null,
       importBatch: night.importBatch ?? null,
       jackpotCents: night.jackpotCents ?? 0,
+      notes: night.notes ?? null,
       createdBy: night.createdBy ?? null,
     })
     .onConflictDoNothing({ target: clubSessions.liveSessionKey })
@@ -332,6 +336,72 @@ export async function undoImport(clubId: number, batchId: string): Promise<numbe
   return removed.length;
 }
 
+export const MAX_NIGHT_NOTE = 2000;
+
+/** Tidies a night note: trimmed, bounded, and null when empty. */
+export function cleanNightNote(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") return undefined;
+  const text = value.replace(/\r\n/g, "\n").trim();
+  if (text.length > MAX_NIGHT_NOTE) return undefined;
+  return text || null;
+}
+
+export type ManualNightResult = { id: number; players: number; jackpotCents: number; deductions: Array<{ name: string; cents: number }> };
+
+/**
+ * Records a finished night straight from notes: its date, players, an optional note and what to do
+ * about any gap (jackpot, or amounts taken off chosen players). The gap must be fully settled, or the
+ * night is refused, so the leaderboard is never skewed by a night that does not add up.
+ */
+export async function recordManualNight(
+  clubId: number,
+  input: { date: string; players: NightPlayer[]; notes: string | null; resolution: BalanceResolution | null; createdBy: string },
+): Promise<ManualNightResult | { error: string }> {
+  const gap = gapOf(input.players);
+  if (gap.direction !== "balanced") {
+    if (!input.resolution || input.resolution.mode === "none") {
+      return { error: "The buy-ins and cash-outs don't match. Choose how to settle the difference." };
+    }
+    const problem = checkResolution(input.players, input.resolution);
+    if (problem) return { error: problem };
+  }
+  const outcome = resolveBalance(input.players, input.resolution);
+  if (outcome.remainingCents !== 0) return { error: "The difference isn't fully settled." };
+  const id = await db.transaction((tx) =>
+    recordNight(tx, {
+      clubId,
+      date: input.date,
+      source: "manual",
+      createdBy: input.createdBy,
+      jackpotCents: outcome.jackpotCents,
+      notes: input.notes,
+      players: outcome.players,
+    }),
+  );
+  if (id === null) return { error: "Add at least one player." };
+  return { id, players: outcome.players.length, jackpotCents: outcome.jackpotCents, deductions: outcome.deductions };
+}
+
+/** Sets or clears a night's note. False when the night isn't this club's. */
+export async function setNightNote(clubId: number, id: number, note: string | null): Promise<boolean> {
+  const rows = await db
+    .update(clubSessions)
+    .set({ notes: note })
+    .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
+    .returning({ id: clubSessions.id });
+  return rows.length > 0;
+}
+
+/** Every night's note for the club, by night id. Only nights that have one. */
+export async function listNightNotes(clubId: number): Promise<Record<number, string>> {
+  const rows = await db
+    .select({ id: clubSessions.id, notes: clubSessions.notes })
+    .from(clubSessions)
+    .where(and(eq(clubSessions.clubId, clubId), sql`${clubSessions.notes} IS NOT NULL`));
+  return Object.fromEntries(rows.map((row) => [row.id, row.notes as string]));
+}
+
 export async function listClubNights(clubId: number) {
   await syncClosedLiveSessions(clubId);
   const rows = await db
@@ -341,6 +411,7 @@ export async function listClubNights(clubId: number) {
       source: clubSessions.source,
       importBatch: clubSessions.importBatch,
       jackpotCents: clubSessions.jackpotCents,
+      notes: clubSessions.notes,
       createdAt: clubSessions.createdAt,
       players: count(sessionResults.id),
       buyInCents: sql<number>`coalesce(sum(${sessionResults.buyInCents}), 0)`.mapWith(Number),
@@ -359,6 +430,7 @@ export async function listClubNights(clubId: number) {
     players: row.players,
     totalBuyIn: toDollars(row.buyInCents),
     jackpot: toDollars(row.jackpotCents),
+    notes: row.notes,
   }));
 }
 
@@ -371,11 +443,17 @@ export type JackpotPayoutRow = {
   by: string;
 };
 
+export type JackpotDepositRow = { id: number; amount: number; note: string | null; at: string; by: string };
+/** A night that added surplus. The id is only sent to admins, who can edit it. */
+export type JackpotNightRow = { id?: number; number: number | null; date: string; amount: number };
+
 export type JackpotView = {
-  /** Dollars still in the pot: surplus from nights minus payouts. */
+  /** Dollars still in the pot: surplus from nights plus deposits, minus payouts. */
   total: number;
   nights: number;
   payouts: JackpotPayoutRow[];
+  deposits: JackpotDepositRow[];
+  nightEntries: JackpotNightRow[];
 };
 
 /** A payout the club cannot record (bad amount, unknown player, empty pot). */
@@ -386,16 +464,38 @@ export class JackpotInputError extends Error {
   }
 }
 
-/** The bad beat jackpot still held, in dollars, how many nights added to it, and the payouts already made. */
-export async function clubJackpot(clubId: number): Promise<JackpotView> {
-  await syncClosedLiveSessions(clubId);
-  const [row] = await db
-    .select({
-      contributed: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
-      nights: sql<number>`count(*) filter (where ${clubSessions.jackpotCents} > 0)`.mapWith(Number),
-    })
+/** Everything that went in and out of the pot, in cents. */
+async function potTotals(executor: Executor, clubId: number): Promise<{ nightCents: number; depositCents: number; paidCents: number }> {
+  const [nights] = await executor
+    .select({ cents: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number) })
     .from(clubSessions)
     .where(eq(clubSessions.clubId, clubId));
+  const [deposits] = await executor
+    .select({ cents: sql<number>`coalesce(sum(${jackpotDeposits.cents}), 0)`.mapWith(Number) })
+    .from(jackpotDeposits)
+    .where(eq(jackpotDeposits.clubId, clubId));
+  const [paid] = await executor
+    .select({ cents: sql<number>`coalesce(sum(${jackpotPayouts.cents}), 0)`.mapWith(Number) })
+    .from(jackpotPayouts)
+    .where(eq(jackpotPayouts.clubId, clubId));
+  return { nightCents: nights?.cents ?? 0, depositCents: deposits?.cents ?? 0, paidCents: paid?.cents ?? 0 };
+}
+
+const heldCents = (totals: { nightCents: number; depositCents: number; paidCents: number }) =>
+  remainingJackpotCents(totals.nightCents + totals.depositCents, totals.paidCents);
+
+/** Runs a change to the pot with the club row locked, so two edits at once can't overdraw it. */
+async function withPotLock<T>(clubId: number, work: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM clubs WHERE id = ${clubId} FOR UPDATE`);
+    return work(tx);
+  });
+}
+
+/** The bad beat jackpot still held, in dollars, with every deposit, payout and night that built it. */
+export async function clubJackpot(clubId: number, options: { admin?: boolean } = {}): Promise<JackpotView> {
+  await syncClosedLiveSessions(clubId);
+  const totals = await potTotals(db, clubId);
   const payouts = await db
     .select({
       id: jackpotPayouts.id,
@@ -408,10 +508,20 @@ export async function clubJackpot(clubId: number): Promise<JackpotView> {
     .innerJoin(players, eq(players.id, jackpotPayouts.playerId))
     .where(eq(jackpotPayouts.clubId, clubId))
     .orderBy(desc(jackpotPayouts.paidAt), desc(jackpotPayouts.id));
-  const paid = payouts.reduce((sum, payout) => sum + payout.cents, 0);
+  const deposits = await db
+    .select()
+    .from(jackpotDeposits)
+    .where(eq(jackpotDeposits.clubId, clubId))
+    .orderBy(desc(jackpotDeposits.madeAt), desc(jackpotDeposits.id));
+  const withSurplus = await db
+    .select({ id: clubSessions.id, date: clubSessions.sessionDate, cents: clubSessions.jackpotCents })
+    .from(clubSessions)
+    .where(and(eq(clubSessions.clubId, clubId), sql`${clubSessions.jackpotCents} > 0`))
+    .orderBy(desc(clubSessions.sessionDate), desc(clubSessions.id));
+  const numbers = await recordedSessionNumbers(clubId);
   return {
-    total: toDollars(remainingJackpotCents(row?.contributed ?? 0, paid)),
-    nights: row?.nights ?? 0,
+    total: toDollars(heldCents(totals)),
+    nights: withSurplus.length,
     payouts: payouts.map((payout) => ({
       id: payout.id,
       name: payout.name,
@@ -419,7 +529,27 @@ export async function clubJackpot(clubId: number): Promise<JackpotView> {
       at: payout.at.toISOString(),
       by: payout.by,
     })),
+    deposits: deposits.map((row) => ({ id: row.id, amount: toDollars(row.cents), note: row.note, at: row.madeAt.toISOString(), by: row.madeBy })),
+    nightEntries: withSurplus.map((night) => ({
+      ...(options.admin ? { id: night.id } : {}),
+      number: numbers.get(night.id) ?? null,
+      date: String(night.date).slice(0, 10),
+      amount: toDollars(night.cents),
+    })),
   };
+}
+
+async function findPlayerId(tx: Executor, clubId: number, rawName: unknown): Promise<number> {
+  const name = typeof rawName === "string" ? tidy(rawName) : "";
+  const key = normalizeNameKey(name);
+  if (!key || name.length > 80) throw new JackpotInputError("Choose a player.");
+  const [player] = await tx
+    .select({ id: players.id })
+    .from(players)
+    .where(and(eq(players.clubId, clubId), eq(players.nameKey, key)))
+    .limit(1);
+  if (!player) throw new JackpotInputError("That person is not on this club's roster.");
+  return player.id;
 }
 
 /**
@@ -431,36 +561,75 @@ export async function recordJackpotPayout(
   clubId: number,
   paidBy: string,
   body: { name?: unknown; amount?: unknown },
+  options: { admin?: boolean } = {},
 ): Promise<JackpotView> {
-  const name = typeof body.name === "string" ? tidy(body.name) : "";
-  const key = normalizeNameKey(name);
-  if (!key || name.length > 80) throw new JackpotInputError("Choose a player.");
   await syncClosedLiveSessions(clubId);
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM clubs WHERE id = ${clubId} FOR UPDATE`);
-    const [pot] = await tx
-      .select({
-        contributed: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
-      })
-      .from(clubSessions)
-      .where(eq(clubSessions.clubId, clubId));
-    const [paid] = await tx
-      .select({
-        cents: sql<number>`coalesce(sum(${jackpotPayouts.cents}), 0)`.mapWith(Number),
-      })
-      .from(jackpotPayouts)
-      .where(eq(jackpotPayouts.clubId, clubId));
-    const checked = payoutCents(body.amount, remainingJackpotCents(pot?.contributed ?? 0, paid?.cents ?? 0));
+  await withPotLock(clubId, async (tx) => {
+    const playerId = await findPlayerId(tx, clubId, body.name);
+    const checked = payoutCents(body.amount, heldCents(await potTotals(tx, clubId)));
     if ("error" in checked) throw new JackpotInputError(checked.error);
-    const [player] = await tx
-      .select({ id: players.id })
-      .from(players)
-      .where(and(eq(players.clubId, clubId), eq(players.nameKey, key)))
-      .limit(1);
-    if (!player) throw new JackpotInputError("That person is not on this club's roster.");
-    await tx.insert(jackpotPayouts).values({ clubId, playerId: player.id, cents: checked.cents, paidBy });
+    await tx.insert(jackpotPayouts).values({ clubId, playerId, cents: checked.cents, paidBy });
   });
-  return clubJackpot(clubId);
+  return clubJackpot(clubId, options);
+}
+
+/** Changes the player and amount of a payout. The new amount must fit in the pot with the old one returned. */
+export async function updateJackpotPayout(clubId: number, id: number, body: { name?: unknown; amount?: unknown }): Promise<JackpotView> {
+  await withPotLock(clubId, async (tx) => {
+    const [row] = await tx.select().from(jackpotPayouts).where(and(eq(jackpotPayouts.clubId, clubId), eq(jackpotPayouts.id, id))).limit(1).for("update");
+    if (!row) throw new JackpotInputError("That payout no longer exists.");
+    const playerId = body.name === undefined ? row.playerId : await findPlayerId(tx, clubId, body.name);
+    const checked = body.amount === undefined
+      ? { cents: row.cents }
+      : payoutCents(body.amount, heldCents(await potTotals(tx, clubId)) + row.cents);
+    if ("error" in checked) throw new JackpotInputError(checked.error);
+    await tx.update(jackpotPayouts).set({ playerId, cents: checked.cents }).where(eq(jackpotPayouts.id, id));
+  });
+  return clubJackpot(clubId, { admin: true });
+}
+
+/** Removes a payout; the money goes back into the pot. */
+export async function deleteJackpotPayout(clubId: number, id: number): Promise<boolean> {
+  const rows = await db.delete(jackpotPayouts).where(and(eq(jackpotPayouts.clubId, clubId), eq(jackpotPayouts.id, id))).returning({ id: jackpotPayouts.id });
+  return rows.length > 0;
+}
+
+/** Adds money to the pot directly. Admin. */
+export async function addJackpotDeposit(clubId: number, madeBy: string, body: { amount?: unknown; note?: unknown }): Promise<JackpotView> {
+  const dollars = typeof body.amount === "number" ? body.amount : typeof body.amount === "string" ? parseMoney(body.amount) : null;
+  const cents = dollars === null ? 0 : Math.round(dollars * 100);
+  if (!Number.isFinite(cents) || cents <= 0) throw new JackpotInputError("Enter an amount like 5 or 12.50.");
+  if (cents > 100_000_00) throw new JackpotInputError("That amount is too large.");
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, 200) || null : null;
+  await db.insert(jackpotDeposits).values({ clubId, cents, note, madeBy });
+  return clubJackpot(clubId, { admin: true });
+}
+
+/** Removes a deposit, unless payouts have already spent it. */
+export async function deleteJackpotDeposit(clubId: number, id: number): Promise<JackpotView | null> {
+  const found = await withPotLock(clubId, async (tx) => {
+    const [row] = await tx.select().from(jackpotDeposits).where(and(eq(jackpotDeposits.clubId, clubId), eq(jackpotDeposits.id, id))).limit(1).for("update");
+    if (!row) return false;
+    if (heldCents(await potTotals(tx, clubId)) - row.cents < 0) throw new JackpotInputError("Payouts have already spent this money. Remove or lower a payout first.");
+    await tx.delete(jackpotDeposits).where(eq(jackpotDeposits.id, id));
+    return true;
+  });
+  return found ? clubJackpot(clubId, { admin: true }) : null;
+}
+
+/** Sets how much of a night's surplus went into the pot (0 removes it). Refused if payouts would then exceed the pot. */
+export async function setNightJackpot(clubId: number, nightId: number, amount: unknown): Promise<JackpotView | null> {
+  const dollars = typeof amount === "number" ? amount : typeof amount === "string" ? parseMoney(amount) : null;
+  const cents = dollars === null ? -1 : Math.round(dollars * 100);
+  if (!Number.isFinite(cents) || cents < 0 || cents > 100_000_00) throw new JackpotInputError("Enter an amount like 5 or 12.50, or 0 to take it out.");
+  const found = await withPotLock(clubId, async (tx) => {
+    const [night] = await tx.select({ id: clubSessions.id, cents: clubSessions.jackpotCents }).from(clubSessions).where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, nightId))).limit(1).for("update");
+    if (!night) return false;
+    if (heldCents(await potTotals(tx, clubId)) - night.cents + cents < 0) throw new JackpotInputError("Payouts have already spent that money. Remove or lower a payout first.");
+    await tx.update(clubSessions).set({ jackpotCents: cents }).where(eq(clubSessions.id, nightId));
+    return true;
+  });
+  return found ? clubJackpot(clubId, { admin: true }) : null;
 }
 
 export type RecordedNightChange = {
@@ -524,19 +693,7 @@ export async function deleteNight(clubId: number, id: number): Promise<"deleted"
       .for("update");
     if (!night) return "missing";
 
-    const [pot] = await tx
-      .select({
-        contributed: sql<number>`coalesce(sum(${clubSessions.jackpotCents}), 0)`.mapWith(Number),
-      })
-      .from(clubSessions)
-      .where(eq(clubSessions.clubId, clubId));
-    const [paid] = await tx
-      .select({
-        cents: sql<number>`coalesce(sum(${jackpotPayouts.cents}), 0)`.mapWith(Number),
-      })
-      .from(jackpotPayouts)
-      .where(eq(jackpotPayouts.clubId, clubId));
-    const after = remainingJackpotCents((pot?.contributed ?? 0) - night.jackpotCents, paid?.cents ?? 0);
+    const after = heldCents(await potTotals(tx, clubId)) - night.jackpotCents;
     if (night.jackpotCents > 0 && after < 0) return "jackpot";
 
     if (night.liveSessionKey) {

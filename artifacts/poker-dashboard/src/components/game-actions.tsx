@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccountError, accountApi, type GameTools } from "@/lib/account-api";
 import type { DashboardSession as Session, TournamentEvent } from "@/lib/earnings-analytics";
 import { RecordTournament } from "@/components/record-tournament";
@@ -26,6 +26,55 @@ export function useRefreshGames() {
   return () => {
     void queryClient.invalidateQueries();
   };
+}
+
+/** A night's note: shown to every member, and editable by admins. Renders nothing when there is no note and no edit rights. */
+export function NightNote({ sessionNumber, tools }: { sessionNumber: number; tools: GameTools | undefined }) {
+  const queryClient = useQueryClient();
+  const notes = useQuery({ queryKey: ["night-notes"], queryFn: () => accountApi.nightNotes() });
+  const night = tools?.admin ? tools.nights.find((candidate) => candidate.sessionNumber === sessionNumber) : undefined;
+  const note = notes.data?.notes[String(sessionNumber)] ?? "";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (!note && !night) return null;
+
+  const save = () => {
+    if (!night) return;
+    setBusy(true);
+    setError("");
+    accountApi.setNightNote(night.id, draft)
+      .then(() => {
+        setEditing(false);
+        void queryClient.invalidateQueries({ queryKey: ["night-notes"] });
+      })
+      .catch((caught) => setError(describe(caught)))
+      .finally(() => setBusy(false));
+  };
+
+  if (editing) {
+    return (
+      <div className="mt-3" data-testid={`box-night-note-${sessionNumber}`}>
+        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} maxLength={2000} aria-label="Note for this night" className="w-full rounded-lg border border-border bg-background p-2 text-sm outline-none focus:border-primary" data-testid={`input-night-note-${sessionNumber}`} />
+        <div className="mt-2 flex gap-2">
+          <button type="button" disabled={busy} onClick={save} className={button} data-testid={`button-night-note-save-${sessionNumber}`}>{busy ? "Saving…" : "Save note"}</button>
+          <button type="button" onClick={() => setEditing(false)} className={button}>Cancel</button>
+        </div>
+        {error && <ActionError>{error}</ActionError>}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 text-sm" data-testid={`box-night-note-${sessionNumber}`}>
+      {note && <p className="whitespace-pre-line rounded-lg bg-secondary/60 px-3 py-2 text-muted-foreground" data-testid={`text-night-note-${sessionNumber}`}>{note}</p>}
+      {night && (
+        <button type="button" onClick={() => { setDraft(note); setEditing(true); }} className={`${button} mt-2`} data-testid={`button-night-note-edit-${sessionNumber}`}>
+          {note ? "Edit note" : "Add a note"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ActionError({ children }: { children: string }) {

@@ -171,6 +171,10 @@ export function detectedDefaults(): { timezone?: string; currency?: string } {
 }
 
 export type BalanceChoice = { mode: "jackpot" } | { mode: "player"; name: string } | { mode: "split" } | { mode: "none" };
+/** How a night recorded from notes settles a gap: the live choices, or amounts taken off any players. */
+export type RecordBalanceChoice = BalanceChoice | { mode: "custom"; deductions: Array<{ name: string; cents: number }> };
+export type AiStatus = { enabled: boolean; model: string; keySet: boolean };
+export type RecordedNight = { id: number; players: number; jackpotCents: number; deductions: Array<{ name: string; cents: number }> };
 
 export type JackpotPayout = {
   id: number;
@@ -180,11 +184,16 @@ export type JackpotPayout = {
   at: string;
   by: string;
 };
+export type JackpotDeposit = { id: number; amount: number; note: string | null; at: string; by: string };
+/** A night that added surplus. `id` is only present for admins, who can change it. */
+export type JackpotNightEntry = { id?: number; number: number | null; date: string; amount: number };
 export type JackpotSummary = {
   /** Dollars still in the pot. */
   total: number;
   nights: number;
   payouts: JackpotPayout[];
+  deposits: JackpotDeposit[];
+  nightEntries: JackpotNightEntry[];
 };
 
 export type LiveSessionRole = {
@@ -241,6 +250,12 @@ export const accountApi = {
   /** Host or admin: pay some of the jackpot to a player. Amount is dollars, as typed. */
   payJackpot: (input: { name: string; amount: string }) =>
     request<JackpotSummary>("/api/clubs/current/jackpot/payouts", send("POST", input)),
+  /** Admin: add money to the pot without a night. */
+  addJackpotDeposit: (input: { amount: string; note?: string }) => request<JackpotSummary>("/api/clubs/current/jackpot/deposits", send("POST", input)),
+  deleteJackpotDeposit: (id: number) => request<JackpotSummary>(`/api/clubs/current/jackpot/deposits/${id}`, { method: "DELETE" }),
+  updateJackpotPayout: (id: number, input: { name?: string; amount?: string }) => request<JackpotSummary>(`/api/clubs/current/jackpot/payouts/${id}`, send("PATCH", input)),
+  deleteJackpotPayout: (id: number) => request<JackpotSummary>(`/api/clubs/current/jackpot/payouts/${id}`, { method: "DELETE" }),
+  setNightJackpot: (nightId: number, amount: string) => request<JackpotSummary>(`/api/clubs/current/nights/${nightId}/jackpot`, send("PUT", { amount })),
   me: () => request<MeResponse>("/api/clubs/me", { cache: "no-store" }),
   signUp: (input: { name: string; email: string; password: string }) =>
     // The confirmation email's link brings the person back to the app, on this address.
@@ -313,6 +328,15 @@ export const accountApi = {
     request<LiveActivitySnapshot>("/api/poker/live-session/notes", send("POST", { players })),
   readNotesImage: (image: { data: string; mediaType: string }) =>
     request<{ text: string }>("/api/clubs/current/sessions/notes-image", send("POST", image)),
+  /** Admin: records a finished night straight from notes. `resolution` settles any gap. */
+  recordNight: (input: { date: string; notes: string; players: Array<{ name: string; buyIn: string; cashOut: string }>; resolution?: RecordBalanceChoice | null }) =>
+    request<RecordedNight>("/api/clubs/current/nights", send("POST", input)),
+  nightNotes: () => request<{ notes: Record<string, string> }>("/api/clubs/current/night-notes", { cache: "no-store" }),
+  setNightNote: (id: number, notes: string) => request<{ id: number; notes: string | null }>(`/api/clubs/current/nights/${id}/notes`, send("PUT", { notes })),
+  aiStatus: () => request<AiStatus>("/api/clubs/current/ai", { cache: "no-store" }),
+  saveAi: (input: { model?: string; apiKey?: string; clearKey?: boolean }) => request<AiStatus>("/api/clubs/current/ai", send("PUT", input)),
+  parseNotesAi: (input: { text?: string; image?: { data: string; mediaType: string } }) =>
+    request<{ text: string }>("/api/clubs/current/record/parse", send("POST", input)),
   getTournament: (id: number) => request<TournamentDraft>(`/api/clubs/current/tournaments/${id}`, { cache: "no-store" }),
   updateTournament: (id: number, input: object) =>
     request<{ id: number; players: number; totalCollected: number; mainPrizePool: number; dataCheck: string }>(

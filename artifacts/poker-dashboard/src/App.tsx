@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getPokerDashboard, getGetPokerLiveActivityQueryKey, useGetPokerDashboard, useGetPokerLiveActivity } from "@workspace/api-client-react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { HomeOverview } from "@/components/home-overview";
+import { JackpotPanel } from "@/components/jackpot-panel";
 import { SettleUpCard } from "@/components/settle-up";
 import { BottomTabBar, PlayersSubnav, TopTabs, type DashboardView } from "@/components/app-nav";
 import { FilterBar } from "@/components/filter-bar";
@@ -44,7 +45,7 @@ import type { DashboardPlayer as Player, DashboardSession as Session, Performanc
 import NotFound from "@/pages/not-found";
 
 // Heavy, rarely-used pieces are fetched on demand instead of shipping in the first load.
-const LiveSessionView = lazy(() => import("./views/live-view").then((m) => ({ default: m.LiveSessionView })));
+const RecordView = lazy(() => import("./views/record-view").then((m) => ({ default: m.RecordView })));
 const CumulativeProfitCard = lazy(() => import("./views/trends-section").then((m) => ({ default: m.CumulativeProfitCard })));
 const PublicGamesGrowthChart = lazy(() => import("@/components/public-games-growth-chart"));
 const PlatformUsagePage = lazy(() => import("./views/platform-usage").then((m) => ({ default: m.PlatformUsagePage })));
@@ -653,6 +654,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
                     <div className="space-y-4">
                       {!liveOpen && <MyNightCard sessions={homeSessions} viewer={memberName} standing={myStanding} />}
                       <SettleUpCard onOpenSession={openGame} />
+                      <JackpotPanel players={availablePlayers} canPay={false} admin={false} />
                     </div>
                   }
                   memberName={memberName}
@@ -679,7 +681,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
               {activeView === "live" && (
                 <>
                   <button type="button" onClick={() => navigate("guidelines")} data-testid="link-live-rules" className="mb-1 inline-flex min-h-[44px] items-center text-xs font-semibold text-primary hover:underline">Blind schedule &amp; rules →</button>
-                  <LiveSessionView memberName={memberName} availablePlayers={availablePlayers} />
+                  <RecordView memberName={memberName} availablePlayers={availablePlayers} clubAdmin={clubAdmin} onRecorded={() => void handleRefresh()} />
                 </>
               )}
              {activeView === "months" && (

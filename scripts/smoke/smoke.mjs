@@ -9,6 +9,14 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 
+// Admins land on "Paste notes" on the Record tab; the live table is one tap away. Members have no such tab.
+async function openTable(page) {
+  await page.waitForSelector('[data-testid="tab-record-table"]', { timeout: 4000 })
+    .then(() => page.$eval('[data-testid="tab-record-table"]', (node) => node.click()))
+    .catch(() => undefined);
+}
+
+
 const require = createRequire(`${process.cwd()}/`);
 const puppeteer = require("puppeteer-core");
 
@@ -329,20 +337,20 @@ console.log("\nAccounts and clubs");
     expect(hosting.status === "open" && hosting.canManage === true && hosting.hostName === "Pat Imported", `role ${JSON.stringify(hosting)}`);
     expect((await api("/api/poker/live-session/end", { jar: guest, method: "POST" })).status === 403, "a member who is not the host closed the night");
 
-    const add = (jar, action, amount) => api("/api/poker/live-activity", { jar, method: "POST", body: { action, amount } });
-    expect((await add(guest, "buy_in", 10)).ok, "guest buy-in failed");
+    const add = (jar, action, amount, who) => api("/api/poker/live-activity", { jar, method: "POST", body: { action, amount, ...(who ? { attributedPlayer: who } : {}) } });
+    // One person records for the table: a member who is not the host is refused, and the host logs for them.
+    expect((await add(guest, "buy_in", 10)).status === 403, "a member who is not the host logged an entry");
+    expect((await add(owner, "buy_in", 10, "Smoke Guest")).ok, "host buy-in for the guest failed");
     expect((await add(owner, "buy_in", 10)).ok, "owner buy-in failed");
-    expect((await add(guest, "cash_out", 10)).ok, "guest cash-out failed");
+    expect((await add(owner, "cash_out", 10, "Smoke Guest")).ok, "host cash-out for the guest failed");
     expect((await add(owner, "cash_out", 10)).ok, "owner cash-out failed");
 
     const ledger = await (await api("/api/poker/live-activity", { jar: guest })).json();
-    const own = ledger.entries.find((entry) => entry.createdBy === "Smoke Guest" && entry.action === "buy_in");
     const theirs = ledger.entries.find((entry) => entry.createdBy === "Pat Imported" && entry.action === "buy_in");
-    expect(own && theirs, "the two buy-ins were not both on the ledger");
+    expect(theirs, "the host's buy-ins were not on the ledger");
     const edit = (jar, eventId) => api(`/api/poker/live-activity/${eventId}`, {
       jar, method: "PATCH", body: { action: "buy_in", amount: 10, comment: "A correction" },
     });
-    expect((await edit(guest, own.eventId)).ok, "the author could not edit their own entry");
     expect((await edit(guest, theirs.eventId)).status === 403, "a member edited an entry they did not log");
 
     const handed = await api("/api/poker/live-session/host", { jar: owner, method: "POST", body: { name: "smoke guest" } });
@@ -367,7 +375,7 @@ console.log("\nAccounts and clubs");
   });
 
   await check("a bank holds the cash, and settling up is ticked off by the host, the bank or an admin", async () => {
-    const add = (jar, action, amount) => api("/api/poker/live-activity", { jar, method: "POST", body: { action, amount } });
+    const add = (jar, action, amount, who) => api("/api/poker/live-activity", { jar, method: "POST", body: { action, amount, ...(who ? { attributedPlayer: who } : {}) } });
     const settlement = (jar, id) => api(`/api/clubs/current/nights/${id}/settlement`, { jar });
     const tick = (jar, id, body) => api(`/api/clubs/current/nights/${id}/settlement`, { jar, method: "PUT", body });
     const mineFor = async (jar) => (await (await api("/api/clubs/current/settle-up", { jar })).json()).mine;
@@ -379,9 +387,9 @@ console.log("\nAccounts and clubs");
     expect(banked.ok && (await banked.json()).bankName === "Smoke Guest", "the host could not choose the bank");
 
     expect((await add(owner, "buy_in", 20)).ok, "owner buy-in failed");
-    expect((await add(guest, "buy_in", 10)).ok, "guest buy-in failed");
+    expect((await add(owner, "buy_in", 10, "Smoke Guest")).ok, "guest buy-in failed");
     expect((await add(owner, "cash_out", 12)).ok, "owner cash-out failed");
-    expect((await add(guest, "cash_out", 18)).ok, "guest cash-out failed");
+    expect((await add(owner, "cash_out", 18, "Smoke Guest")).ok, "guest cash-out failed");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close");
 
     const role = await (await api("/api/poker/live-session/role", { jar: owner })).json();
@@ -865,7 +873,7 @@ await check("Home shows your summary, last game, monthly points and the profit p
   const tabs = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid="nav-bottom-tabs"] button')].map((button) => button.textContent.trim()),
   );
-  expect(tabs.join(",") === "Home,Live,Leaderboard,Games,Me", `tabs were ${tabs.join(", ")}`);
+  expect(tabs.join(",") === "Home,Record,Leaderboard,Games,Me", `tabs were ${tabs.join(", ")}`);
   const gone = await page.evaluate(() => ({
     chart: !!document.querySelector('[data-testid="card-home-results"]'),
     tournament: !!document.querySelector('[data-testid="card-latest-tournament"]'),
@@ -1008,6 +1016,7 @@ await check("tapping a podium name opens that player's profile", async () => {
 
 await check("Live ledger and Club pages load", async () => {
   await page.tap('[data-testid="tab-live"]');
+  await openTable(page);
   await visible('[data-testid="section-live-ledger"]');
   await page.tap('[data-testid="tab-account"]');
   await visible('[data-testid="button-me-rules"]');
@@ -1259,6 +1268,7 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
   await phone.screenshot({ path: `${OUT}/settle-home.png` });
 
   await phone.tap('[data-testid="tab-live"]');
+  await openTable(phone);
   await wait('[data-testid="section-settle-list"]');
   expect(/Bank: Ivy/.test(await text('[data-testid="text-settle-bank"]')), "the settle list should name the bank");
   await phone.screenshot({ path: `${OUT}/settle-live.png`, fullPage: true });
@@ -1275,6 +1285,7 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
   await phone.waitForFunction(() => /1 to settle/.test(document.querySelector('[data-testid="badge-settle-1"]')?.innerText ?? ""), { timeout: 15000 });
 
   await phone.tap('[data-testid="tab-live"]');
+  await openTable(phone);
   await wait('[data-testid="button-settle-all"]');
   await phone.tap('[data-testid="button-settle-all"]');
   await phone.waitForFunction(() => /Everyone has settled/.test(document.body.innerText), { timeout: 15000 });
@@ -1287,6 +1298,7 @@ await check("settle-up shows on Home, in Live and on the Games card, and ticking
     await phone.tap(selector);
   };
   await phone.tap('[data-testid="tab-live"]');
+  await openTable(phone);
   await wait('[data-testid="input-live-night-date"]');
   await phone.$eval('[data-testid="input-live-night-date"]', (node) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -1363,19 +1375,17 @@ await check("a jackpot payout and a tournament can be recorded from the Live tab
     await wait('[data-testid="text-jackpot-total"]');
     await phone.waitForFunction(() => /4\.00/.test(document.querySelector('[data-testid="text-jackpot-total"]')?.textContent ?? ""), { timeout: 15000 });
     await wait('[data-testid="form-jackpot-payout"]');
-    const playerName = await phone.$eval('[data-testid="input-jackpot-player"]', (node) => node.value);
-    if (playerName !== "Ada Payout") {
-      await phone.click('[data-testid="input-jackpot-player"]', { clickCount: 3 });
-      await phone.type('[data-testid="input-jackpot-player"]', "Ada Payout");
-    }
+    await phone.select('[data-testid="input-jackpot-player"]', "Ada Payout");
     await phone.click('[data-testid="input-jackpot-amount"]');
     await phone.type('[data-testid="input-jackpot-amount"]', "1");
     await press('[data-testid="button-jackpot-payout"]');
     await phone.waitForFunction(() => /3\.00/.test(document.querySelector('[data-testid="text-jackpot-total"]')?.textContent ?? ""), { timeout: 15000 });
-    await phone.waitForFunction(() => /Ada Payout/.test(document.querySelector('[data-testid="list-jackpot-payouts"]')?.innerText ?? ""), { timeout: 15000 });
+    await press('[data-testid="button-jackpot-history"]');
+    await phone.waitForFunction(() => /Ada Payout/.test(document.querySelector('[data-testid="list-jackpot-history"]')?.innerText ?? ""), { timeout: 15000 });
     const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(sideways <= 1, `the jackpot card scrolls sideways on a phone (${sideways}px)`);
 
+    await openTable(phone);
     await press('[data-testid="button-new-night"]');
     await wait('[data-testid="menu-new-night-tournament"]');
     await phone.$eval('[data-testid="menu-new-night-tournament"]', (node) => node.click());
@@ -1699,6 +1709,7 @@ await check("an admin edits and deletes games from the Games tab; a member canno
     const notice = await phone.$eval('[data-testid="status-games-notice"]', (node) => node.innerText).catch(() => null);
     if (notice !== null) expect(/Night reopened/.test(notice), `reopen notice was "${notice}"`);
     await press('[data-testid="tab-live"]');
+    await openTable(phone);
     await phone.waitForSelector('[data-testid="button-end-live-session"]', { timeout: 15000 });
     const sideways = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(sideways <= 1, `Games scrolls sideways on a phone (${sideways}px)`);

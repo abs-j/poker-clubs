@@ -3,14 +3,17 @@ import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, t
 import { isClubAdmin, resolveClubContext } from "../lib/club-access";
 import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { liveSessionRole } from "../lib/live-activity";
-import { changeSettled, getNightSettlement, loadSettleUp } from "../lib/night-settlement";
+import { changeSettled, getNightSettlement, loadSettleUp, recordedSessionNumbers } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, getTournament, listTournaments, loadTournamentInputs, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
 import Anthropic from "@anthropic-ai/sdk";
 import { NotesImageError, readNightFromImage, validateNotesImage } from "../lib/notes-image";
 import { buildTournamentEvent, validateTournament } from "../lib/tournament-native";
-import { clubJackpot, commitImport, deleteNight, JackpotInputError, listClubNights, loadJackpotPayoutsForExport, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
+import { addJackpotDeposit, deleteJackpotDeposit, deleteJackpotPayout, setNightJackpot, updateJackpotPayout } from "../lib/club-sessions";
+import { AiNotesError, MAX_NOTES_CHARS, readNightWithAi } from "../lib/ai-notes";
+import { getClubAiConfig, getClubAiStatus, updateClubAi } from "../lib/club-ai";
+import { cleanNightNote, clubJackpot, commitImport, deleteNight, listNightNotes, recordManualNight, setNightNote, JackpotInputError, listClubNights, loadJackpotPayoutsForExport, loadNightsForExport, previewImport, recordJackpotPayout, setLedgerResolution, undoImport, updateNight } from "../lib/club-sessions";
 import { loadGameTools } from "../lib/game-tools";
 import { parseResolution } from "../lib/night-balance";
 import { nightsToCsv, tournamentsToCsv } from "../lib/export-csv";
@@ -209,7 +212,63 @@ router.put("/clubs/current/ledger/resolution", requireMemberSession, async (req,
 
 /** The club's bad beat jackpot so far: surplus from balanced nights, minus payouts. */
 router.get("/clubs/current/jackpot", requireMemberSession, async (_req, res): Promise<void> => {
-  res.json(await clubJackpot(memberClubId(res)));
+  const admin = isClubAdmin(res.locals.memberSession?.clubRole ?? "member");
+  res.json(await clubJackpot(memberClubId(res), { admin }));
+});
+
+/** Runs a jackpot change, turning an input problem into a 400 and recording it for the audit log. */
+async function jackpotChange(req: Request, res: ExpressResponse, detail: string, change: () => Promise<unknown | null>): Promise<void> {
+  try {
+    const result = await change();
+    if (result === null) {
+      res.status(404).json({ error: "That entry no longer exists." });
+      return;
+    }
+    await recordAdminAction("jackpot_changed", detail, req);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof JackpotInputError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+}
+
+const entryId = (value: unknown): number | null => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+/** Admin: add money to the pot directly, with an optional note. */
+router.post("/clubs/current/jackpot/deposits", requireAdminSession, async (req, res): Promise<void> => {
+  await jackpotChange(req, res, "Added money to the jackpot.", () => addJackpotDeposit(adminClubId(res), res.locals.adminSession?.memberName ?? res.locals.memberSession?.memberName ?? "admin", req.body ?? {}));
+});
+
+router.delete("/clubs/current/jackpot/deposits/:id", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid entry." });
+  await jackpotChange(req, res, `Removed jackpot deposit #${id}.`, () => deleteJackpotDeposit(adminClubId(res), id));
+});
+
+/** Admin: change a payout's player or amount. */
+router.patch("/clubs/current/jackpot/payouts/:id", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid entry." });
+  await jackpotChange(req, res, `Edited jackpot payout #${id}.`, () => updateJackpotPayout(adminClubId(res), id, req.body ?? {}));
+});
+
+router.delete("/clubs/current/jackpot/payouts/:id", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid entry." });
+  await jackpotChange(req, res, `Removed jackpot payout #${id}.`, async () => ((await deleteJackpotPayout(adminClubId(res), id)) ? await clubJackpot(adminClubId(res), { admin: true }) : null));
+});
+
+/** Admin: set how much of a night's surplus is in the pot (0 takes it out). */
+router.put("/clubs/current/nights/:id/jackpot", requireAdminSession, async (req, res): Promise<void> => {
+  const id = entryId(req.params.id);
+  if (id === null) return void res.status(400).json({ error: "Invalid night." });
+  await jackpotChange(req, res, `Changed the jackpot surplus of night #${id}.`, () => setNightJackpot(adminClubId(res), id, (req.body ?? {}).amount));
 });
 
 /** Host or admin: pay some of the jackpot to one player. The running total goes down by that amount. */
@@ -225,7 +284,7 @@ router.post("/clubs/current/jackpot/payouts", requireMemberSession, async (req, 
     return;
   }
   try {
-    const view = await recordJackpotPayout(memberClubId(res), actor.name, req.body ?? {});
+    const view = await recordJackpotPayout(memberClubId(res), actor.name, req.body ?? {}, { admin: actor.isAdmin });
     await recordAdminAction("jackpot_paid", `Paid ${view.payouts[0] ? `${view.payouts[0].amount.toFixed(2)} to ${view.payouts[0].name}` : "a jackpot payout"}. ${view.total.toFixed(2)} remains.`, req);
     res.status(201).json(view);
   } catch (error) {
@@ -455,6 +514,139 @@ router.post("/clubs/current/sessions/notes-image", requireMemberSession, async (
     }
     req.log?.error({ err: error instanceof Anthropic.APIError ? { status: error.status, message: error.message } : error }, "notes image read failed");
     res.status(502).json({ error: "Couldn't read that picture right now. Paste the text instead." });
+  }
+});
+
+/** Record a finished night from notes: date, players, an optional note and how to settle any gap. Admin only. */
+router.post("/clubs/current/nights", requireAdminSession, async (req, res): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const night = readNightBody(body);
+  if ("error" in night) {
+    res.status(400).json({ error: night.error });
+    return;
+  }
+  const notes = cleanNightNote(body.notes);
+  if (notes === undefined) {
+    res.status(400).json({ error: "Keep the note under 2,000 characters." });
+    return;
+  }
+  const resolution = body.resolution === undefined || body.resolution === null ? null : parseResolution(body.resolution);
+  if (body.resolution && !resolution) {
+    res.status(400).json({ error: "Choose how to settle the difference." });
+    return;
+  }
+  const result = await recordManualNight(adminClubId(res), {
+    date: night.date,
+    notes,
+    resolution,
+    createdBy: res.locals.adminSession?.memberName ?? res.locals.memberSession?.memberName ?? "admin",
+    players: night.players.map((player) => ({ name: player.name, buyInCents: Math.round(player.buyIn * 100), cashOutCents: Math.round(player.cashOut * 100) })),
+  });
+  if ("error" in result) {
+    res.status(409).json({ error: result.error });
+    return;
+  }
+  await recordAdminAction("night_recorded", `Recorded a night from notes (#${result.id}, ${result.players} players).`, req);
+  res.status(201).json(result);
+});
+
+/** Notes for every night, by game number (the numbering the Games cards use). Visible to members. */
+router.get("/clubs/current/night-notes", requireMemberSession, async (_req, res): Promise<void> => {
+  const clubId = memberClubId(res);
+  const [byId, numbers] = await Promise.all([listNightNotes(clubId), recordedSessionNumbers(clubId)]);
+  const notes: Record<number, string> = {};
+  for (const [id, note] of Object.entries(byId)) {
+    const number = numbers.get(Number(id));
+    if (number !== undefined) notes[number] = note;
+  }
+  res.json({ notes });
+});
+
+router.put("/clubs/current/nights/:id/notes", requireAdminSession, async (req, res): Promise<void> => {
+  const id = nightId(req.params.id);
+  const note = cleanNightNote((req.body ?? {}).notes);
+  if (id === null) {
+    res.status(400).json({ error: "Invalid night." });
+    return;
+  }
+  if (note === undefined) {
+    res.status(400).json({ error: "Keep the note under 2,000 characters." });
+    return;
+  }
+  if (!(await setNightNote(adminClubId(res), id, note))) {
+    res.status(404).json({ error: "That night no longer exists." });
+    return;
+  }
+  await recordAdminAction("night_note_changed", `Changed the note on night #${id}.`, req);
+  res.json({ id, notes: note });
+});
+
+const AI_READS_PER_CLUB_PER_DAY = 60;
+const aiReadUse = new Map<number, { day: string; count: number }>();
+function takeAiRead(clubId: number): boolean {
+  const day = new Date().toISOString().slice(0, 10);
+  const entry = aiReadUse.get(clubId);
+  const count = entry?.day === day ? entry.count : 0;
+  if (count >= AI_READS_PER_CLUB_PER_DAY) return false;
+  aiReadUse.set(clubId, { day, count: count + 1 });
+  return true;
+}
+
+/** Whether the AI reader is set up, for the Record tab. Members only learn on or off. */
+router.get("/clubs/current/ai", requireAdminSession, async (_req, res): Promise<void> => {
+  res.json(await getClubAiStatus(adminClubId(res)));
+});
+
+router.put("/clubs/current/ai", requireAdminSession, async (req, res): Promise<void> => {
+  const result = await updateClubAi(adminClubId(res), (req.body ?? {}) as Record<string, unknown>);
+  if ("error" in result) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  await recordAdminAction("ai_settings_updated", `Updated the AI reader (model ${result.model}, key ${result.keySet ? "set" : "not set"}).`, req);
+  res.json(result);
+});
+
+/** Reads pasted notes or a photo into lines with the club's own OpenRouter key. Nothing is saved. */
+router.post("/clubs/current/record/parse", requireAdminSession, async (req, res): Promise<void> => {
+  const clubId = adminClubId(res);
+  const config = await getClubAiConfig(clubId);
+  if (!config) {
+    res.status(503).json({ error: "The AI reader isn't set up. An admin can add an OpenRouter key in club settings, or you can use the plain reader." });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const text = typeof body.text === "string" ? body.text.slice(0, MAX_NOTES_CHARS + 1) : "";
+  if (text.length > MAX_NOTES_CHARS) {
+    res.status(400).json({ error: "Those notes are too long. Paste one night at a time." });
+    return;
+  }
+  let image;
+  if (body.image) {
+    const checked = validateNotesImage(body.image);
+    if ("error" in checked) {
+      res.status(400).json({ error: checked.error });
+      return;
+    }
+    image = checked.value;
+  }
+  if (!text.trim() && !image) {
+    res.status(400).json({ error: "Paste some notes or choose a picture." });
+    return;
+  }
+  if (!takeAiRead(clubId)) {
+    res.status(429).json({ error: "Your club has used its AI reads for today. Use the plain reader, or try tomorrow." });
+    return;
+  }
+  try {
+    res.json({ text: await readNightWithAi({ text, image }, config) });
+  } catch (error) {
+    if (error instanceof AiNotesError) {
+      res.status(422).json({ error: error.message });
+      return;
+    }
+    req.log?.error({ err: error }, "AI notes read failed");
+    res.status(502).json({ error: "The AI reader couldn't answer right now. Use the plain reader instead." });
   }
 });
 

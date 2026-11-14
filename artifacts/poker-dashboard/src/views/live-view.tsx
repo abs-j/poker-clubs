@@ -13,6 +13,7 @@ import { clubFileSlug, clubTimeZone, clubToday } from "@/lib/club-format";
 import { AccountError, accountApi, type BalanceChoice, type JackpotSummary } from "@/lib/account-api";
 import { SettleList, useRefreshSettleUp } from "@/components/settle-up";
 import { LedgerNotes } from "@/components/ledger-notes";
+import { TableRecorder } from "@/components/table-recorder";
 import { RecordTournament } from "@/components/record-tournament";
 
 const LiveLedgerQr = lazy(() => import("@/components/live-ledger-qr"));
@@ -255,15 +256,19 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
   // One tap adds a buy-in for the chosen player. A short-lived Undo covers a mis-tap without
   // asking for a written reason, and the removal is still recorded in the audit trail.
   const quickBuyIn = (value: number) => {
+    const typed = attributedPlayer.trim();
+    const matched = playerOptions.find((player) => player.toLocaleLowerCase() === typed.toLocaleLowerCase());
+    recordFor(matched ?? typed.replace(/\s+/g, " "), "buy_in", value);
+  };
+
+  // The table recorder's entry point: a buy-in or cash-out for one named player, with the same undo.
+  const recordFor = (who: string, entryAction: LiveActivityInputAction, value: number) => {
     if (!isOpen || isSaving) return;
     setFormError("");
     setSessionNotice("");
-    const typed = attributedPlayer.trim();
-    const matched = playerOptions.find((player) => player.toLocaleLowerCase() === typed.toLocaleLowerCase());
-    const who = matched ?? typed.replace(/\s+/g, " ");
     const knownIds = new Set(entries.map((entry) => entry.eventId));
     createMutation.mutate(
-      { data: { action: "buy_in", amount: value, ...(who ? { attributedPlayer: who } : {}) } },
+      { data: { action: entryAction, amount: value, ...(who ? { attributedPlayer: who } : {}) } },
       {
         onSuccess: (next) => {
           setSnapshot(next);
@@ -276,10 +281,10 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
             );
           };
           toast({
-            title: `Buy-in of ${formatCurrency(value)} added`,
+            title: `${entryAction === "cash_out" ? "Cash-out" : "Buy-in"} of ${formatCurrency(value)} added`,
             description: who || memberName,
             duration: 7000,
-            action: added ? <ToastAction altText="Undo this buy-in" onClick={undo}>Undo</ToastAction> : undefined,
+            action: added ? <ToastAction altText="Undo this entry" onClick={undo}>Undo</ToastAction> : undefined,
           });
         },
         onError: (error) => setFormError(apiErrorMessage(error)),
@@ -572,6 +577,12 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
 
       {showTournament && !isOpen && <RecordTournament roster={bankOptions} onCancel={() => setShowTournament(false)} />}
 
+      {isOpen && canManage && <TableRecorder summaries={snapshot.playerSummaries} roster={bankOptions} disabled={isSaving} onRecord={recordFor} />}
+      {isOpen && roleQuery.isSuccess && !canManage && (
+        <p role="status" data-testid="status-live-watching" className="rounded-xl border border-border bg-secondary/50 px-4 py-3 text-sm text-muted-foreground">
+          You're watching live. {hostLabel ?? "The host"} records everyone's buy-ins and cash-outs, and this page updates as they do.
+        </p>
+      )}
       {isOpen && canManage && <LedgerNotes roster={bankOptions} onAdded={setSnapshot} />}
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
@@ -588,7 +599,9 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
 
       {snapshot.playerSummaries.length > 0 && <TonightBoard summaries={snapshot.playerSummaries} viewer={memberName} closed={snapshot.sessionStatus === "ended"} />}
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+      <div className={`grid min-w-0 gap-4 ${canManage ? "xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]" : ""}`}>
+        {canManage && <details open={Boolean(editingEventId) || undefined} className="group min-w-0" data-testid="details-manual-entry">
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-2xl border border-border bg-card px-4 text-sm font-semibold [&::-webkit-details-marker]:hidden">Manual entry and corrections<ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
         <form ref={liveActivityFormRef} onSubmit={submit} className={`min-w-0 soft-shadow rounded-2xl border bg-card p-4 sm:p-5 ${editingEventId ? "border-2 border-primary bg-primary/[0.06] shadow-xl ring-4 ring-primary/25 ring-offset-2 ring-offset-background" : "border-border"}`} data-testid="form-live-activity">
           {editingEventId && <div role="status" data-testid="status-live-edit-mode" className="mb-4 flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/10 px-3 py-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Pencil className="h-4 w-4" /></span>
@@ -665,6 +678,7 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
           <p className="mt-3 hidden text-xs leading-5 text-muted-foreground sm:block">Select a listed player or type a new name. Entries are timestamped when saved, while <strong className="text-foreground">{memberName}</strong> remains the audit actor.</p>
           {formError && <p data-testid="status-live-form-error" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs leading-5 text-destructive">{formError}</p>}
         </form>
+        </details>}
 
         <details open data-testid="section-live-activity" className="group min-w-0 rounded-2xl border border-border bg-card">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
@@ -703,10 +717,6 @@ export function LiveSessionView({ memberName, availablePlayers }: LiveSessionVie
         </div>}
         {roleQuery.data?.status === "ended" && roleQuery.data.nightId !== null && <SettleList nightId={roleQuery.data.nightId} />}
       </div>
-
-      {jackpot && (jackpot.total > 0 || jackpot.payouts.length > 0) && (
-        <JackpotCard jackpot={jackpot} canManage={canManage} players={bankOptions} onPaid={setJackpot} />
-      )}
 
       <section className="rounded-2xl border border-border bg-card p-5 sm:p-6" data-testid="section-live-ledger-history">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -966,69 +976,6 @@ function LiveMetric({ label, compactLabel, value, detail, tone }: { label: strin
     <p className={`mt-1.5 truncate font-mono text-[18px] font-semibold tracking-[-0.045em] sm:mt-2 sm:text-2xl ${tone === "positive" ? "text-chart-1" : tone === "negative" ? "text-destructive" : "text-foreground"}`}>{value}</p>
     <p className="mt-1 hidden truncate text-[11px] text-muted-foreground sm:block sm:text-[11px]">{detail}</p>
   </article>;
-}
-
-function JackpotCard({ jackpot, canManage, players, onPaid }: { jackpot: JackpotSummary; canManage: boolean; players: string[]; onPaid: (next: JackpotSummary) => void }) {
-  const [name, setName] = useState(players[0] ?? "");
-  const [amount, setAmount] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const pay = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      onPaid(await accountApi.payJackpot({ name, amount }));
-      setAmount("");
-    } catch (caught) {
-      setError(caught instanceof AccountError ? caught.message : "Something went wrong. Try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5" data-testid="section-jackpot">
-      <p className="section-label">Bad beat jackpot</p>
-      <p className="mt-1 font-mono text-2xl font-semibold" data-testid="text-jackpot-total">{formatCurrency(jackpot.total)}</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Built from the surplus of {jackpot.nights} {jackpot.nights === 1 ? "night" : "nights"} that closed over.
-        {jackpot.payouts.length > 0 ? ` ${jackpot.payouts.length} ${jackpot.payouts.length === 1 ? "payout" : "payouts"} so far.` : ""}
-      </p>
-      {canManage && jackpot.total > 0 && (
-        <form onSubmit={(event) => void pay(event)} className="mt-4 flex flex-wrap items-end gap-2" data-testid="form-jackpot-payout">
-          <label className="min-w-[8rem] flex-1 text-[11px] font-semibold text-muted-foreground">
-            Player
-            <input list="jackpot-payout-players" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} data-testid="input-jackpot-player" className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-normal text-foreground outline-none focus:border-primary" />
-            <datalist id="jackpot-payout-players">
-              {players.map((player) => <option key={player} value={player} />)}
-            </datalist>
-          </label>
-          <label className="w-28 text-[11px] font-semibold text-muted-foreground">
-            Amount
-            <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" required placeholder="0.00" data-testid="input-jackpot-amount" className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-sm font-normal text-foreground outline-none focus:border-primary" />
-          </label>
-          <button type="submit" disabled={busy || !name.trim() || !amount.trim()} data-testid="button-jackpot-payout" className="h-10 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60">
-            {busy ? "Saving…" : "Record payout"}
-          </button>
-        </form>
-      )}
-      {error && <p role="alert" data-testid="status-jackpot-error" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
-      {!canManage && jackpot.total > 0 && <p className="mt-3 text-xs text-muted-foreground">The host or an admin can pay this out to a player.</p>}
-      {jackpot.payouts.length > 0 && (
-        <ul className="mt-4 divide-y divide-border/70 rounded-xl border border-border" data-testid="list-jackpot-payouts">
-          {jackpot.payouts.map((payout) => (
-            <li key={payout.id} className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm" data-testid={`row-jackpot-payout-${payout.id}`}>
-              <span className="min-w-0">
-                <span className="font-semibold">{payout.name}</span>
-                <span className="mt-0.5 block text-[11px] text-muted-foreground">by {payout.by} · {formatActivityTime(payout.at)}</span>
-              </span>
-              <span className="shrink-0 font-mono text-sm font-semibold">{formatCurrency(payout.amount)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
 }
 
 function LiveActivityLoading() {
