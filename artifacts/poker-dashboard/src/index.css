@@ -624,3 +624,13 @@
 @media (prefers-reduced-motion: reduce) {
   .recap-big, .recap-name, .recap-line, .recap-sub { animation: none; }
 }
+
+/* iOS Safari zooms the page when a focused field is under 16px. Keeping fields at 16px on touch
+   screens is what lets the viewport stay pinch-zoomable (no maximum-scale). */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

@@ -150,7 +150,7 @@ export function installDemoApi() {
     // Club pages that only read. They answer with calm, empty-but-valid data.
     if (path === "/api/clubs/current/settle-up") return json({ mine: { owe: [], owed: [], oweCents: 0, owedCents: 0 }, nights: [] });
     if (path === "/api/clubs/current/game-tools") return json({ admin: false, canReopen: false, reopenSessionNumber: null, nights: [] });
-    if (path === "/api/clubs/current/jackpot") return json({ total: 0, nights: 0, payouts: [] });
+    if (path === "/api/clubs/current/jackpot") return json({ total: 0, nights: 0, payouts: [], deposits: [], nightEntries: [] });
     if (path === "/api/clubs/current/invite") return json({ invites: [] });
     if (path === "/api/clubs/current/members") {
       return json({
