@@ -20,4 +20,4 @@ The old Live tab is now **Record** (view id stays `live` in URLs and usage track
 
 ## Deploy
 Run `pnpm --filter @workspace/db run push` for `club_sessions.notes`, `clubs.ai_model`, `clubs.ai_key_cipher` and `jackpot_deposits`.
-The smoke script (`scripts/smoke/smoke.mjs`) still assumes members log their own entries and that admins land on the live table; it needs updating before CI passes.
+The smoke script was updated for the Record tab (admins open the table with the "At the table" tab; only the host logs entries).
