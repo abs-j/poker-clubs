@@ -268,3 +268,34 @@ export async function loadNightForEdit(clubId: number, nightId: number, actor: L
     players: rows.map((row) => ({ name: row.name, buyInCents: row.buyIn, cashOutCents: row.cashOut, adjustmentCents: row.adjustment, adjustmentNote: row.note })),
   };
 }
+
+/**
+ * Ticks everyone settled on every night dated before `before` (YYYY-MM-DD) that still has people to settle.
+ * For clearing history that was never tracked. Admin only; each night gets a log entry saying it was done in bulk.
+ */
+export async function settleNightsBefore(clubId: number, actor: LedgerActor, before: string): Promise<{ nights: number; players: number }> {
+  if (!actor.isAdmin) throw new LedgerPermissionError("Only an admin can settle old nights in bulk.");
+  const nights = (await loadTrackedNights(clubId)).filter((night) => night.date < before);
+  let touchedNights = 0;
+  let touchedPlayers = 0;
+  await db.transaction(async (tx) => {
+    for (const night of nights) {
+      const open = night.lines.filter((line) => line.netCents !== 0 && !line.settled);
+      if (open.length === 0) continue;
+      await tx
+        .insert(nightSettlements)
+        .values(open.map((line) => ({ clubId, clubSessionId: night.nightId, playerId: line.playerId, settledBy: `${actor.name} (bulk)` })))
+        .onConflictDoNothing({ target: [nightSettlements.clubSessionId, nightSettlements.playerId] });
+      await tx.insert(nightEditLog).values({
+        clubId,
+        clubSessionId: night.nightId,
+        kind: "settled",
+        summary: `Marked settled in bulk (old nights): ${open.map((line) => line.name).join(", ").slice(0, 900)}.`,
+        by: actor.name,
+      });
+      touchedNights += 1;
+      touchedPlayers += open.length;
+    }
+  });
+  return { nights: touchedNights, players: touchedPlayers };
+}

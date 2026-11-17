@@ -326,6 +326,8 @@ export const accountApi = {
   undoImport: (batchId: string) => request<{ removed: number }>(`/api/clubs/current/import/${batchId}`, { method: "DELETE" }),
   /** Edit and delete targets for Games cards, and whether this person can reopen the latest night. */
   gameTools: () => request<GameTools>("/api/clubs/current/game-tools", { cache: "no-store" }),
+  /** Admin: marks everyone settled on every night before a date (YYYY-MM-DD). */
+  settleHistory: (before: string) => request<{ nights: number; players: number }>("/api/clubs/current/settle-up/history", send("POST", { before })),
   /** The night's figures, adjustments, jackpot and bank, for the editor. */
   nightEdit: (nightId: number) => request<NightEditData>(`/api/clubs/current/nights/${nightId}/edit`, { cache: "no-store" }),
   /** The host, the bank or an admin: pick or clear the bank (a player in the club). */
