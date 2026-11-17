@@ -1106,7 +1106,16 @@ await check("a member sees Members and the invite, and cannot reset it or see Ad
   await phone.type('[data-testid="input-password"]', password);
   await phone.tap('[data-testid="button-account-submit"]');
   await wait('[data-testid="tab-account"]');
-  await phone.tap('[data-testid="tab-account"]');
+  // Home is still filling in right after sign-in and can swallow the first tap, so retry it.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await phone.tap('[data-testid="tab-account"]');
+    try {
+      await phone.waitForSelector('[data-testid="button-me-rules"]', { timeout: 5000 });
+      break;
+    } catch {
+      /* tap again */
+    }
+  }
   await wait('[data-testid="button-me-rules"]');
   await phone.tap('[data-testid="button-me-rules"]');
   await wait('[data-testid="section-members"]');
