@@ -390,6 +390,31 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     assert.equal(unticked.log[0].kind, "unsettled");
   });
 
+  test("an admin can mark old nights settled in bulk, and nobody else can", async () => {
+    const owner = await newClub("Ona");
+    const guest = await join(owner, "Gus Guest");
+    const history = "Date,Player,Buy-in,Cash-out\n2026-01-05,Ona,10,20\n,Gus Guest,10,0\n2026-03-05,Ona,10,0\n,Gus Guest,10,20";
+    assert.equal((await api("/api/clubs/current/import", { jar: owner, method: "POST", body: { text: history } })).status, 201);
+    const before = await bodyOf(await api("/api/clubs/current/settle-up", { jar: owner }));
+    assert.equal(before.nights.filter((night) => night.state === "open").length, 2);
+
+    assert.ok([401, 403].includes((await api("/api/clubs/current/settle-up/history", { jar: guest, method: "POST", body: { before: "2026-02-01" } })).status));
+    assert.equal((await api("/api/clubs/current/settle-up/history", { jar: owner, method: "POST", body: {} })).status, 400);
+    const done = await api("/api/clubs/current/settle-up/history", { jar: owner, method: "POST", body: { before: "2026-02-01" } });
+    assert.equal(done.status, 200);
+    assert.deepEqual(await bodyOf(done), { nights: 1, players: 2 });
+
+    const after = await bodyOf(await api("/api/clubs/current/settle-up", { jar: owner }));
+    assert.equal(after.nights.find((night) => night.date === "2026-01-05").state, "settled");
+    assert.equal(after.nights.find((night) => night.date === "2026-03-05").state, "open");
+    const january = after.nights.find((night) => night.date === "2026-01-05");
+    const settlement = await bodyOf(await api(`/api/clubs/current/nights/${january.nightId}/settlement`, { jar: owner }));
+    assert.ok(settlement.log.some((entry) => /in bulk/.test(entry.summary)));
+    assert.ok(settlement.lines.every((line) => line.settled && /bulk/.test(line.settledBy)));
+    // Running it again finds nothing new.
+    assert.deepEqual(await bodyOf(await api("/api/clubs/current/settle-up/history", { jar: owner, method: "POST", body: { before: "2026-02-01" } })), { nights: 0, players: 0 });
+  });
+
   test("editing and deleting a tournament stays inside the club", async () => {
     const owner = await newClub("Nia");
     const guest = await join(owner, "Owen Guest");

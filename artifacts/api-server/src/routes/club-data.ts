@@ -3,7 +3,7 @@ import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, t
 import { isClubAdmin, resolveClubContext } from "../lib/club-access";
 import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { liveSessionRole } from "../lib/live-activity";
-import { BankError, changeNightBank, changeSettled, getNightSettlement, loadNightForEdit, loadSettleUp, recordedSessionNumbers } from "../lib/night-settlement";
+import { BankError, changeNightBank, changeSettled, getNightSettlement, loadNightForEdit, loadSettleUp, recordedSessionNumbers, settleNightsBefore } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, getTournament, listTournaments, loadTournamentInputs, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
@@ -394,6 +394,19 @@ router.get("/clubs/current/game-tools", requireMemberSession, async (_req, res):
     return;
   }
   res.json(await loadGameTools(memberClubId(res), actor));
+});
+
+/** Admin: mark everyone settled on every night before a date, to clear history that was never tracked. { before: "YYYY-MM-DD" } */
+router.post("/clubs/current/settle-up/history", requireAdminSession, async (req, res): Promise<void> => {
+  const actor: LedgerActor = { name: res.locals.adminSession?.memberName ?? res.locals.memberSession?.memberName ?? "admin", isAdmin: true };
+  const before = typeof req.body?.before === "string" ? parseDate(req.body.before) : null;
+  if (!before) {
+    res.status(400).json({ error: "Choose the date to settle everything before." });
+    return;
+  }
+  const result = await settleNightsBefore(adminClubId(res), actor, before);
+  await recordAdminAction("settle_history", `Marked ${result.players} players settled across ${result.nights} nights before ${before}.`, req);
+  res.json(result);
 });
 
 /** What the night editor opens with: figures, adjustments, jackpot, bank, and whether the viewer may edit. */

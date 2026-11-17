@@ -5,6 +5,7 @@ import { ClubDataPanel } from "@/components/club-data-panel";
 import { ClubSettingsPanel } from "@/components/club-settings-panel";
 import { DeleteClub } from "@/components/account-security";
 import { MergeNames } from "@/components/merge-names";
+import { SettleHistory } from "@/components/settle-history";
 import {
   AccountError,
   accountApi,
@@ -600,6 +601,7 @@ export function ClubAdmin({ onBack }: { onBack: () => void }) {
       </AdminBlock>
       <AdminBlock id="admin-setup" testId="section-admin-setup" title="Setup" detail="One-time history import, and CSV export of cash nights and tournaments.">
         <ClubDataPanel embedded />
+        <SettleHistory />
       </AdminBlock>
       <AdminBlock id="admin-settings" testId="section-admin-settings" title="Settings" detail="Name, rules, points, currency and timezone.">
         <ClubSettingsPanel embedded />

@@ -8,6 +8,7 @@ export type AdminAuditAction =
   | "history_import_undone"
   | "night_deleted"
   | "night_edited"
+  | "settle_history"
   | "ledger_balanced"
   | "night_reopened"
   | "night_handed_over"
