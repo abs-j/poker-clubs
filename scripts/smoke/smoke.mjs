@@ -1643,7 +1643,16 @@ await check("an admin edits and deletes games from the Games tab; a member canno
       await page.type('[data-testid="input-password"]', secret);
       await press('[data-testid="button-account-submit"]');
       await page.waitForSelector('[data-testid="section-home-overview"]', { timeout: 15000 });
-      await press('[data-testid="tab-sessions"]');
+      // Home keeps loading cards (settle-up, activity) for a moment and can swallow the first tap, so retry it.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        await press('[data-testid="tab-sessions"]');
+        try {
+          await page.waitForSelector('[data-testid="card-session-1"]', { timeout: 5000 });
+          return;
+        } catch {
+          /* tap again */
+        }
+      }
       await page.waitForSelector('[data-testid="card-session-1"]', { timeout: 15000 });
     };
 
