@@ -379,6 +379,9 @@ console.log("\nAccounts and clubs");
     const settlement = (jar, id) => api(`/api/clubs/current/nights/${id}/settlement`, { jar });
     const tick = (jar, id, body) => api(`/api/clubs/current/nights/${id}/settlement`, { jar, method: "PUT", body });
     const mineFor = async (jar) => (await (await api("/api/clubs/current/settle-up", { jar })).json()).mine;
+    // Every recorded night is tracked now, history included, so check one night at a time.
+    const oweOn = async (jar, id) => (await mineFor(jar)).owe.find((entry) => entry.nightId === id)?.cents ?? 0;
+    const owedOn = async (jar, id) => (await mineFor(jar)).owed.find((entry) => entry.nightId === id)?.cents ?? 0;
 
     expect((await api("/api/poker/live-session/start", { jar: owner, method: "POST" })).ok, "could not start");
     expect((await api("/api/poker/live-session/bank", { jar: guest, method: "PUT", body: { name: "Smoke Guest" } })).status === 403, "a member who is not the host set the bank");
@@ -402,8 +405,8 @@ console.log("\nAccounts and clubs");
     expect(pat?.netCents === -800 && gus?.netCents === 800 && !pat.settled && !gus.settled, `lines ${JSON.stringify(before.lines)}`);
     expect(before.canSettle === true && before.state === "open", "the bank should be able to tick people off");
     let mine = await mineFor(owner);
-    expect(mine.oweCents === 800 && mine.owe.some((entry) => entry.nightId === night && entry.bank === "Smoke Guest"), `owner owes ${JSON.stringify(mine)}`);
-    expect((await mineFor(guest)).owedCents === 800, "the winner should be owed 8.00");
+    expect(mine.owe.some((entry) => entry.nightId === night && entry.cents === 800 && entry.bank === "Smoke Guest"), `owner owes ${JSON.stringify(mine)}`);
+    expect((await owedOn(guest, night)) === 800, "the winner should be owed 8.00");
 
     expect((await settlement(rival, night)).status === 404, "another club read this night's settle-up");
     expect((await tick(rival, night, { name: "Pat Imported", settled: true })).status === 404, "another club ticked this night");
@@ -413,7 +416,7 @@ console.log("\nAccounts and clubs");
     const ticked = await tick(guest, night, { name: "pat imported", settled: true });
     expect(ticked.ok, `bank tick ${ticked.status}`);
     expect((await ticked.json()).state === "partial", "one tick of two should be partial");
-    expect((await mineFor(owner)).oweCents === 0, "a settled player still owes");
+    expect((await oweOn(owner, night)) === 0, "a settled player still owes");
     const summary = await (await api("/api/clubs/current/settle-up", { jar: owner })).json();
     expect(summary.nights.find((entry) => entry.nightId === night)?.state === "partial", "the Games list should show the night as partly settled");
 
@@ -429,9 +432,10 @@ console.log("\nAccounts and clubs");
 
     expect((await api("/api/poker/live-session/reopen", { jar: owner, method: "POST" })).ok, "could not reopen");
     expect((await settlement(owner, night)).status === 404, "a reopened night kept its settle-up");
-    expect((await mineFor(owner)).oweCents === 0, "a reopened night still shows as owed");
+    expect((await oweOn(owner, night)) === 0, "a reopened night still shows as owed");
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close again");
-    expect((await mineFor(owner)).oweCents === 800, "closing again should ask for settling again");
+    const again = await (await api("/api/poker/live-session/role", { jar: owner })).json();
+    expect((await oweOn(owner, again.nightId)) === 800, "closing again should ask for settling again");
   });
 
   await check("a night can be started for a past date and filled from notes by its host", async () => {
@@ -1666,7 +1670,8 @@ await check("an admin edits and deletes games from the Games tab; a member canno
       node.dispatchEvent(new Event("input", { bubbles: true }));
     }, "25");
     await press('[data-testid="button-save-night-1"]');
-    await phone.waitForFunction(() => /35\.00/.test(document.querySelector('[data-testid="card-session-1"]')?.innerText ?? ""), { timeout: 15000 });
+    // The open form shows its own totals ($35.00 cash in), so wait for it to close after saving.
+    await phone.waitForFunction(() => !document.querySelector('[data-testid="form-edit-night-1"]') && /35\.00/.test(document.querySelector('[data-testid="card-session-1"]')?.innerText ?? ""), { timeout: 15000 });
     const saved = await (await api("/api/poker/dashboard", { jar: owner })).json();
     const savedNight = saved.sessions.find((row) => row.date === "2026-04-04");
     expect(savedNight && savedNight.totalBuyIn === 35, `edited pot ${savedNight?.totalBuyIn}`);

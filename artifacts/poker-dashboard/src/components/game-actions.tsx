@@ -101,7 +101,8 @@ export function CashGameActions({
   // The bank, the host and admins may edit; the server decides and reports each night's canEdit.
   const tracked = useSettleUp().data?.nights.find((candidate) => candidate.sessionNumber === session.sessionNumber);
   const editNightId = tracked?.canEdit ? tracked.nightId : null;
-  const showEdit = editNightId !== null;
+  // Wait for the tools too, so Edit appears together with the note button and nothing shifts under a tap.
+  const showEdit = editNightId !== null && tools !== undefined;
   const showDelete = Boolean(tools?.admin && night);
   const [mode, setMode] = useState<"idle" | "edit" | "confirm">("idle");
   const [busy, setBusy] = useState(false);
@@ -229,8 +230,8 @@ function CashEditorForm({
       adjustmentNote: player.adjustmentNote ?? "",
     })),
   );
-  // Starts at the saved jackpot; typing over it keeps the typed figure.
-  const jackpot = useNightJackpot(rows, dollarText(data.jackpotCents));
+  // Starts at the saved jackpot, if any; otherwise a surplus fills it in. Typing over it keeps the typed figure.
+  const jackpot = useNightJackpot(rows, data.jackpotCents > 0 ? dollarText(data.jackpotCents) : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const names = rows.map((row) => row.name).filter(Boolean);
