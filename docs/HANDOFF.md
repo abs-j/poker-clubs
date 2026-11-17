@@ -144,3 +144,11 @@ Done. No schema change, no API change; it is all in the site.
 - **Install banner:** from the third visit (`install-card.tsx`), 90-day snooze after dismissing. Install app stays in the menu.
 - **Live ledger:** cash-outs read "Out $x" and buy-ins "In $x" in neutral colours, not red minus amounts. The NET box still shows buy-ins minus cash-outs.
 - **Header:** Sign out, Refresh and Install moved into the menu on desktop too.
+
+### S7. Night banks, adjustments and settle-up for every game
+Needs `pnpm --filter @workspace/db run push` on publish (additive): `club_sessions.bank_name`, `session_results.adjustment_cents` and `adjustment_note`, and the new table `night_edit_log`.
+- **Every recorded night is tracked** (live, hand-entered and imported), not just live nights with settle-up on. Old nights have no bank and show as unsettled until ticked, so expect "You owe" on Home for history; tick them off or edit them.
+- **Bank** is a player's name on the night (`club_sessions.bank_name`, falling back to the live ledger's bank). The bank, the live host or an admin can edit a night (`PATCH /clubs/current/sessions/:id`), set the bank (`PUT .../nights/:id/bank`) and tick settlements. Delete stays admin-only.
+- **Adjustments** are a signed per-player amount with a note. A player's net owed is cash-out minus buy-in plus adjustment; poker profit and leaderboards ignore adjustments. A night must balance: sum of nets plus the jackpot is zero. A surplus auto-fills the jackpot (editable); a deficit needs negative adjustments. The night table (`components/night-table.tsx`) is shared by Record and the Games editor and has a totals row (cash in, out, adjustments, net).
+- **Log:** `night_edit_log` records edits, bank changes and every tick or untick with who and when (shown under History on the settle list). Changing amounts after someone was ticked settled adds an `amounts_after_settled` entry that flags the night.
+- Editing a live-ledger night is allowed; reopening it later rebuilds it from the ledger and drops the edits.

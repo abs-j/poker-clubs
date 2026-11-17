@@ -70,3 +70,18 @@ test("submitted choices are read strictly", () => {
   assert.equal(parseResolution({ mode: "steal" }), null);
   assert.equal(parseResolution("jackpot"), null);
 });
+
+import { adjustedRemainingCents, suggestedJackpotCents } from "./night-balance.ts";
+
+test("a night balances when nets, adjustments and the jackpot add up to zero", () => {
+  assert.equal(adjustedRemainingCents(over(), 0), -500);
+  assert.equal(adjustedRemainingCents(over(), 500), 0);
+  assert.equal(suggestedJackpotCents(over()), 500);
+  // A deficit is covered by negative adjustments and never produces a jackpot.
+  assert.equal(adjustedRemainingCents(under(), 0), 200);
+  assert.equal(suggestedJackpotCents(under()), 0);
+  const covered = [{ ...p("Ann", 2000, 2500), adjustmentCents: -200 }, p("Bo", 2000, 1700), p("Cy", 2000, 2000)];
+  assert.equal(adjustedRemainingCents(covered, 0), 0);
+  // An adjustment can also soak up a surplus before the jackpot is worked out.
+  assert.equal(suggestedJackpotCents([{ ...p("Ann", 2000, 1500), adjustmentCents: 200 }, p("Bo", 2000, 2000)]), 300);
+});

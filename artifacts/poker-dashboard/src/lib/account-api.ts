@@ -222,12 +222,27 @@ export type NightSettlement = {
   bankName: string | null;
   canSettle: boolean;
   state: SettleState;
+  /** Amounts changed after people were ticked settled, so the ticks may be stale. */
+  flagged: boolean;
   lines: SettleLine[];
+  /** Newest first: edits, bank changes and every tick or untick. */
+  log: Array<{ kind: string; summary: string; at: string; by: string }>;
+};
+export type NightPlayerInput = { name: string; buyIn: string; cashOut: string; adjustment?: string; adjustmentNote?: string };
+export type NightEditData = {
+  nightId: number;
+  date: string;
+  source: string;
+  jackpotCents: number;
+  notes: string | null;
+  bankName: string | null;
+  canEdit: boolean;
+  players: Array<{ name: string; buyInCents: number; cashOutCents: number; adjustmentCents: number; adjustmentNote: string | null }>;
 };
 export type MineSettleEntry = { nightId: number; sessionNumber: number | null; date: string; cents: number; bank: string | null };
 export type SettleUpSummary = {
   mine: { owe: MineSettleEntry[]; owed: MineSettleEntry[]; oweCents: number; owedCents: number };
-  nights: Array<{ nightId: number; sessionNumber: number | null; date: string; state: SettleState; unsettled: number }>;
+  nights: Array<{ nightId: number; sessionNumber: number | null; date: string; state: SettleState; unsettled: number; canEdit: boolean; flagged: boolean }>;
 };
 
 export const accountApi = {
@@ -311,7 +326,11 @@ export const accountApi = {
   undoImport: (batchId: string) => request<{ removed: number }>(`/api/clubs/current/import/${batchId}`, { method: "DELETE" }),
   /** Edit and delete targets for Games cards, and whether this person can reopen the latest night. */
   gameTools: () => request<GameTools>("/api/clubs/current/game-tools", { cache: "no-store" }),
-  updateNight: (id: number, input: { date: string; players: Array<{ name: string; buyIn: string; cashOut: string }> }) =>
+  /** The night's figures, adjustments, jackpot and bank, for the editor. */
+  nightEdit: (nightId: number) => request<NightEditData>(`/api/clubs/current/nights/${nightId}/edit`, { cache: "no-store" }),
+  /** The host, the bank or an admin: pick or clear the bank (a player in the club). */
+  setNightBank: (nightId: number, name: string | null) => request<NightSettlement>(`/api/clubs/current/nights/${nightId}/bank`, send("PUT", { name })),
+  updateNight: (id: number, input: { date: string; players: NightPlayerInput[]; jackpot?: string; notes?: string; bank?: string | null }) =>
     request<{ id: number; date: string; players: number }>(`/api/clubs/current/sessions/${id}`, send("PATCH", input)),
   deleteNight: (id: number) => request<void>(`/api/clubs/current/sessions/${id}`, { method: "DELETE" }),
   recordTournament: (input: TournamentFormInput) =>
@@ -329,7 +348,7 @@ export const accountApi = {
   readNotesImage: (image: { data: string; mediaType: string }) =>
     request<{ text: string }>("/api/clubs/current/sessions/notes-image", send("POST", image)),
   /** Admin: records a finished night straight from notes. `resolution` settles any gap. */
-  recordNight: (input: { date: string; notes: string; players: Array<{ name: string; buyIn: string; cashOut: string }>; resolution?: RecordBalanceChoice | null }) =>
+  recordNight: (input: { date: string; notes: string; players: NightPlayerInput[]; jackpot?: string; bank?: string | null; resolution?: RecordBalanceChoice | null }) =>
     request<RecordedNight>("/api/clubs/current/nights", send("POST", input)),
   nightNotes: () => request<{ notes: Record<string, string> }>("/api/clubs/current/night-notes", { cache: "no-store" }),
   setNightNote: (id: number, notes: string) => request<{ id: number; notes: string | null }>(`/api/clubs/current/nights/${id}/notes`, send("PUT", { notes })),
