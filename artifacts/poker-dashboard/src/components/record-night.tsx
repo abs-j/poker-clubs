@@ -1,10 +1,11 @@
 import { useMemo, useState, type ChangeEvent } from "react";
-import { FileUp, X } from "lucide-react";
-import { AccountError, accountApi, type AiStatus, type RecordBalanceChoice } from "@/lib/account-api";
+import { FileUp } from "lucide-react";
+import { AccountError, accountApi, type AiStatus } from "@/lib/account-api";
 import { clubToday } from "@/lib/club-format";
-import { parseNightNotes, type NoteRow } from "@/lib/night-notes";
+import { parseNightNotes } from "@/lib/night-notes";
 import { prepareNotesImage } from "@/lib/notes-image";
-import { balanceGap, shareShortfall } from "@/lib/record-night";
+import { NightTable, useNightJackpot, type NightRow } from "@/components/night-table";
+import { centsOf, remainingCents } from "@/lib/night-table";
 import { plural } from "@/lib/utils";
 
 const button =
@@ -12,7 +13,6 @@ const button =
 const primary =
   "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60";
 const field = "h-10 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
-const money = (cents: number) => `$${(Math.abs(cents) / 100).toFixed(2)}`;
 
 type Props = { roster: string[]; ai: AiStatus | null; onSaved: () => void; onOpenSettings: () => void };
 
@@ -22,24 +22,19 @@ type Props = { roster: string[]; ai: AiStatus | null; onSaved: () => void; onOpe
  */
 export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
   const [text, setText] = useState("");
-  const [rows, setRows] = useState<NoteRow[]>([]);
+  const [rows, setRows] = useState<NightRow[]>([]);
+  const [bank, setBank] = useState("");
   const [date, setDate] = useState(clubToday());
   const [note, setNote] = useState("");
   const [info, setInfo] = useState("");
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
-  // How to settle a gap: "jackpot" for a surplus, or per-player amounts to take off for a shortfall.
-  const [takeOff, setTakeOff] = useState<Record<number, string>>({});
+  const jackpot = useNightJackpot(rows);
+  const filled = rows.filter((row) => row.name.trim());
+  const settled = remainingCents(rows, centsOf(jackpot.jackpot)) === 0;
 
-  const gap = useMemo(() => balanceGap(rows), [rows]);
-  const filled = rows.map((row, index) => ({ row, index })).filter(({ row }) => row.name.trim());
-  const takenCents = Object.entries(takeOff).reduce((sum, [index, value]) => (rows[Number(index)]?.name.trim() ? sum + (Math.round(Number(value) * 100) || 0) : sum), 0);
-  const remaining = gap.direction === "under" ? gap.cents - takenCents : gap.cents;
-  const settled = gap.direction === "balanced" || (gap.direction === "over" ? true : remaining === 0);
-
-  const update = (index: number, patch: Partial<NoteRow>) => setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  const reset = () => { setRows([]); setTakeOff({}); };
+  const reset = () => { setRows([]); jackpot.reset(); };
 
   const showRows = (lines: string) => {
     const read = parseNightNotes(lines, roster);
@@ -48,7 +43,7 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
       setInfo("Couldn't find any players. Try one line per player, like: Ann in 20 out 30");
       return;
     }
-    setRows(read.rows);
+    setRows(read.rows.map((row) => ({ ...row, adjustment: "" })));
     const extras = [
       read.newNames.length > 0 ? `${read.newNames.join(", ")} ${read.newNames.length === 1 ? "isn't" : "aren't"} in the club yet and will be added as new.` : "",
       read.skipped.length > 0 ? `Skipped: ${read.skipped.slice(0, 3).join("; ")}.` : "",
@@ -86,28 +81,18 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
     }
   };
 
-  const shareEvenly = () => {
-    const shares = shareShortfall(rows.map((row) => ({ name: row.name, cashOutCents: Math.round(Number(row.cashOut) * 100) || 0 })), gap.cents);
-    setTakeOff(Object.fromEntries(shares.map((cents, index) => [index, cents > 0 ? (cents / 100).toFixed(2) : ""])));
-  };
-
   const save = async () => {
     setBusy(true);
     setError("");
     try {
-      let resolution: RecordBalanceChoice | null = null;
-      if (gap.direction === "over") resolution = { mode: "jackpot" };
-      if (gap.direction === "under") {
-        resolution = {
-          mode: "custom",
-          deductions: filled.flatMap(({ row, index }) => {
-            const cents = Math.round(Number(takeOff[index]) * 100) || 0;
-            return cents > 0 ? [{ name: row.name.trim(), cents }] : [];
-          }),
-        };
-      }
-      await accountApi.recordNight({ date, notes: note, players: filled.map(({ row }) => ({ ...row, name: row.name.trim() })), resolution });
-      setText(""); setNote(""); reset();
+      await accountApi.recordNight({
+        date,
+        notes: note,
+        bank: bank.trim() || null,
+        jackpot: jackpot.jackpot,
+        players: filled.map((row) => ({ ...row, name: row.name.trim() })),
+      });
+      setText(""); setNote(""); setBank(""); reset();
       setInfo("Night recorded. It's on the leaderboard now.");
       onSaved();
     } catch (caught) {
@@ -148,47 +133,11 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
       {rows.length > 0 && (
         <div className="mt-4 space-y-4" data-testid="table-record-rows">
           <datalist id="record-roster">{roster.map((name) => <option key={name} value={name} />)}</datalist>
-          <div className="space-y-2">
-            <div className="grid grid-cols-[1fr_4.5rem_4.5rem_2.5rem] gap-2 text-[11px] font-semibold text-muted-foreground"><span>Player</span><span>Buy-in</span><span>Cash-out</span><span /></div>
-            {rows.map((row, index) => (
-              <div key={index} className="grid grid-cols-[1fr_4.5rem_4.5rem_2.5rem] gap-2">
-                <input list="record-roster" value={row.name} onChange={(event) => update(index, { name: event.target.value })} aria-label="Player" maxLength={40} className={field} data-testid={`input-record-name-${index}`} />
-                <input value={row.buyIn} onChange={(event) => update(index, { buyIn: event.target.value })} inputMode="decimal" aria-label="Buy-in" className={field} data-testid={`input-record-buyin-${index}`} />
-                <input value={row.cashOut} onChange={(event) => update(index, { cashOut: event.target.value })} inputMode="decimal" aria-label="Cash-out" className={field} data-testid={`input-record-cashout-${index}`} />
-                <button type="button" onClick={() => { setRows((current) => current.filter((_, i) => i !== index)); setTakeOff({}); }} aria-label={`Remove ${row.name || "row"}`} className={`${button} px-0`} data-testid={`button-record-remove-${index}`}><X className="h-4 w-4" /></button>
-              </div>
-            ))}
-            <button type="button" onClick={() => setRows((current) => [...current, { name: "", buyIn: "", cashOut: "" }])} className={button} data-testid="button-record-add-row">Add a player</button>
-          </div>
-
-          {gap.direction === "over" && (
-            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs" data-testid="text-record-over">
-              Buy-ins are {money(gap.cents)} more than cash-outs. That {money(gap.cents)} goes into the bad beat jackpot when you save. To change that, fix an amount above.
-            </p>
-          )}
-          {gap.direction === "under" && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs" data-testid="box-record-under">
-              <p>Cash-outs are {money(gap.cents)} more than buy-ins. Take amounts off any players until it matches, or fix an amount above.</p>
-              <div className="mt-2 space-y-2">
-                {filled.map(({ row, index }) => (
-                  <label key={index} className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate font-semibold">{row.name} <span className="font-normal text-muted-foreground">cashed out ${row.cashOut || "0"}</span></span>
-                    <span className="flex items-center gap-1">
-                      <span className="text-muted-foreground">take off $</span>
-                      <input value={takeOff[index] ?? ""} onChange={(event) => setTakeOff((current) => ({ ...current, [index]: event.target.value }))} inputMode="decimal" aria-label={`Take off ${row.name}`} className={`${field} h-9 w-20`} data-testid={`input-record-takeoff-${index}`} />
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button type="button" onClick={shareEvenly} className={button} data-testid="button-record-share">Share evenly</button>
-                <button type="button" onClick={() => setTakeOff({})} className={button}>Clear</button>
-                <span className={remaining === 0 ? "font-semibold text-emerald-700 dark:text-emerald-300" : "font-semibold"} data-testid="text-record-remaining">
-                  {remaining === 0 ? "Balanced" : remaining > 0 ? `${money(remaining)} still to take off` : `${money(remaining)} too much taken off`}
-                </span>
-              </div>
-            </div>
-          )}
+          <NightTable rows={rows} onRows={setRows} jackpot={jackpot.jackpot} onJackpot={jackpot.setJackpot} suggestedJackpotCents={jackpot.suggested} datalistId="record-roster" testPrefix="record" />
+          <label className="block text-[11px] font-semibold text-muted-foreground">
+            Bank (who holds the cash, optional)
+            <input list="record-roster" value={bank} onChange={(event) => setBank(event.target.value)} maxLength={40} className={`${field} mt-1 w-full font-normal text-foreground`} data-testid="input-record-bank" />
+          </label>
 
           <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
             <label className="text-[11px] font-semibold text-muted-foreground">

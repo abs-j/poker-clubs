@@ -140,6 +140,8 @@ export const clubSessions = pgTable(
     jackpotCents: integer("jackpot_cents").notNull().default(0),
     /** A free-text note about the night, shown to every member. */
     notes: text("notes"),
+    /** The player holding the cash for this night. The bank, the host and admins may edit the night and tick settlements. */
+    bankName: text("bank_name"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -163,6 +165,9 @@ export const sessionResults = pgTable(
       .references(() => players.id),
     buyInCents: integer("buy_in_cents").notNull().default(0),
     cashOutCents: integer("cash_out_cents").notNull().default(0),
+    /** A signed correction that changes what the player owes or is owed, e.g. covering a deficit. Not part of poker profit. */
+    adjustmentCents: integer("adjustment_cents").notNull().default(0),
+    adjustmentNote: text("adjustment_note"),
   },
   (table) => [
     uniqueIndex("session_results_session_player_idx").on(table.sessionId, table.playerId),
@@ -191,6 +196,26 @@ export const nightSettlements = pgTable(
     uniqueIndex("night_settlements_session_player_idx").on(table.clubSessionId, table.playerId),
     index("night_settlements_club_id_idx").on(table.clubId),
   ],
+);
+
+/** Who changed a night and when: edits, bank changes and settle ticks (and unticks). */
+export const nightEditLog = pgTable(
+  "night_edit_log",
+  {
+    id: serial("id").primaryKey(),
+    clubId: integer("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    clubSessionId: integer("club_session_id")
+      .notNull()
+      .references(() => clubSessions.id, { onDelete: "cascade" }),
+    /** "edit", "bank", "settled", "unsettled" or "amounts_after_settled". */
+    kind: varchar("kind", { length: 24 }).notNull(),
+    summary: text("summary").notNull(),
+    at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+    by: text("by").notNull(),
+  },
+  (table) => [index("night_edit_log_session_idx").on(table.clubSessionId)],
 );
 
 /**

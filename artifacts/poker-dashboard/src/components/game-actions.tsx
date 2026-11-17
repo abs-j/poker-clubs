@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AccountError, accountApi, type GameTools } from "@/lib/account-api";
+import { AccountError, accountApi, type GameTools, type NightEditData } from "@/lib/account-api";
 import type { DashboardSession as Session, TournamentEvent } from "@/lib/earnings-analytics";
+import { NightTable, useNightJackpot, type NightRow } from "@/components/night-table";
+import { useSettleUp } from "@/components/settle-up";
+import { centsOf, remainingCents } from "@/lib/night-table";
 import { RecordTournament } from "@/components/record-tournament";
 import { formatDate } from "@/views/shared";
 
@@ -95,7 +98,10 @@ export function CashGameActions({
 }) {
   const night = tools?.nights.find((candidate) => candidate.sessionNumber === session.sessionNumber);
   const showReopen = Boolean(tools?.canReopen && tools.reopenSessionNumber === session.sessionNumber);
-  const showEdit = Boolean(tools?.admin && night && night.source !== "live");
+  // The bank, the host and admins may edit; the server decides and reports each night's canEdit.
+  const tracked = useSettleUp().data?.nights.find((candidate) => candidate.sessionNumber === session.sessionNumber);
+  const editNightId = tracked?.canEdit ? tracked.nightId : null;
+  const showEdit = editNightId !== null;
   const showDelete = Boolean(tools?.admin && night);
   const [mode, setMode] = useState<"idle" | "edit" | "confirm">("idle");
   const [busy, setBusy] = useState(false);
@@ -130,10 +136,10 @@ export function CashGameActions({
   const live = night?.source === "live";
   return (
     <div className="border-t border-border/70 px-4 py-3" data-testid={`game-actions-${session.sessionNumber}`}>
-      {mode === "edit" && night && (
+      {mode === "edit" && editNightId !== null && (
         <CashEditor
           session={session}
-          nightId={night.id}
+          nightId={editNightId}
           onClose={() => { setMode("idle"); setError(""); }}
           onSaved={() => { setMode("idle"); onChanged(); }}
         />
@@ -190,21 +196,58 @@ function CashEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [date, setDate] = useState(session.date);
-  const [rows, setRows] = useState(() => session.players.map((player) => ({
-    name: player.player,
-    buyIn: String(player.buyIn),
-    cashOut: String(player.cashOut),
-  })));
+  const detail = useQuery({ queryKey: ["night-edit", nightId], queryFn: () => accountApi.nightEdit(nightId), staleTime: 0, gcTime: 0 });
+  if (detail.isError) return <ActionError>Could not open this night. Try again.</ActionError>;
+  if (!detail.data) return <div className="h-24 skeleton rounded-2xl" />;
+  return <CashEditorForm session={session} nightId={nightId} data={detail.data} onClose={onClose} onSaved={onSaved} />;
+}
+
+const dollarText = (cents: number) => (cents === 0 ? "" : (cents / 100).toFixed(2));
+
+function CashEditorForm({
+  session,
+  nightId,
+  data,
+  onClose,
+  onSaved,
+}: {
+  session: Session;
+  nightId: number;
+  data: NightEditData;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [date, setDate] = useState(data.date);
+  const [note, setNote] = useState(data.notes ?? "");
+  const [bank, setBank] = useState(data.bankName ?? "");
+  const [rows, setRows] = useState<NightRow[]>(() =>
+    data.players.map((player) => ({
+      name: player.name,
+      buyIn: (player.buyInCents / 100).toFixed(2),
+      cashOut: (player.cashOutCents / 100).toFixed(2),
+      adjustment: dollarText(player.adjustmentCents),
+      adjustmentNote: player.adjustmentNote ?? "",
+    })),
+  );
+  // Starts at the saved jackpot; typing over it keeps the typed figure.
+  const jackpot = useNightJackpot(rows, dollarText(data.jackpotCents));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const update = (index: number, patch: Partial<(typeof rows)[number]>) =>
-    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const names = rows.map((row) => row.name).filter(Boolean);
+  const balanced = remainingCents(rows, centsOf(jackpot.jackpot)) === 0;
+  const prefix = `edit-night-${session.sessionNumber}`;
+  const testKey = `${session.sessionNumber}-`;
 
   const save = () => {
     setBusy(true);
     setError("");
-    accountApi.updateNight(nightId, { date, players: rows })
+    accountApi.updateNight(nightId, {
+      date,
+      players: rows,
+      jackpot: jackpot.jackpot || "0",
+      notes: note,
+      bank: bank.trim() || null,
+    })
       .then(() => onSaved())
       .catch((caught) => setError(describe(caught)))
       .finally(() => setBusy(false));
@@ -213,24 +256,29 @@ function CashEditor({
   return (
     <div data-testid={`form-edit-night-${session.sessionNumber}`}>
       <p className="text-sm font-semibold">Edit this night</p>
-      <label className="mt-2 block text-[11px] font-semibold text-muted-foreground">
-        Date
-        <input type="date" className={`${input} mt-1 w-full`} value={date} onChange={(event) => setDate(event.target.value)} data-testid={`input-edit-night-date-${session.sessionNumber}`} />
-      </label>
-      <div className="mt-2 space-y-2">
-        {rows.map((row, index) => (
-          <div key={index} className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-2">
-            <input className={input} value={row.name} maxLength={40} aria-label={`Player ${index + 1}`} onChange={(event) => update(index, { name: event.target.value })} data-testid={`input-edit-night-name-${session.sessionNumber}-${index}`} />
-            <input className={input} value={row.buyIn} inputMode="decimal" aria-label={`Buy-in ${index + 1}`} onChange={(event) => update(index, { buyIn: event.target.value })} data-testid={`input-edit-night-buyin-${session.sessionNumber}-${index}`} />
-            <input className={input} value={row.cashOut} inputMode="decimal" aria-label={`Cash-out ${index + 1}`} onChange={(event) => update(index, { cashOut: event.target.value })} data-testid={`input-edit-night-cashout-${session.sessionNumber}-${index}`} />
-          </div>
-        ))}
+      {data.source === "live" && (
+        <p className="mt-1 text-xs text-muted-foreground">This night came from the live ledger. Reopening it later rebuilds it from the ledger and drops these edits.</p>
+      )}
+      <div className="mt-2 grid gap-2 sm:grid-cols-[10rem_1fr]">
+        <label className="block text-[11px] font-semibold text-muted-foreground">
+          Date
+          <input type="date" className={`${input} mt-1 w-full`} value={date} onChange={(event) => setDate(event.target.value)} data-testid={`input-edit-night-date-${session.sessionNumber}`} />
+        </label>
+        <label className="block text-[11px] font-semibold text-muted-foreground">
+          Bank (who holds the cash)
+          <input list={`${prefix}-roster`} className={`${input} mt-1 w-full font-normal text-foreground`} value={bank} maxLength={40} placeholder="No bank" onChange={(event) => setBank(event.target.value)} data-testid={`input-edit-night-bank-${session.sessionNumber}`} />
+        </label>
       </div>
+      <datalist id={`${prefix}-roster`}>{names.map((name) => <option key={name} value={name} />)}</datalist>
+      <div className="mt-3">
+        <NightTable rows={rows} onRows={setRows} jackpot={jackpot.jackpot} onJackpot={jackpot.setJackpot} suggestedJackpotCents={jackpot.suggested} datalistId={`${prefix}-roster`} testPrefix="edit-night" testKey={testKey} />
+      </div>
+      <label className="mt-2 block text-[11px] font-semibold text-muted-foreground">
+        Note for this night
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={2000} className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-sm font-normal text-foreground outline-none focus:border-primary" data-testid={`input-edit-night-note-${session.sessionNumber}`} />
+      </label>
       <div className="mt-2 flex flex-wrap gap-2">
-        <button type="button" className={button} onClick={() => setRows((current) => [...current, { name: "", buyIn: "", cashOut: "" }])} data-testid={`button-edit-night-add-${session.sessionNumber}`}>
-          Add player
-        </button>
-        <button type="button" className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60" disabled={busy} onClick={save} data-testid={`button-save-night-${session.sessionNumber}`}>
+        <button type="button" className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60" disabled={busy || !balanced || rows.filter((row) => row.name.trim()).length < 2} onClick={save} data-testid={`button-save-night-${session.sessionNumber}`}>
           {busy ? "Saving…" : "Save night"}
         </button>
         <button type="button" className={button} disabled={busy} onClick={onClose}>Cancel</button>

@@ -9,6 +9,7 @@ import {
   liveActivityEventComments,
   liveActivityEvents,
   liveSessions,
+  nightEditLog,
   nightSettlements,
   normalizeNameKey,
   players,
@@ -18,7 +19,7 @@ import { buildClubDashboard, type NightInput } from "./club-dashboard";
 import { nightFingerprint, parseMoney, type ParsedNight } from "./import-parse";
 import { loadTournamentEvents } from "./club-tournaments";
 import { recordedSessionNumbers } from "./night-settlement";
-import { checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
+import { adjustedRemainingCents, checkResolution, gapOf, parseResolution, resolveBalance, type BalanceResolution } from "./night-balance";
 import { payoutCents, remainingJackpotCents } from "./jackpot";
 import { canManageNight, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
 import { liveLedgerSessionDate } from "./live-ledger-utils";
@@ -31,7 +32,7 @@ const toCents = (dollars: number) => Math.round(dollars * 100);
 const toDollars = (cents: number) => cents / 100;
 const tidy = (name: string) => name.trim().replace(/\s+/g, " ");
 
-type NightPlayer = { name: string; buyInCents: number; cashOutCents: number };
+type NightPlayer = { name: string; buyInCents: number; cashOutCents: number; adjustmentCents?: number; adjustmentNote?: string | null };
 
 /** Finds each name on the club's roster, adding the ones that are new (unclaimed). */
 export async function ensurePlayers(tx: Executor, clubId: number, names: string[]): Promise<Map<string, number>> {
@@ -79,6 +80,7 @@ type NewNight = {
   /** Surplus that went into the bad beat jackpot. */
   jackpotCents?: number;
   notes?: string | null;
+  bankName?: string | null;
   players: NightPlayer[];
 };
 
@@ -92,6 +94,7 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
     if (existing) {
       existing.buyInCents += player.buyInCents;
       existing.cashOutCents += player.cashOutCents;
+      existing.adjustmentCents = (existing.adjustmentCents ?? 0) + (player.adjustmentCents ?? 0);
     } else {
       merged.set(key, { ...player, name: tidy(player.name) });
     }
@@ -108,6 +111,7 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
       importBatch: night.importBatch ?? null,
       jackpotCents: night.jackpotCents ?? 0,
       notes: night.notes ?? null,
+      bankName: night.bankName ?? null,
       createdBy: night.createdBy ?? null,
     })
     .onConflictDoNothing({ target: clubSessions.liveSessionKey })
@@ -121,6 +125,8 @@ async function recordNight(tx: Executor, night: NewNight): Promise<number | null
       playerId: ids.get(key)!,
       buyInCents: player.buyInCents,
       cashOutCents: player.cashOutCents,
+      adjustmentCents: player.adjustmentCents ?? 0,
+      adjustmentNote: player.adjustmentNote ?? null,
     })),
   );
   return session.id;
@@ -350,37 +356,66 @@ export function cleanNightNote(value: unknown): string | null | undefined {
 export type ManualNightResult = { id: number; players: number; jackpotCents: number; deductions: Array<{ name: string; cents: number }> };
 
 /**
- * Records a finished night straight from notes: its date, players, an optional note and what to do
- * about any gap (jackpot, or amounts taken off chosen players). The gap must be fully settled, or the
- * night is refused, so the leaderboard is never skewed by a night that does not add up.
+ * Records a finished night straight from notes: its date, players, an optional note and how the money
+ * balances. Players may carry adjustments (a signed correction to what they owe or are owed) and the night a
+ * jackpot figure; together they must make the night add up, or it is refused, so a night that does not
+ * balance is never recorded. The older "resolution" (take amounts off cash-outs, or send a surplus to the
+ * jackpot) is still accepted.
  */
 export async function recordManualNight(
   clubId: number,
-  input: { date: string; players: NightPlayer[]; notes: string | null; resolution: BalanceResolution | null; createdBy: string },
+  input: {
+    date: string;
+    players: NightPlayer[];
+    notes: string | null;
+    resolution: BalanceResolution | null;
+    createdBy: string;
+    jackpotCents?: number;
+    bankName?: string | null;
+  },
 ): Promise<ManualNightResult | { error: string }> {
-  const gap = gapOf(input.players);
-  if (gap.direction !== "balanced") {
-    if (!input.resolution || input.resolution.mode === "none") {
-      return { error: "The buy-ins and cash-outs don't match. Choose how to settle the difference." };
-    }
+  let nightPlayers = input.players;
+  let jackpotCents = input.jackpotCents ?? 0;
+  let deductions: Array<{ name: string; cents: number }> = [];
+  if (input.resolution && input.resolution.mode !== "none") {
     const problem = checkResolution(input.players, input.resolution);
     if (problem) return { error: problem };
+    const outcome = resolveBalance(input.players, input.resolution);
+    nightPlayers = outcome.players;
+    jackpotCents += outcome.jackpotCents;
+    deductions = outcome.deductions;
   }
-  const outcome = resolveBalance(input.players, input.resolution);
-  if (outcome.remainingCents !== 0) return { error: "The difference isn't fully settled." };
+  if (adjustedRemainingCents(nightPlayers, jackpotCents) !== 0) {
+    return { error: "The buy-ins and cash-outs don't match. Add adjustments or a jackpot amount until the night balances." };
+  }
+  const bankName = input.bankName ? await rosterName(clubId, input.bankName) : null;
+  if (input.bankName && !bankName) return { error: "The bank has to be a player in this club." };
   const id = await db.transaction((tx) =>
     recordNight(tx, {
       clubId,
       date: input.date,
       source: "manual",
       createdBy: input.createdBy,
-      jackpotCents: outcome.jackpotCents,
+      jackpotCents,
       notes: input.notes,
-      players: outcome.players,
+      bankName,
+      players: nightPlayers,
     }),
   );
   if (id === null) return { error: "Add at least one player." };
-  return { id, players: outcome.players.length, jackpotCents: outcome.jackpotCents, deductions: outcome.deductions };
+  return { id, players: nightPlayers.length, jackpotCents, deductions };
+}
+
+/** The roster spelling of a player's name, or null when the club has no such player. */
+export async function rosterName(clubId: number, name: string): Promise<string | null> {
+  const key = normalizeNameKey(name);
+  if (!key) return null;
+  const [row] = await db
+    .select({ name: players.displayName })
+    .from(players)
+    .where(and(eq(players.clubId, clubId), eq(players.nameKey, key)))
+    .limit(1);
+  return row?.name ?? null;
 }
 
 /** Sets or clears a night's note. False when the night isn't this club's. */
@@ -635,38 +670,131 @@ export async function setNightJackpot(clubId: number, nightId: number, amount: u
 export type RecordedNightChange = {
   date: string;
   players: NightPlayer[];
+  /** What goes into the bad beat jackpot from this night. Omitted keeps the current figure. */
+  jackpotCents?: number;
+  /** Omitted keeps the note; null clears it. */
+  notes?: string | null;
+  /** Omitted keeps the bank; null clears it. */
+  bankName?: string | null;
+  by: string;
 };
 
+export type NightUpdateOutcome = "updated" | "missing" | "unbalanced" | "pot" | "bank";
+
+const dollars = (cents: number) => `$${(Math.abs(cents) / 100).toFixed(2)}`;
+
+async function rosterNameIn(executor: Executor, clubId: number, name: string): Promise<string | null> {
+  const key = normalizeNameKey(name);
+  if (!key) return null;
+  const [row] = await executor.select({ name: players.displayName }).from(players).where(and(eq(players.clubId, clubId), eq(players.nameKey, key))).limit(1);
+  return row?.name ?? null;
+}
+
 /**
- * Replaces the players and date of a hand-entered or imported night.
- * A night from the live ledger is refused: reopening that night is how its entries change,
- * so the recorded result cannot drift away from the ledger.
+ * Replaces the players, date, jackpot, note and bank of a recorded night, and logs what changed. The night
+ * must balance (net of adjustments plus jackpot is zero). Changing amounts after anyone was ticked settled is
+ * logged as such so the night can be flagged. A night from the live ledger can be corrected here too; reopening
+ * it later rebuilds it from the ledger.
  */
-export async function updateNight(clubId: number, id: number, change: RecordedNightChange): Promise<"updated" | "missing" | "live"> {
+export async function updateNight(clubId: number, id: number, change: RecordedNightChange): Promise<NightUpdateOutcome> {
   return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM clubs WHERE id = ${clubId} FOR UPDATE`);
     const [night] = await tx
-      .select({ id: clubSessions.id, source: clubSessions.source })
+      .select({ id: clubSessions.id, date: clubSessions.sessionDate, jackpotCents: clubSessions.jackpotCents, bankName: clubSessions.bankName })
       .from(clubSessions)
       .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)))
       .limit(1)
       .for("update");
     if (!night) return "missing";
-    if (night.source === "live") return "live";
+
+    const jackpotCents = change.jackpotCents ?? night.jackpotCents;
+    if (adjustedRemainingCents(change.players, jackpotCents) !== 0) return "unbalanced";
+    if (jackpotCents !== night.jackpotCents && heldCents(await potTotals(tx, clubId)) - night.jackpotCents + jackpotCents < 0) return "pot";
+    let bankName = night.bankName;
+    if (change.bankName !== undefined) {
+      bankName = change.bankName ? await rosterNameIn(tx, clubId, change.bankName) : null;
+      if (change.bankName && !bankName) return "bank";
+    }
+
+    const before = await tx
+      .select({ key: players.nameKey, name: players.displayName, buyIn: sessionResults.buyInCents, cashOut: sessionResults.cashOutCents, adjustment: sessionResults.adjustmentCents })
+      .from(sessionResults)
+      .innerJoin(players, eq(players.id, sessionResults.playerId))
+      .where(eq(sessionResults.sessionId, id));
+    const merged = new Map<string, NightPlayer>();
+    for (const player of change.players) {
+      const key = normalizeNameKey(player.name);
+      if (!key) continue;
+      const entry = merged.get(key);
+      if (entry) {
+        entry.buyInCents += player.buyInCents;
+        entry.cashOutCents += player.cashOutCents;
+        entry.adjustmentCents = (entry.adjustmentCents ?? 0) + (player.adjustmentCents ?? 0);
+      } else {
+        merged.set(key, { ...player, name: tidy(player.name) });
+      }
+    }
 
     await tx
       .update(clubSessions)
-      .set({ sessionDate: change.date })
+      .set({
+        sessionDate: change.date,
+        jackpotCents,
+        bankName,
+        ...(change.notes !== undefined ? { notes: change.notes } : {}),
+      })
       .where(and(eq(clubSessions.clubId, clubId), eq(clubSessions.id, id)));
     await tx.delete(sessionResults).where(eq(sessionResults.sessionId, id));
-    const ids = await ensurePlayers(tx, clubId, change.players.map((player) => player.name));
-    await tx.insert(sessionResults).values(
-      change.players.map((player) => ({
-        sessionId: id,
-        playerId: ids.get(normalizeNameKey(player.name))!,
-        buyInCents: player.buyInCents,
-        cashOutCents: player.cashOutCents,
-      })),
-    );
+    const ids = await ensurePlayers(tx, clubId, [...merged.values()].map((player) => player.name));
+    if (merged.size > 0) {
+      await tx.insert(sessionResults).values(
+        [...merged.entries()].map(([key, player]) => ({
+          sessionId: id,
+          playerId: ids.get(key)!,
+          buyInCents: player.buyInCents,
+          cashOutCents: player.cashOutCents,
+          adjustmentCents: player.adjustmentCents ?? 0,
+          adjustmentNote: player.adjustmentNote ?? null,
+        })),
+      );
+    }
+
+    // What changed, for the log: amounts per player, the date, the jackpot and the bank.
+    const was = new Map(before.map((row) => [row.key, row]));
+    const notes: string[] = [];
+    let amountsChanged = false;
+    for (const [key, player] of merged) {
+      const old = was.get(key);
+      const adj = player.adjustmentCents ?? 0;
+      if (!old) {
+        notes.push(`added ${player.name}`);
+        amountsChanged = true;
+      } else if (old.buyIn !== player.buyInCents || old.cashOut !== player.cashOutCents || old.adjustment !== adj) {
+        notes.push(`${player.name} ${dollars(old.cashOut - old.buyIn + old.adjustment)} to ${dollars(player.cashOutCents - player.buyInCents + adj)}`);
+        amountsChanged = true;
+      }
+    }
+    for (const [key, old] of was) {
+      if (!merged.has(key)) {
+        notes.push(`removed ${old.name}`);
+        amountsChanged = true;
+      }
+    }
+    if (night.date !== change.date) notes.push(`date ${night.date} to ${change.date}`);
+    if (jackpotCents !== night.jackpotCents) notes.push(`jackpot ${dollars(night.jackpotCents)} to ${dollars(jackpotCents)}`);
+    if ((bankName ?? null) !== (night.bankName ?? null)) notes.push(`bank ${night.bankName ?? "none"} to ${bankName ?? "none"}`);
+    if (notes.length > 0) {
+      await tx.insert(nightEditLog).values({ clubId, clubSessionId: id, kind: "edit", summary: `Edited: ${notes.join("; ")}.`.slice(0, 1000), by: change.by });
+      if (amountsChanged) {
+        const [settled] = await tx
+          .select({ total: count() })
+          .from(nightSettlements)
+          .where(and(eq(nightSettlements.clubId, clubId), eq(nightSettlements.clubSessionId, id)));
+        if ((settled?.total ?? 0) > 0) {
+          await tx.insert(nightEditLog).values({ clubId, clubSessionId: id, kind: "amounts_after_settled", summary: "Amounts were changed after people were ticked settled. Check the ticks.", by: change.by });
+        }
+      }
+    }
     return "updated";
   });
 }

@@ -185,7 +185,7 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer 
           />
         )}
         </div>
-        {!isTournament && <SettleForSession sessionNumber={session.sessionNumber} />}
+        {!isTournament && <SettleForSession sessionNumber={session.sessionNumber} names={session.players.map((player) => player.player)} />}
       </div>
     )}
     {footer}

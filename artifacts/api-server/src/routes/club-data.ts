@@ -3,7 +3,7 @@ import { adminClubId, memberClubId, requireAdminSession, requireMemberSession, t
 import { isClubAdmin, resolveClubContext } from "../lib/club-access";
 import { canManageNight, LedgerPermissionError, type LedgerActor } from "../lib/ledger-permissions";
 import { liveSessionRole } from "../lib/live-activity";
-import { changeSettled, getNightSettlement, loadSettleUp, recordedSessionNumbers } from "../lib/night-settlement";
+import { BankError, changeNightBank, changeSettled, getNightSettlement, loadNightForEdit, loadSettleUp, recordedSessionNumbers } from "../lib/night-settlement";
 import { recordAdminAction } from "../lib/admin-audit";
 import { commitTournamentImport, deleteTournament, getTournament, listTournaments, loadTournamentInputs, previewTournamentImport, recordTournament, updateTournament } from "../lib/club-tournaments";
 import { parseTournamentImport } from "../lib/tournament-import";
@@ -54,32 +54,51 @@ function nightId(value: unknown): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-/** { date, players: [{ name, buyIn, cashOut }] } shared by recording and editing a cash night. */
-function readNightBody(body: { date?: unknown; players?: unknown }):
-  | { date: string; players: Array<{ name: string; buyIn: number; cashOut: number }> }
+type BodyPlayer = { name: string; buyIn: number; cashOut: number; adjustment: number; adjustmentNote: string | null };
+
+/** { date, players: [{ name, buyIn, cashOut, adjustment?, adjustmentNote? }], jackpot? } shared by recording and editing a cash night. */
+function readNightBody(body: { date?: unknown; players?: unknown; jackpot?: unknown }):
+  | { date: string; players: BodyPlayer[]; jackpotCents: number | undefined }
   | { error: string } {
   const date = typeof body?.date === "string" ? parseDate(body.date) : null;
   if (!date) return { error: "Choose the date of the night." };
   const rows: unknown[] = Array.isArray(body?.players) ? body.players : [];
-  const players: Array<{ name: string; buyIn: number; cashOut: number }> = [];
+  const players: BodyPlayer[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
-    const entry = row as { name?: unknown; buyIn?: unknown; cashOut?: unknown };
+    const entry = row as { name?: unknown; buyIn?: unknown; cashOut?: unknown; adjustment?: unknown; adjustmentNote?: unknown };
     const name = typeof entry.name === "string" ? entry.name.trim().replace(/\s+/g, " ") : "";
     if (!name) continue;
     const buyIn = parseMoney(String(entry.buyIn ?? ""));
     const cashOut = parseMoney(String(entry.cashOut ?? ""));
-    if (name.length > 40 || buyIn === null || cashOut === null || buyIn < 0 || cashOut < 0) {
+    const adjustment = parseMoney(String(entry.adjustment ?? ""));
+    if (name.length > 40 || buyIn === null || cashOut === null || adjustment === null || buyIn < 0 || cashOut < 0 || Math.abs(adjustment) > 100_000) {
       return { error: `Check the amounts for ${name || "a player"}.` };
     }
+    const adjustmentNote = typeof entry.adjustmentNote === "string" ? entry.adjustmentNote.trim().slice(0, 120) || null : null;
     if (seen.has(name.toLowerCase())) return { error: `${name} is listed twice.` };
     seen.add(name.toLowerCase());
-    if (buyIn > 0 || cashOut > 0) players.push({ name, buyIn, cashOut });
+    if (buyIn > 0 || cashOut > 0 || adjustment !== 0) players.push({ name, buyIn, cashOut, adjustment, adjustmentNote });
   }
   if (players.length < 2) return { error: "Add at least two players with a buy-in or cash-out." };
   if (players.length > 100) return { error: "That's more than 100 players for one night." };
-  return { date, players };
+  let jackpotCents: number | undefined;
+  if (body?.jackpot !== undefined && body.jackpot !== null && body.jackpot !== "") {
+    const jackpot = parseMoney(String(body.jackpot));
+    if (jackpot === null || jackpot < 0 || jackpot > 100_000) return { error: "Check the jackpot amount." };
+    jackpotCents = Math.round(jackpot * 100);
+  }
+  return { date, players, jackpotCents };
 }
+
+const toNightPlayers = (players: BodyPlayer[]) =>
+  players.map((player) => ({
+    name: player.name,
+    buyInCents: Math.round(player.buyIn * 100),
+    cashOutCents: Math.round(player.cashOut * 100),
+    adjustmentCents: Math.round(player.adjustment * 100),
+    adjustmentNote: player.adjustmentNote,
+  }));
 
 function ledgerActor(res: { locals: { memberSession?: AuthSession } }): LedgerActor | null {
   const session = res.locals.memberSession;
@@ -303,7 +322,7 @@ router.get("/clubs/current/settle-up", requireMemberSession, async (_req, res): 
     res.status(401).json({ error: "Member authentication required." });
     return;
   }
-  res.json(await loadSettleUp(memberClubId(res), actor.name));
+  res.json(await loadSettleUp(memberClubId(res), actor));
 });
 
 function nightIdParam(value: string): number | null {
@@ -377,36 +396,114 @@ router.get("/clubs/current/game-tools", requireMemberSession, async (_req, res):
   res.json(await loadGameTools(memberClubId(res), actor));
 });
 
-/** Replaces the players and date of a hand-entered or imported night. Admin only. */
-router.patch("/clubs/current/sessions/:id", async (req, res): Promise<void> => {
-  if (!(await requireClubAdmin(req, res))) return;
+/** What the night editor opens with: figures, adjustments, jackpot, bank, and whether the viewer may edit. */
+router.get("/clubs/current/nights/:id/edit", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
   const id = nightId(req.params.id);
-  if (id === null) {
-    res.status(400).json({ error: "Invalid night." });
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
     return;
   }
-  const night = readNightBody(req.body ?? {});
+  const detail = id === null ? null : await loadNightForEdit(memberClubId(res), id, actor);
+  if (!detail) {
+    res.status(404).json({ error: "That night no longer exists." });
+    return;
+  }
+  res.json(detail);
+});
+
+/** Sets or clears a night's bank: { name } or { name: null }. The host, the current bank or an admin. */
+router.put("/clubs/current/nights/:id/bank", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  const id = nightId(req.params.id);
+  if (!actor) {
+    res.status(401).json({ error: "Member authentication required." });
+    return;
+  }
+  const raw = (req.body ?? {}) as { name?: unknown };
+  const name = typeof raw.name === "string" ? raw.name.trim() : null;
+  if (raw.name !== null && (name === null || name.length > 40)) {
+    res.status(400).json({ error: "Choose a player to be the bank, or clear it." });
+    return;
+  }
+  try {
+    const settlement = id === null ? null : await changeNightBank(memberClubId(res), id, actor, name || null);
+    if (!settlement) {
+      res.status(404).json({ error: "That night no longer exists." });
+      return;
+    }
+    res.json(settlement);
+  } catch (error) {
+    if (error instanceof LedgerPermissionError) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
+    if (error instanceof BankError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+});
+
+/**
+ * Replaces a recorded night: date, players with adjustments, jackpot, note and bank. The night's bank, its
+ * host or an admin may do this; the night has to balance. Every edit is logged.
+ */
+router.patch("/clubs/current/sessions/:id", requireMemberSession, async (req, res): Promise<void> => {
+  const actor = ledgerActor(res);
+  const id = nightId(req.params.id);
+  if (!actor || id === null) {
+    res.status(id === null ? 400 : 401).json({ error: id === null ? "Invalid night." : "Member authentication required." });
+    return;
+  }
+  const clubId = memberClubId(res);
+  const current = await loadNightForEdit(clubId, id, actor);
+  if (!current) {
+    res.status(404).json({ error: "That night no longer exists." });
+    return;
+  }
+  if (!current.canEdit) {
+    res.status(403).json({ error: "Only the bank, the host or an admin can edit this night." });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const night = readNightBody(body);
   if ("error" in night) {
     res.status(400).json({ error: night.error });
     return;
   }
-  const outcome = await updateNight(adminClubId(res), id, {
+  const notes = body.notes === undefined ? undefined : cleanNightNote(body.notes);
+  if (notes === undefined && body.notes !== undefined) {
+    res.status(400).json({ error: "Keep the note under 2,000 characters." });
+    return;
+  }
+  const bank = body.bank === undefined ? undefined : typeof body.bank === "string" && body.bank.trim() ? body.bank.trim().slice(0, 40) : null;
+  const outcome = await updateNight(clubId, id, {
     date: night.date,
-    players: night.players.map((player) => ({
-      name: player.name,
-      buyInCents: Math.round(player.buyIn * 100),
-      cashOutCents: Math.round(player.cashOut * 100),
-    })),
+    players: toNightPlayers(night.players),
+    jackpotCents: night.jackpotCents,
+    notes,
+    bankName: bank,
+    by: actor.name,
   });
   if (outcome === "missing") {
     res.status(404).json({ error: "That night no longer exists." });
     return;
   }
-  if (outcome === "live") {
-    res.status(409).json({ error: "This night came from the live ledger. Reopen it to change the entries." });
+  if (outcome === "unbalanced") {
+    res.status(409).json({ error: "The night doesn't balance. Add adjustments or a jackpot amount until it does." });
     return;
   }
-  await recordAdminAction("night_edited", `Edited recorded night #${id}.`, req);
+  if (outcome === "pot") {
+    res.status(409).json({ error: "Payouts have already spent that jackpot money. Remove or lower a payout first." });
+    return;
+  }
+  if (outcome === "bank") {
+    res.status(400).json({ error: "The bank has to be a player in this club." });
+    return;
+  }
+  if (actor.isAdmin) await recordAdminAction("night_edited", `Edited recorded night #${id}.`, req);
   res.json({ id, date: night.date, players: night.players.length });
 });
 
@@ -535,12 +632,15 @@ router.post("/clubs/current/nights", requireAdminSession, async (req, res): Prom
     res.status(400).json({ error: "Choose how to settle the difference." });
     return;
   }
+  const bankName = typeof body.bank === "string" && body.bank.trim() ? body.bank.trim().slice(0, 40) : null;
   const result = await recordManualNight(adminClubId(res), {
     date: night.date,
     notes,
     resolution,
+    jackpotCents: night.jackpotCents,
+    bankName,
     createdBy: res.locals.adminSession?.memberName ?? res.locals.memberSession?.memberName ?? "admin",
-    players: night.players.map((player) => ({ name: player.name, buyInCents: Math.round(player.buyIn * 100), cashOutCents: Math.round(player.cashOut * 100) })),
+    players: toNightPlayers(night.players),
   });
   if ("error" in result) {
     res.status(409).json({ error: result.error });

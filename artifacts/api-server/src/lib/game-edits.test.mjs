@@ -206,13 +206,16 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     assert.equal(ownerTools.admin, true);
     assert.ok(ownerTools.nights.some((night) => night.id === january.id && night.source === "import" && night.sessionNumber === 1));
 
+    // Ada is paid $10 more than she put in over the night's total, so the night only balances with an adjustment.
     const editedBody = {
       date: "2026-01-05",
       players: [
-        { name: "Ada", buyIn: "20", cashOut: "40" },
+        { name: "Ada", buyIn: "20", cashOut: "40", adjustment: "-10", adjustmentNote: "covers the short stack" },
         { name: "Bea", buyIn: "10", cashOut: "0" },
       ],
     };
+    const unbalancedBody = { ...editedBody, players: [{ name: "Ada", buyIn: "20", cashOut: "40" }, { name: "Bea", buyIn: "10", cashOut: "0" }] };
+    assert.equal((await api(`/api/clubs/current/sessions/${january.id}`, { jar: owner, method: "PATCH", body: unbalancedBody })).status, 409);
     assert.equal((await api(`/api/clubs/current/sessions/${january.id}`, { jar: guest, method: "PATCH", body: editedBody })).status, 403);
     assert.equal((await api(`/api/clubs/current/sessions/${january.id}`, { jar: guest, method: "DELETE" })).status, 403);
     assert.equal((await api(`/api/clubs/current/sessions/${january.id}`, { jar: rival, method: "PATCH", body: editedBody })).status, 404);
@@ -229,6 +232,11 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     assert.equal(afterEdit.totals.totalCashOut, 60);
     assert.equal(afterEdit.totals.balanceDifference, 10);
     assert.equal(sumProfit(afterEdit), afterEdit.totals.balanceDifference);
+    // The adjustment changes what Ada is owed (+20 - 10), not her poker profit.
+    const settlement = await bodyOf(await api(`/api/clubs/current/nights/${january.id}/settlement`, { jar: owner }));
+    assert.equal(settlement.lines.find((line) => line.name === "Ada").netCents, 1000);
+    assert.equal(settlement.lines.find((line) => line.name === "Bea").netCents, -1000);
+    assert.ok(settlement.log.some((entry) => entry.kind === "edit"));
     const februaryStill = afterEdit.sessions.find((night) => night.date === "2026-02-05");
     assert.equal(februaryStill.totalBuyIn, 20);
     assert.equal(februaryStill.totalNet, 0);
@@ -281,7 +289,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     assert.ok(jackpotNight, JSON.stringify(dropped.nights));
     let pot = await bodyOf(await api("/api/clubs/current/jackpot", { jar: owner }));
     assert.equal(pot.total, 4);
-    assert.equal((await api(`/api/clubs/current/sessions/${jackpotNight.id}`, { jar: owner, method: "PATCH", body: { date: "2026-03-01", players: [{ name: "Kit", buyIn: "10", cashOut: "10" }, { name: "Other", buyIn: "10", cashOut: "10" }] } })).status, 409);
+    assert.equal((await api(`/api/clubs/current/sessions/${jackpotNight.id}`, { jar: owner, method: "PATCH", body: { date: "2026-03-01", players: [{ name: "Kit", buyIn: "10", cashOut: "10" }, { name: "Other", buyIn: "10", cashOut: "10" }] } })).status, 409); // the night's $4 jackpot is no longer covered
     assert.equal((await api(`/api/clubs/current/sessions/${jackpotNight.id}`, { jar: owner, method: "DELETE" })).status, 204);
     pot = await bodyOf(await api("/api/clubs/current/jackpot", { jar: owner }));
     assert.equal(pot.total, 0);
@@ -333,6 +341,53 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     assert.equal(board.sessions.length, 1);
     assert.equal(board.sessions[0].totalBuyIn, 10);
     assert.equal(sumProfit(board), board.totals.balanceDifference);
+  });
+
+  test("bank, host and admin edit a night; adjustments, jackpot, settling and the log", async () => {
+    const owner = await newClub("Ivy");
+    const bank = await join(owner, "Bob Bank");
+    const other = await join(owner, "Cy Other");
+    const history = "Date,Player,Buy-in,Cash-out\n2026-05-05,Ivy,20,30\n,Bob Bank,10,0\n,Cy Other,5,5";
+    assert.equal((await api("/api/clubs/current/import", { jar: owner, method: "POST", body: { text: history } })).status, 201);
+    const night = (await bodyOf(await api("/api/clubs/current/sessions", { jar: owner }))).sessions[0];
+    const body = { date: "2026-05-05", players: [{ name: "Ivy", buyIn: "20", cashOut: "30" }, { name: "Bob Bank", buyIn: "10", cashOut: "0" }, { name: "Cy Other", buyIn: "5", cashOut: "5" }] };
+
+    // Nobody but an admin can edit or set the bank until a bank is assigned.
+    assert.equal((await api(`/api/clubs/current/sessions/${night.id}`, { jar: bank, method: "PATCH", body })).status, 403);
+    assert.equal((await api(`/api/clubs/current/nights/${night.id}/bank`, { jar: bank, method: "PUT", body: { name: "Bob Bank" } })).status, 403);
+    const set = await api(`/api/clubs/current/nights/${night.id}/bank`, { jar: owner, method: "PUT", body: { name: "Bob Bank" } });
+    assert.equal(set.status, 200, JSON.stringify(await bodyOf(set.clone())));
+    assert.equal((await bodyOf(set)).bankName, "Bob Bank");
+    assert.equal((await api(`/api/clubs/current/nights/${night.id}/bank`, { jar: owner, method: "PUT", body: { name: "Nobody Here" } })).status, 400);
+
+    // The bank may now edit, a bystander still may not.
+    assert.equal((await bodyOf(await api(`/api/clubs/current/nights/${night.id}/edit`, { jar: bank }))).canEdit, true);
+    assert.equal((await bodyOf(await api(`/api/clubs/current/nights/${night.id}/edit`, { jar: other }))).canEdit, false);
+    assert.equal((await api(`/api/clubs/current/sessions/${night.id}`, { jar: other, method: "PATCH", body })).status, 403);
+    // A surplus is absorbed by the jackpot; unaccounted money is refused.
+    const surplus = { ...body, players: [{ name: "Ivy", buyIn: "20", cashOut: "25" }, body.players[1], body.players[2]] };
+    assert.equal((await api(`/api/clubs/current/sessions/${night.id}`, { jar: bank, method: "PATCH", body: surplus })).status, 409);
+    const withJackpot = await api(`/api/clubs/current/sessions/${night.id}`, { jar: bank, method: "PATCH", body: { ...surplus, jackpot: "5" } });
+    assert.equal(withJackpot.status, 200, JSON.stringify(await bodyOf(withJackpot.clone())));
+    assert.equal((await bodyOf(await api("/api/clubs/current/jackpot", { jar: owner }))).total, 5);
+
+    // Tick someone settled, then change amounts: the night is flagged and the log says who did what.
+    const ticked = await api(`/api/clubs/current/nights/${night.id}/settlement`, { jar: bank, method: "PUT", body: { name: "Bob Bank", settled: true } });
+    assert.equal(ticked.status, 200);
+    assert.equal((await api(`/api/clubs/current/nights/${night.id}/settlement`, { jar: other, method: "PUT", body: { name: "Ivy", settled: true } })).status, 403);
+    const owe = await bodyOf(await api("/api/clubs/current/settle-up", { jar: owner }));
+    assert.ok(owe.mine.owed.some((entry) => entry.nightId === night.id && entry.bank === "Bob Bank"), JSON.stringify(owe.mine));
+    const trackedNight = owe.nights.find((row) => row.nightId === night.id);
+    assert.equal(trackedNight.canEdit, true);
+    const changed = { ...body, jackpot: "5", players: [{ name: "Ivy", buyIn: "20", cashOut: "26" }, body.players[1], body.players[2]] };
+    assert.equal((await api(`/api/clubs/current/sessions/${night.id}`, { jar: bank, method: "PATCH", body: { ...changed, players: [{ name: "Ivy", buyIn: "20", cashOut: "26" }, { name: "Bob Bank", buyIn: "10", cashOut: "0" }, { name: "Cy Other", buyIn: "5", cashOut: "5", adjustment: "-1" }] } })).status, 200);
+    const after = await bodyOf(await api(`/api/clubs/current/nights/${night.id}/settlement`, { jar: owner }));
+    assert.equal(after.flagged, true);
+    const kinds = after.log.map((entry) => entry.kind);
+    assert.ok(kinds.includes("settled") && kinds.includes("bank") && kinds.includes("amounts_after_settled"), kinds.join(","));
+    assert.ok(after.log.every((entry) => entry.by && entry.at));
+    const unticked = await bodyOf(await api(`/api/clubs/current/nights/${night.id}/settlement`, { jar: bank, method: "PUT", body: { name: "Bob Bank", settled: false } }));
+    assert.equal(unticked.log[0].kind, "unsettled");
   });
 
   test("editing and deleting a tournament stays inside the club", async () => {

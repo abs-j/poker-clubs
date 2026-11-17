@@ -158,3 +158,21 @@ export function parseResolution(value: unknown): BalanceResolution | null {
   if (raw.mode === "player" && typeof raw.name === "string" && raw.name.trim()) return { mode: "player", name: raw.name.trim().slice(0, 80) };
   return null;
 }
+
+/**
+ * A night with adjustments balances when every player's net (cash-out minus buy-in plus adjustment) plus the
+ * jackpot adds up to zero. Positive means money is unaccounted for, negative means the jackpot or adjustments
+ * take too much. A surplus is absorbed by the jackpot, a deficit by negative adjustments.
+ */
+export function adjustedRemainingCents(
+  players: Array<{ buyInCents: number; cashOutCents: number; adjustmentCents?: number }>,
+  jackpotCents: number,
+): number {
+  const nets = players.reduce((sum, player) => sum + player.cashOutCents - player.buyInCents + (player.adjustmentCents ?? 0), 0);
+  return nets + jackpotCents;
+}
+
+/** The jackpot a night would add on its own: the surplus left after adjustments, never negative. */
+export function suggestedJackpotCents(players: Array<{ buyInCents: number; cashOutCents: number; adjustmentCents?: number }>): number {
+  return Math.max(0, -adjustedRemainingCents(players, 0));
+}

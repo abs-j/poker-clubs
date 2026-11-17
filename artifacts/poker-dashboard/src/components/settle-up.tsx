@@ -28,7 +28,17 @@ export function useRefreshSettleUp() {
 
 /** A small label on a Games night card: "Settled" or how many people are still to settle. */
 export function SettleBadge({ sessionNumber }: { sessionNumber: number }) {
-  const night = useSettleUp().data?.nights.find((candidate) => candidate.sessionNumber === sessionNumber);
+  const summary = useSettleUp().data;
+  const night = summary?.nights.find((candidate) => candidate.sessionNumber === sessionNumber);
+  // Your own result on this night, when you still owe it.
+  const owe = summary?.mine.owe.find((entry) => entry.sessionNumber === sessionNumber);
+  if (owe) {
+    return (
+      <span data-testid={`badge-owe-${sessionNumber}`} className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-1 text-[11px] font-semibold text-destructive">
+        You owe {settleTotalText(owe.cents)}{owe.bank ? ` to ${owe.bank}` : ""}
+      </span>
+    );
+  }
   const label = night ? settleBadge(night.state, night.unsettled) : null;
   if (!night || !label) return null;
   const done = night.state === "settled";
@@ -43,7 +53,7 @@ export function SettleBadge({ sessionNumber }: { sessionNumber: number }) {
 }
 
 /** Who owes and is owed for one night, with a Settled tick the host, the bank or an admin can use. */
-export function SettleList({ nightId, testId = "section-settle-list" }: { nightId: number; testId?: string }) {
+export function SettleList({ nightId, testId = "section-settle-list", names = [] }: { nightId: number; testId?: string; names?: string[] }) {
   const queryClient = useQueryClient();
   const refresh = useRefreshSettleUp();
   const [error, setError] = useState("");
@@ -62,6 +72,17 @@ export function SettleList({ nightId, testId = "section-settle-list" }: { nightI
     setBusy(true);
     setError("");
     accountApi.setSettled(nightId, request)
+      .then((next) => {
+        queryClient.setQueryData(nightKey(nightId), next);
+        void queryClient.invalidateQueries({ queryKey: SETTLE_UP_KEY });
+      })
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not save that."))
+      .finally(() => setBusy(false));
+  };
+  const changeBank = (name: string | null) => {
+    setBusy(true);
+    setError("");
+    accountApi.setNightBank(nightId, name)
       .then((next) => {
         queryClient.setQueryData(nightKey(nightId), next);
         void queryClient.invalidateQueries({ queryKey: SETTLE_UP_KEY });
@@ -90,12 +111,36 @@ export function SettleList({ nightId, testId = "section-settle-list" }: { nightI
           </button>
         )}
       </div>
+      {settlement.flagged && (
+        <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs" data-testid="text-settle-flagged">
+          The amounts changed after people were ticked settled. Check the ticks below.
+        </p>
+      )}
+      {settlement.canSettle && (
+        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          Bank
+          <select
+            value={settlement.bankName ?? ""}
+            disabled={busy}
+            onChange={(event) => changeBank(event.target.value || null)}
+            aria-label="Bank"
+            data-testid="select-settle-bank"
+            className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground"
+          >
+            <option value="">No bank</option>
+            {[...new Set([...(settlement.bankName ? [settlement.bankName] : []), ...names])].map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+      )}
       <ul className="mt-3 divide-y divide-border/60" data-testid="list-settle-lines">
         {owing.map((line) => (
           <li key={line.playerId} data-testid={`row-settle-${line.playerId}`} className="flex items-center gap-3 py-2.5 text-sm">
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{line.name}</p>
-              <p className={`text-xs ${line.netCents < 0 ? "text-destructive" : "text-chart-1"}`}>{settleLineText(line, settlement.bankName)}</p>
+              <p className={`text-xs ${line.netCents < 0 ? "text-destructive" : "text-chart-1"}`}>
+                {settleLineText(line, settlement.bankName)}
+                {line.settled && line.settledAt ? ` · settled ${new Date(line.settledAt).toLocaleDateString()} by ${line.settledBy ?? "?"}` : ""}
+              </p>
             </div>
             {settlement.canSettle ? (
               <button
@@ -118,15 +163,27 @@ export function SettleList({ nightId, testId = "section-settle-list" }: { nightI
         ))}
       </ul>
       {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
+      {settlement.log.length > 0 && (
+        <details className="mt-3 text-xs" data-testid="details-night-log">
+          <summary className="cursor-pointer font-semibold text-muted-foreground">History ({settlement.log.length})</summary>
+          <ul className="mt-2 space-y-1">
+            {settlement.log.map((entry, index) => (
+              <li key={index} className="text-muted-foreground">
+                <span className="font-mono">{new Date(entry.at).toLocaleString()}</span> · {entry.by}: {entry.summary}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }
 
-/** The settle list for a Games night, when that night is tracked. */
-export function SettleForSession({ sessionNumber }: { sessionNumber: number }) {
+/** The settle list for a Games night. Every recorded night is tracked, so it shows whenever someone owes. */
+export function SettleForSession({ sessionNumber, names = [] }: { sessionNumber: number; names?: string[] }) {
   const night = useSettleUp().data?.nights.find((candidate) => candidate.sessionNumber === sessionNumber);
   if (!night || night.state === "none") return null;
-  return <div className="mt-3"><SettleList nightId={night.nightId} testId={`section-settle-${sessionNumber}`} /></div>;
+  return <div className="mt-3"><SettleList nightId={night.nightId} testId={`section-settle-${sessionNumber}`} names={names} /></div>;
 }
 
 /** Home: the nights you still owe or are owed on. Hidden when there is nothing to settle. */
