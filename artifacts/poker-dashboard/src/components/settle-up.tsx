@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { accountApi, type NightSettlement, type SettleUpSummary } from "@/lib/account-api";
-import { settleBadge, settleLineText, settleTotalText } from "@/lib/settle-up";
+import { accountApi, type NightSettlement, type SettleUpSummary, type WaitingPayer } from "@/lib/account-api";
+import { settleBadge, settleLineText, settleTotalText, waitingText } from "@/lib/settle-up";
 import { formatDate } from "@/views/shared";
 
 export const SETTLE_UP_KEY = ["settle-up"];
@@ -191,8 +191,8 @@ export function SettleUpCard({ onOpenSession }: { onOpenSession: (sessionNumber:
   const mine = useSettleUp().data?.mine;
   if (!mine || (mine.owe.length === 0 && mine.owed.length === 0)) return null;
   const rows = [
-    ...mine.owe.map((entry) => ({ ...entry, owes: true })),
-    ...mine.owed.map((entry) => ({ ...entry, owes: false })),
+    ...mine.owe.map((entry) => ({ ...entry, owes: true, waiting: [] as WaitingPayer[] })),
+    ...mine.owed.map((entry) => ({ ...entry, owes: false, waiting: entry.waiting ?? [] })),
   ].sort((a, b) => b.date.localeCompare(a.date) || b.nightId - a.nightId);
   return (
     <section data-testid="card-settle-up" className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] p-4 sm:p-5">
@@ -210,9 +210,14 @@ export function SettleUpCard({ onOpenSession }: { onOpenSession: (sessionNumber:
               onClick={() => row.sessionNumber !== null && onOpenSession(row.sessionNumber)}
               className="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm disabled:cursor-default"
             >
-              <span className="min-w-0 truncate">
-                {formatDate(row.date)}
-                <span className="text-muted-foreground">{row.bank ? ` · bank ${row.bank}` : ""}</span>
+              <span className="min-w-0">
+                <span className="block truncate">
+                  {formatDate(row.date)}
+                  <span className="text-muted-foreground">{row.bank ? ` · bank ${row.bank}` : ""}</span>
+                </span>
+                {waitingText(row.waiting) && (
+                  <span data-testid={`text-waiting-${row.nightId}`} className="mt-0.5 block text-xs text-muted-foreground">{waitingText(row.waiting)}</span>
+                )}
               </span>
               <span className={`shrink-0 font-mono text-sm font-semibold ${row.owes ? "text-destructive" : "text-chart-1"}`}>
                 {row.owes ? "−" : "+"}{settleTotalText(row.cents)}

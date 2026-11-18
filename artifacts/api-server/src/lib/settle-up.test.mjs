@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mineUnsettled, nightState, settleLines } from "./settle-up.ts";
+import { mineUnsettled, nightState, settleLines, waitingPayers } from "./settle-up.ts";
 import { canSettle } from "./ledger-permissions.ts";
 
 const results = [
@@ -65,4 +65,14 @@ test("the host, the bank and an admin can tick; nobody else can", () => {
   assert.equal(canSettle({ name: "Cy", isAdmin: false }, "Bo", "Ann"), false);
   assert.equal(canSettle({ name: "Cy", isAdmin: false }, "Bo", null), false);
   assert.equal(canSettle({ name: "", isAdmin: false }, "Bo", ""), false);
+});
+
+test("waitingPayers lists unticked losers, biggest debt first, and skips settled, winners and even players", () => {
+  const lines = settleLines(results, new Map([[3, mark]]));
+  assert.deepEqual(waitingPayers(lines), [{ name: "Ben", cents: 1500 }]);
+  assert.deepEqual(waitingPayers(settleLines(results, new Map())), [
+    { name: "Ben", cents: 1500 },
+    { name: "Cat", cents: 1000 },
+  ]);
+  assert.deepEqual(waitingPayers(settleLines(results, new Map([[2, mark], [3, mark]]))), []);
 });
