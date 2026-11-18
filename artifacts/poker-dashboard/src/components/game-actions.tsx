@@ -12,6 +12,11 @@ const button =
   "inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-xs font-semibold hover:bg-secondary disabled:opacity-60";
 const danger =
   "inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 text-xs font-semibold text-destructive disabled:opacity-60";
+/** Quiet text buttons for the row of admin actions under a card, so they do not outweigh the result. */
+const quiet =
+  "inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60";
+const quietDanger =
+  "inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60";
 const input = "h-9 min-w-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-primary";
 
 function describe(error: unknown): string {
@@ -58,7 +63,7 @@ export function NightNote({ sessionNumber, tools }: { sessionNumber: number; too
 
   if (editing) {
     return (
-      <div className="mt-3" data-testid={`box-night-note-${sessionNumber}`}>
+      <div className="border-t border-border/70 px-4 py-3" data-testid={`box-night-note-${sessionNumber}`}>
         <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} maxLength={2000} aria-label="Note for this night" className="w-full rounded-lg border border-border bg-background p-2 text-sm outline-none focus:border-primary" data-testid={`input-night-note-${sessionNumber}`} />
         <div className="mt-2 flex gap-2">
           <button type="button" disabled={busy} onClick={save} className={button} data-testid={`button-night-note-save-${sessionNumber}`}>{busy ? "Saving…" : "Save note"}</button>
@@ -69,10 +74,10 @@ export function NightNote({ sessionNumber, tools }: { sessionNumber: number; too
     );
   }
   return (
-    <div className="mt-3 text-sm" data-testid={`box-night-note-${sessionNumber}`}>
-      {note && <p className="whitespace-pre-line rounded-lg bg-secondary/60 px-3 py-2 text-muted-foreground" data-testid={`text-night-note-${sessionNumber}`}>{note}</p>}
+    <div className="border-t border-border/70 px-4 py-3 text-sm" data-testid={`box-night-note-${sessionNumber}`}>
+      {note && <p className="whitespace-pre-line border-l-2 border-primary/50 pl-3 text-sm italic leading-6 text-muted-foreground" data-testid={`text-night-note-${sessionNumber}`}>{note}</p>}
       {night && (
-        <button type="button" onClick={() => { setDraft(note); setEditing(true); }} className={`${button} mt-2`} data-testid={`button-night-note-edit-${sessionNumber}`}>
+        <button type="button" onClick={() => { setDraft(note); setEditing(true); }} className={`${quiet} ${note ? "mt-1 -ml-2" : "-ml-2"}`} data-testid={`button-night-note-edit-${sessionNumber}`}>
           {note ? "Edit note" : "Add a note"}
         </button>
       )}
@@ -163,19 +168,19 @@ export function CashGameActions({
         </div>
       )}
       {mode === "idle" && (
-        <div className="flex flex-wrap gap-2">
+        <div className="-mx-2 flex flex-wrap items-center gap-1">
           {showEdit && (
-            <button type="button" className={button} onClick={() => { setMode("edit"); setError(""); }} data-testid={`button-edit-night-${session.sessionNumber}`}>
+            <button type="button" className={quiet} onClick={() => { setMode("edit"); setError(""); }} data-testid={`button-edit-night-${session.sessionNumber}`}>
               Edit
             </button>
           )}
           {showReopen && (
-            <button type="button" className={button} disabled={busy} onClick={reopen} data-testid={`button-reopen-night-${session.sessionNumber}`}>
+            <button type="button" className={quiet} disabled={busy} onClick={reopen} data-testid={`button-reopen-night-${session.sessionNumber}`}>
               {busy ? "Reopening…" : "Reopen"}
             </button>
           )}
           {showDelete && (
-            <button type="button" className={danger} onClick={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-night-${session.sessionNumber}`}>
+            <button type="button" className={`${quietDanger} ml-auto`} onClick={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-night-${session.sessionNumber}`}>
               Delete
             </button>
           )}
@@ -355,11 +360,11 @@ export function TournamentGameActions({
         </div>
       )}
       {mode === "idle" && (
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={button} disabled={busy} onClick={startEdit} data-testid={`button-edit-tournament-${id}`}>
+        <div className="-mx-2 flex flex-wrap items-center gap-1">
+          <button type="button" className={quiet} disabled={busy} onClick={startEdit} data-testid={`button-edit-tournament-${id}`}>
             {busy ? "Loading…" : "Edit"}
           </button>
-          <button type="button" className={danger} onClick={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-tournament-${id}`}>
+          <button type="button" className={`${quietDanger} ml-auto`} onClick={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-tournament-${id}`}>
             Delete
           </button>
         </div>

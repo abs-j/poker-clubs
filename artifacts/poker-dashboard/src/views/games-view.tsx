@@ -76,7 +76,7 @@ function AllGames(props: GamesViewProps) {
             <div
               key={`cash-${item.session.sessionNumber}`}
               id={`game-${item.session.sessionNumber}`}
-              className="stagger-item scroll-mt-24"
+              className="stagger-item h-full scroll-mt-24"
               style={{ "--i": Math.min(index, 14) } as React.CSSProperties}
             >
               <SessionCard
@@ -90,7 +90,7 @@ function AllGames(props: GamesViewProps) {
               />
             </div>
           ) : (
-            <div key={`tournament-${item.event.id}`} className="stagger-item" style={{ "--i": Math.min(index, 14) } as React.CSSProperties}>
+            <div key={`tournament-${item.event.id}`} className="stagger-item h-full" style={{ "--i": Math.min(index, 14) } as React.CSSProperties}>
               <TournamentCard
                 event={item.event}
                 viewer={props.viewer}
