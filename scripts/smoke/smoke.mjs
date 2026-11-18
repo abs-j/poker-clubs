@@ -1667,14 +1667,20 @@ await check("an admin edits and deletes games from the Games tab; a member canno
 
     await signIn(memberPhone, memberEmail);
     await sleep(600);
-    const memberButtons = await memberPhone.$$('[data-testid="button-edit-night-1"], [data-testid="button-delete-night-1"], [data-testid^="button-delete-tournament-"]');
+    const memberButtons = await memberPhone.$$('[data-testid^="button-game-menu-"], [data-testid="button-edit-night-1"], [data-testid="button-delete-night-1"], [data-testid^="button-delete-tournament-"]');
     expect(memberButtons.length === 0, "a member saw edit or delete on Games");
     await memberPhone.screenshot({ path: `${OUT}/games-member.png`, fullPage: true });
 
     const press = pressOn(phone);
+    // Edit, reopen and delete live in a 3-dots menu on each card: open it, then choose the item.
+    const pressMenu = async (menuId, itemId) => {
+      await phone.waitForSelector(`[data-testid="${menuId}"]`, { timeout: 15000 });
+      await press(`[data-testid="${menuId}"]`);
+      await phone.waitForSelector(`[data-testid="${itemId}"]`, { timeout: 15000 });
+      await press(`[data-testid="${itemId}"]`);
+    };
     await signIn(phone, ownerEmail);
-    await phone.waitForSelector('[data-testid="button-edit-night-1"]', { timeout: 15000 });
-    await press('[data-testid="button-edit-night-1"]');
+    await pressMenu("button-game-menu-1", "button-edit-night-1");
     await phone.waitForSelector('[data-testid="form-edit-night-1"]', { timeout: 15000 });
     const buyInSelector = await phone.evaluate(() => {
       const names = [...document.querySelectorAll('[data-testid^="input-edit-night-name-1-"]')];
@@ -1695,7 +1701,7 @@ await check("an admin edits and deletes games from the Games tab; a member canno
     expect(savedNight && savedNight.totalBuyIn === 35, `edited pot ${savedNight?.totalBuyIn}`);
     await phone.screenshot({ path: `${OUT}/games-edited.png`, fullPage: true });
 
-    await press('[data-testid="button-delete-night-1"]');
+    await pressMenu("button-game-menu-1", "button-delete-night-1");
     await phone.waitForSelector('[data-testid="text-delete-night-irreversible-1"]', { timeout: 15000 });
     const nightWarning = await phone.$eval('[data-testid="text-delete-night-irreversible-1"]', (node) => node.innerText);
     expect(/cannot be undone/i.test(nightWarning), `night delete should say it cannot be undone, saw "${nightWarning}"`);
@@ -1703,7 +1709,7 @@ await check("an admin edits and deletes games from the Games tab; a member canno
     await press('[data-testid="button-confirm-delete-night-1"]');
     await phone.waitForFunction(() => !document.querySelector('[data-testid="card-session-1"]'), { timeout: 15000 });
 
-    await press(`[data-testid="button-delete-tournament-${tournamentId}"]`);
+    await pressMenu(`button-game-menu-tournament-${tournamentId}`, `button-delete-tournament-${tournamentId}`);
     await phone.waitForSelector(`[data-testid="text-delete-tournament-irreversible-${tournamentId}"]`, { timeout: 15000 });
     const tournamentWarning = await phone.$eval(`[data-testid="text-delete-tournament-irreversible-${tournamentId}"]`, (node) => node.innerText);
     expect(/cannot be undone/i.test(tournamentWarning), `tournament delete should say it cannot be undone, saw "${tournamentWarning}"`);
@@ -1725,7 +1731,7 @@ await check("an admin edits and deletes games from the Games tab; a member canno
     expect((await api("/api/poker/live-session/end", { jar: owner, method: "POST" })).ok, "could not close the night to reopen");
     await phone.reload({ waitUntil: "networkidle2" });
     await press('[data-testid="tab-sessions"]');
-    await press('[data-testid="button-reopen-night-1"]');
+    await pressMenu("button-game-menu-1", "button-reopen-night-1");
     // Reopening the club's only night leaves it with no finished games, so Home-style onboarding replaces the
     // Games view and its notice. Accept either; what matters is that the Live tab has the night open again.
     await phone.waitForSelector('[data-testid="status-games-notice"], [data-testid="text-new-club-title"], [data-testid="tab-live"]', { timeout: 15000 });

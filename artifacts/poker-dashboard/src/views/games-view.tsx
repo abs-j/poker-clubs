@@ -122,7 +122,7 @@ export function GamesView(props: GamesViewProps) {
   }, [props.cashSessions, props.tournaments]);
   const cashFooter = (session: Session) => (
     <>
-    <NightNote sessionNumber={session.sessionNumber} tools={tools.data} />
+    <NightNote sessionNumber={session.sessionNumber} />
     <CashGameActions
       session={session}
       tools={tools.data}

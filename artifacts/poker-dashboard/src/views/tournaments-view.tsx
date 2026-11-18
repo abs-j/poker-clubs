@@ -233,7 +233,7 @@ export function TournamentCard({ event, viewer, onOpen, footer }: { event: Tourn
             <span className="truncate">{event.format || event.title}</span>
           </p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-right group-has-[[data-card-menu]]:pr-8">
           <p className="font-mono text-base font-semibold">{formatCurrency(event.mainPrizePool)}</p>
           <p className="text-[11px] text-muted-foreground">{event.players} players · {event.entries} entries</p>
         </div>

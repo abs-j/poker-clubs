@@ -132,7 +132,7 @@ export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer 
             {isTournament ? <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Tournament</span> : <><span>Game #{session.sessionNumber}</span><SettleBadge sessionNumber={session.sessionNumber} /></>}
           </p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-right group-has-[[data-card-menu]]:pr-8">
           <p className="font-mono text-base font-semibold">{formatCurrency(session.totalBuyIn)}</p>
           <p className="text-[11px] text-muted-foreground">{plural(session.playerCount, "player")} · {isTournament ? "invested" : "pot"}</p>
         </div>

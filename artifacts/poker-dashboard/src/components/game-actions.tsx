@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MoreVertical } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccountError, accountApi, type GameTools, type NightEditData } from "@/lib/account-api";
 import type { DashboardSession as Session, TournamentEvent } from "@/lib/earnings-analytics";
@@ -7,16 +8,12 @@ import { useSettleUp } from "@/components/settle-up";
 import { centsOf, remainingCents } from "@/lib/night-table";
 import { RecordTournament } from "@/components/record-tournament";
 import { formatDate } from "@/views/shared";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const button =
   "inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-xs font-semibold hover:bg-secondary disabled:opacity-60";
 const danger =
   "inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 text-xs font-semibold text-destructive disabled:opacity-60";
-/** Quiet text buttons for the row of admin actions under a card, so they do not outweigh the result. */
-const quiet =
-  "inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60";
-const quietDanger =
-  "inline-flex h-8 items-center justify-center rounded-md px-2 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60";
 const input = "h-9 min-w-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-primary";
 
 function describe(error: unknown): string {
@@ -36,51 +33,63 @@ export function useRefreshGames() {
   };
 }
 
-/** A night's note: shown to every member, and editable by admins. Renders nothing when there is no note and no edit rights. */
-export function NightNote({ sessionNumber, tools }: { sessionNumber: number; tools: GameTools | undefined }) {
+/** The shared notes, keyed by game number. */
+function useNightNotes() {
+  return useQuery({ queryKey: ["night-notes"], queryFn: () => accountApi.nightNotes() });
+}
+
+/** A night's note, shown to every member. Admins change it from the card's menu. Renders nothing when there is none. */
+export function NightNote({ sessionNumber }: { sessionNumber: number; tools?: GameTools | undefined }) {
+  const note = useNightNotes().data?.notes[String(sessionNumber)] ?? "";
+  if (!note) return null;
+  return (
+    <div className="border-t border-border/70 px-4 py-3" data-testid={`box-night-note-${sessionNumber}`}>
+      <p className="whitespace-pre-line border-l-2 border-primary/50 pl-3 text-sm italic leading-6 text-muted-foreground" data-testid={`text-night-note-${sessionNumber}`}>{note}</p>
+    </div>
+  );
+}
+
+function NoteEditor({ sessionNumber, nightId, onClose }: { sessionNumber: number; nightId: number; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const notes = useQuery({ queryKey: ["night-notes"], queryFn: () => accountApi.nightNotes() });
-  const night = tools?.admin ? tools.nights.find((candidate) => candidate.sessionNumber === sessionNumber) : undefined;
-  const note = notes.data?.notes[String(sessionNumber)] ?? "";
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const current = useNightNotes().data?.notes[String(sessionNumber)] ?? "";
+  const [draft, setDraft] = useState(current);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  if (!note && !night) return null;
-
   const save = () => {
-    if (!night) return;
     setBusy(true);
     setError("");
-    accountApi.setNightNote(night.id, draft)
+    accountApi.setNightNote(nightId, draft)
       .then(() => {
-        setEditing(false);
+        onClose();
         void queryClient.invalidateQueries({ queryKey: ["night-notes"] });
       })
       .catch((caught) => setError(describe(caught)))
       .finally(() => setBusy(false));
   };
-
-  if (editing) {
-    return (
-      <div className="border-t border-border/70 px-4 py-3" data-testid={`box-night-note-${sessionNumber}`}>
-        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} maxLength={2000} aria-label="Note for this night" className="w-full rounded-lg border border-border bg-background p-2 text-sm outline-none focus:border-primary" data-testid={`input-night-note-${sessionNumber}`} />
-        <div className="mt-2 flex gap-2">
-          <button type="button" disabled={busy} onClick={save} className={button} data-testid={`button-night-note-save-${sessionNumber}`}>{busy ? "Saving…" : "Save note"}</button>
-          <button type="button" onClick={() => setEditing(false)} className={button}>Cancel</button>
-        </div>
-        {error && <ActionError>{error}</ActionError>}
-      </div>
-    );
-  }
   return (
-    <div className="border-t border-border/70 px-4 py-3 text-sm" data-testid={`box-night-note-${sessionNumber}`}>
-      {note && <p className="whitespace-pre-line border-l-2 border-primary/50 pl-3 text-sm italic leading-6 text-muted-foreground" data-testid={`text-night-note-${sessionNumber}`}>{note}</p>}
-      {night && (
-        <button type="button" onClick={() => { setDraft(note); setEditing(true); }} className={`${quiet} ${note ? "mt-1 -ml-2" : "-ml-2"}`} data-testid={`button-night-note-edit-${sessionNumber}`}>
-          {note ? "Edit note" : "Add a note"}
-        </button>
-      )}
+    <div data-testid={`box-night-note-edit-${sessionNumber}`}>
+      <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} maxLength={2000} autoFocus aria-label="Note for this night" className="w-full rounded-lg border border-border bg-background p-2 text-sm outline-none focus:border-primary" data-testid={`input-night-note-${sessionNumber}`} />
+      <div className="mt-2 flex gap-2">
+        <button type="button" disabled={busy} onClick={save} className={button} data-testid={`button-night-note-save-${sessionNumber}`}>{busy ? "Saving…" : "Save note"}</button>
+        <button type="button" onClick={onClose} className={button}>Cancel</button>
+      </div>
+      {error && <ActionError>{error}</ActionError>}
+    </div>
+  );
+}
+
+/** The 3-dots button in a card's top-right corner. The card reserves room for it while it is present. */
+function CardMenu({ label, testId, children }: { label: string; testId: string; children: React.ReactNode }) {
+  return (
+    <div data-card-menu className="absolute right-2 top-3 z-10">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label={label} data-testid={testId} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <MoreVertical className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -109,9 +118,10 @@ export function CashGameActions({
   // Wait for the tools too, so Edit appears together with the note button and nothing shifts under a tap.
   const showEdit = editNightId !== null && tools !== undefined;
   const showDelete = Boolean(tools?.admin && night);
-  const [mode, setMode] = useState<"idle" | "edit" | "confirm">("idle");
+  const [mode, setMode] = useState<"idle" | "edit" | "confirm" | "note">("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const hasNote = Boolean(useNightNotes().data?.notes[String(session.sessionNumber)]);
   if (!showReopen && !showEdit && !showDelete) return null;
 
   const reopen = () => {
@@ -140,8 +150,23 @@ export function CashGameActions({
   };
 
   const live = night?.source === "live";
+  const n = session.sessionNumber;
   return (
+    <>
+    {mode === "idle" && (
+      <CardMenu label={`Options for game ${n}`} testId={`button-game-menu-${n}`}>
+        {showEdit && <DropdownMenuItem onSelect={() => { setMode("edit"); setError(""); }} data-testid={`button-edit-night-${n}`}>Edit night</DropdownMenuItem>}
+        {showDelete && <DropdownMenuItem onSelect={() => { setMode("note"); setError(""); }} data-testid={`button-night-note-edit-${n}`}>{hasNote ? "Edit note" : "Add a note"}</DropdownMenuItem>}
+        {showReopen && <DropdownMenuItem disabled={busy} onSelect={reopen} data-testid={`button-reopen-night-${n}`}>Reopen night</DropdownMenuItem>}
+        {showDelete && (showEdit || showReopen) && <DropdownMenuSeparator />}
+        {showDelete && <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-night-${n}`}>Delete night…</DropdownMenuItem>}
+      </CardMenu>
+    )}
+    {(mode !== "idle" || error) && (
     <div className="border-t border-border/70 px-4 py-3" data-testid={`game-actions-${session.sessionNumber}`}>
+      {mode === "note" && night && (
+        <NoteEditor sessionNumber={n} nightId={night.id} onClose={() => { setMode("idle"); setError(""); }} />
+      )}
       {mode === "edit" && editNightId !== null && (
         <CashEditor
           session={session}
@@ -167,27 +192,10 @@ export function CashGameActions({
           </div>
         </div>
       )}
-      {mode === "idle" && (
-        <div className="-mx-2 flex flex-wrap items-center gap-1">
-          {showEdit && (
-            <button type="button" className={quiet} onClick={() => { setMode("edit"); setError(""); }} data-testid={`button-edit-night-${session.sessionNumber}`}>
-              Edit
-            </button>
-          )}
-          {showReopen && (
-            <button type="button" className={quiet} disabled={busy} onClick={reopen} data-testid={`button-reopen-night-${session.sessionNumber}`}>
-              {busy ? "Reopening…" : "Reopen"}
-            </button>
-          )}
-          {showDelete && (
-            <button type="button" className={`${quietDanger} ml-auto`} onClick={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-night-${session.sessionNumber}`}>
-              Delete
-            </button>
-          )}
-        </div>
-      )}
       {error && <ActionError>{error}</ActionError>}
     </div>
+    )}
+    </>
   );
 }
 
@@ -336,6 +344,15 @@ export function TournamentGameActions({
   };
 
   return (
+    <>
+    {mode === "idle" && (
+      <CardMenu label="Options for this tournament" testId={`button-game-menu-tournament-${id}`}>
+        <DropdownMenuItem disabled={busy} onSelect={startEdit} data-testid={`button-edit-tournament-${id}`}>Edit tournament</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-tournament-${id}`}>Delete tournament…</DropdownMenuItem>
+      </CardMenu>
+    )}
+    {(mode !== "idle" || error) && (
     <div className="border-t border-border/70 px-4 py-3" data-testid={`tournament-actions-${id}`}>
       {mode === "edit" && draft && (
         <RecordTournament
@@ -359,17 +376,9 @@ export function TournamentGameActions({
           </div>
         </div>
       )}
-      {mode === "idle" && (
-        <div className="-mx-2 flex flex-wrap items-center gap-1">
-          <button type="button" className={quiet} disabled={busy} onClick={startEdit} data-testid={`button-edit-tournament-${id}`}>
-            {busy ? "Loading…" : "Edit"}
-          </button>
-          <button type="button" className={`${quietDanger} ml-auto`} onClick={() => { setMode("confirm"); setError(""); }} data-testid={`button-delete-tournament-${id}`}>
-            Delete
-          </button>
-        </div>
-      )}
       {error && <ActionError>{error}</ActionError>}
     </div>
+    )}
+    </>
   );
 }
