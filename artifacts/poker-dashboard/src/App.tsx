@@ -551,6 +551,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
                 </div>
               </div>
               <div className="hidden flex-wrap items-center gap-2 print-hidden lg:flex">
+                {clubAdmin && <button type="button" onClick={() => navigate("admin")} data-testid="button-header-club-admin" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "admin" ? "border-primary text-primary" : "border-border"}`}><Settings className="h-4 w-4" />Club admin</button>}
                 {platformAdmin && <a href="/admin" data-testid="link-platform-usage" className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-transform hover:-translate-y-0.5"><Activity className="h-4 w-4" />Site usage</a>}
                 <button onClick={() => navigate("account")} data-testid="button-open-account" aria-label="Open Me" className={`inline-flex h-9 items-center gap-2 rounded-lg border bg-card pl-1.5 pr-3 text-xs font-semibold transition-transform hover:-translate-y-0.5 ${activeView === "account" ? "border-primary text-primary" : "border-border"}`}><Avatar name={memberName} size={24} />{memberName}</button>
                 <button onClick={toggleTheme} data-testid="button-toggle-theme" className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground" aria-label="Toggle dark mode">{isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
@@ -721,7 +722,7 @@ function DashboardHome({ memberName, platformAdmin, onLogout }: { memberName: st
             )}
               {activeView === "players" && <PlayersView players={selectedPeriodKey ? seasonPlayers : scopePlayers} sessions={scopeSessions} allSessions={homeSessions} tournaments={tournaments} onOpenTournament={openTournament} scope={performanceScope} initialPlayer={selectedPlayer ?? memberName} viewer={memberName} />}
              {activeView === "guidelines" && <GuidelinesView sessions={homeSessions} onOpenAdmin={() => navigate("admin")} />}
-             {activeView === "admin" && <ClubAdminView onBack={() => navigate("guidelines")} />}
+             {activeView === "admin" && <ClubAdminView onBack={() => navigate("guidelines")} onOpenRecord={() => navigate("live")} />}
             {activeView === "account" && (
               <AccountView
                 memberName={memberName}

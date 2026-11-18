@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { FileUp } from "lucide-react";
 import { AccountError, accountApi, type AiStatus } from "@/lib/account-api";
 import { clubToday } from "@/lib/club-format";
@@ -7,6 +7,7 @@ import { prepareNotesImage } from "@/lib/notes-image";
 import { NightTable, useNightJackpot, type NightRow } from "@/components/night-table";
 import { centsOf, remainingCents } from "@/lib/night-table";
 import { plural } from "@/lib/utils";
+import { firstGameFlags, type PersonRow } from "@/lib/admin-people";
 
 const button =
   "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary disabled:opacity-60";
@@ -30,11 +31,30 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [people, setPeople] = useState<PersonRow[]>([]);
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const jackpot = useNightJackpot(rows);
+
+  // How many games each name already has, so a first game under a near-match can be questioned.
+  const loadPeople = useCallback(() => {
+    Promise.all([accountApi.members(), accountApi.adminOverview()])
+      .then(([roster, overview]) => {
+        const played = new Map(overview.played.map((row) => [row.playerId, row.nights + row.tournaments]));
+        setPeople(roster.members.map((m) => ({ playerId: m.playerId, name: m.name, role: m.role, played: played.get(m.playerId) ?? 0 })));
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(loadPeople, [loadPeople, roster.length]);
+  const flags = useMemo(
+    () => firstGameFlags(rows.map((row) => row.name), people).filter((flag) => !dismissed.includes(flag.name.toLowerCase())),
+    [rows, people, dismissed],
+  );
+  const useName = (from: string, to: string) =>
+    setRows((current) => current.map((row) => (row.name.trim().toLowerCase() === from.toLowerCase() ? { ...row, name: to } : row)));
   const filled = rows.filter((row) => row.name.trim());
   const settled = remainingCents(rows, centsOf(jackpot.jackpot)) === 0;
 
-  const reset = () => { setRows([]); jackpot.reset(); };
+  const reset = () => { setRows([]); jackpot.reset(); setDismissed([]); };
 
   const showRows = (lines: string) => {
     const read = parseNightNotes(lines, roster);
@@ -94,6 +114,7 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
       });
       setText(""); setNote(""); setBank(""); reset();
       setInfo("Night recorded. It's on the leaderboard now.");
+      loadPeople();
       onSaved();
     } catch (caught) {
       setError(caught instanceof AccountError ? caught.message : "Something went wrong. Try again.");
@@ -134,6 +155,31 @@ export function RecordNight({ roster, ai, onSaved, onOpenSettings }: Props) {
         <div className="mt-4 space-y-4" data-testid="table-record-rows">
           <datalist id="record-roster">{roster.map((name) => <option key={name} value={name} />)}</datalist>
           <NightTable rows={rows} onRows={setRows} jackpot={jackpot.jackpot} onJackpot={jackpot.setJackpot} suggestedJackpotCents={jackpot.suggested} datalistId="record-roster" testPrefix="record" />
+          {flags.length > 0 && (
+            <div role="status" data-testid="panel-record-name-flags" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+              <p className="text-sm font-semibold">Check these names before saving</p>
+              <ul className="mt-2 space-y-3">
+                {flags.map((flag) => (
+                  <li key={flag.name} className="text-xs leading-5" data-testid={`flag-record-name-${flag.name.toLowerCase()}`}>
+                    <p>
+                      <span className="font-semibold">{flag.name}</span> {flag.isNew ? "is new to the club" : "has no games yet"}, and looks like
+                      {" "}{flag.matches.map((match) => `${match.name} (${plural(match.played, "game")})`).join(" or ")}. A misspelling becomes a separate person.
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {flag.matches.map((match) => (
+                        <button key={match.playerId} type="button" className={button} data-testid={`button-record-use-${match.playerId}`} onClick={() => useName(flag.name, match.name)}>
+                          Use {match.name}
+                        </button>
+                      ))}
+                      <button type="button" className={button} onClick={() => setDismissed((value) => [...value, flag.name.toLowerCase()])}>
+                        {flag.name} is a different person
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <label className="block text-[11px] font-semibold text-muted-foreground">
             Bank (who holds the cash, optional)
             <input list="record-roster" value={bank} onChange={(event) => setBank(event.target.value)} maxLength={40} className={`${field} mt-1 w-full font-normal text-foreground`} data-testid="input-record-bank" />

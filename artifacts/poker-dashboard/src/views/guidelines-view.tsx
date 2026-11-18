@@ -51,6 +51,6 @@ export function GuidelinesView({ sessions, onOpenAdmin }: { sessions: ChartSessi
 }
 
 /** The admin page: people, import and export, settings and deleting the club. */
-export function ClubAdminView({ onBack }: { onBack: () => void }) {
-  return <ClubAdmin onBack={onBack} />;
+export function ClubAdminView({ onBack, onOpenRecord }: { onBack: () => void; onOpenRecord?: () => void }) {
+  return <ClubAdmin onBack={onBack} onOpenRecord={onOpenRecord} />;
 }

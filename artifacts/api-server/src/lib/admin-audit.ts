@@ -22,7 +22,11 @@ export type AdminAuditAction =
   | "settings_updated"
   | "results_exported"
   | "tournaments_exported"
-  | "players_merged";
+  | "players_merged"
+  | "member_role_changed"
+  | "member_removed"
+  | "owner_handed_over"
+  | "player_added";
 
 /** Never throws: a logging problem must not block the action being recorded. */
 export async function recordAdminAction(action: AdminAuditAction, detail: string, req: Request): Promise<void> {

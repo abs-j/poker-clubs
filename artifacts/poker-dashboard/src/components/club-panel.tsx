@@ -4,6 +4,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { ClubDataPanel } from "@/components/club-data-panel";
 import { ClubSettingsPanel } from "@/components/club-settings-panel";
 import { DeleteClub } from "@/components/account-security";
+import { AdminActivity, AdminSummary } from "@/components/admin-overview";
+import { AdminPeople } from "@/components/admin-people";
 import { MergeNames } from "@/components/merge-names";
 import { SettleHistory } from "@/components/settle-history";
 import {
@@ -13,6 +15,7 @@ import {
   inviteLink,
   type ClubSummary,
   type InviteRow,
+  type AdminOverview,
   type JackpotSummary,
   type MeResponse,
   type MemberRow,
@@ -532,9 +535,26 @@ export function ClubHome({ top, rules, onOpenAdmin }: { top?: ReactNode; rules?:
 }
 
 /** Admin tools on their own page, only for owners and admins. */
-export function ClubAdmin({ onBack }: { onBack: () => void }) {
-  const { error, busy, act, reload, members, adminInvites, active, isAdmin, isOwner } = useClubData();
+export function ClubAdmin({ onBack, onOpenRecord }: { onBack: () => void; onOpenRecord?: () => void }) {
+  const { error, busy, act, reload, members, invites, adminInvites, active, isAdmin, isOwner } = useClubData();
   const [newName, setNewName] = useState("");
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [jackpotTotal, setJackpotTotal] = useState<number | null>(null);
+  const loadOverview = useCallback(() => {
+    accountApi.adminOverview().then(setOverview).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (!isAdmin) return;
+    loadOverview();
+    accountApi.jackpot().then((value) => setJackpotTotal(value.total)).catch(() => undefined);
+  }, [isAdmin, loadOverview, members.length]);
+  const playedMap = new Map((overview?.played ?? []).map((row) => [row.playerId, row.nights + row.tournaments]));
+  const people = members.map((member) => ({ playerId: member.playerId, name: member.name, role: member.role, played: playedMap.get(member.playerId) ?? 0 }));
+  const openBlock = (id: "admin-people" | "admin-setup") => {
+    const node = document.getElementById(id);
+    if (node instanceof HTMLDetailsElement) node.open = true;
+    node?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
   if (!active) return null;
   if (!isAdmin) {
     return (
@@ -571,15 +591,16 @@ export function ClubAdmin({ onBack }: { onBack: () => void }) {
           {error}
         </p>
       )}
+      <AdminSummary people={people} overview={overview} jackpotTotal={jackpotTotal} onOpen={openBlock} onOpenRecord={onOpenRecord} />
       <AdminBlock id="admin-people" testId="section-admin-people" title="People" detail="Roles, emails and names that haven't joined.">
-        <MemberRoster members={members} active={active} busy={busy} manage isOwner={isOwner} onRun={act} />
+        <AdminPeople members={members} played={playedMap} active={active} busy={busy} isOwner={isOwner} inviteCode={invites.find((invite) => invite.usable)} onRun={(action) => { act(action); window.setTimeout(loadOverview, 600); }} />
         <form onSubmit={addName} className="mt-3 flex gap-2">
           <input className={inputClass} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Add a player who hasn't joined yet" data-testid="input-add-player" />
           <button type="submit" disabled={busy || !newName.trim()} className={smallButton}>
             Add
           </button>
         </form>
-        <MergeNames names={members.map((member) => member.name)} mine={active.playerName} onMerged={() => { void reload(); }} />
+        <MergeNames people={people} mine={active.playerName} onMerged={() => { void reload(); loadOverview(); }} />
         {adminInvites.length > 0 && (
           <ul className="mt-4 space-y-2" data-testid="list-admin-invites">
             {adminInvites.map((invite) => (
@@ -605,6 +626,9 @@ export function ClubAdmin({ onBack }: { onBack: () => void }) {
       </AdminBlock>
       <AdminBlock id="admin-settings" testId="section-admin-settings" title="Settings" detail="Name, rules, points, currency and timezone.">
         <ClubSettingsPanel embedded />
+      </AdminBlock>
+      <AdminBlock id="admin-activity" testId="section-admin-activity" title="Recent admin activity" detail="Imports, exports, role changes, merges and edits.">
+        <AdminActivity overview={overview} />
       </AdminBlock>
       <AdminBlock id="admin-danger" testId="section-admin-danger" title="Danger" detail="Delete the club. This cannot be undone.">
         {isOwner ? (

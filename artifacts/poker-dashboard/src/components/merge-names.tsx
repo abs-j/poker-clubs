@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AccountError, accountApi, type MergePreview } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
+import { looksLikeJunk, suggestDuplicates, type PersonRow } from "@/lib/admin-people";
 
 const field = "h-11 w-full min-w-0 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-primary";
 const button =
@@ -40,7 +41,7 @@ function linesFor(preview: MergePreview): string[] {
 }
 
 /** Admin tool: fold a duplicate or misspelled name into the one the club wants to keep. */
-export function MergeNames({ names, mine, onMerged }: { names: string[]; mine: string; onMerged?: () => void }) {
+export function MergeNames({ people, mine, onMerged }: { people: PersonRow[]; mine: string; onMerged?: () => void }) {
   const queryClient = useQueryClient();
   const [keep, setKeep] = useState("");
   const [merge, setMerge] = useState("");
@@ -48,7 +49,18 @@ export function MergeNames({ names, mine, onMerged }: { names: string[]; mine: s
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
-  const roster = [...names].sort((a, b) => a.localeCompare(b));
+  const [find, setFind] = useState("");
+  const roster = [...people].sort((a, b) => a.name.localeCompare(b.name));
+  const names = roster.map((person) => person.name);
+  const gamesOf = new Map(roster.map((person) => [person.name, person.played]));
+  const label = (name: string) => {
+    const games = gamesOf.get(name) ?? 0;
+    return `${name} (${games === 0 ? "no games" : `${games} ${games === 1 ? "game" : "games"}`})`;
+  };
+  const needle = find.trim().toLowerCase();
+  const visible = (name: string) => !needle || name.toLowerCase().includes(needle) || name === keep || name === merge;
+  const hints = suggestDuplicates(roster).slice(0, 6);
+  const junk = roster.filter((person) => looksLikeJunk(person) && person.played === 0 && !person.role);
 
   const clearPreview = () => {
     setPreview(null);
@@ -99,12 +111,49 @@ export function MergeNames({ names, mine, onMerged }: { names: string[]; mine: s
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
         When the same person was recorded under two names, move all of the duplicate&apos;s history onto the name you keep.
       </p>
+      {hints.length > 0 && (
+        <div className="mt-3" data-testid="list-merge-suggestions">
+          <p className="text-xs font-semibold">Possible duplicates</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {hints.map(({ keep: k, merge: m }) => (
+              <button
+                key={`${k.playerId}-${m.playerId}`}
+                type="button"
+                className="inline-flex min-h-[36px] items-center rounded-full border border-border bg-background px-3 text-xs font-semibold hover:bg-secondary"
+                onClick={() => {
+                  setKeep(k.name);
+                  setMerge(m.name);
+                  setFind("");
+                  clearPreview();
+                }}
+              >
+                Merge {m.name} into {k.name}?
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {junk.length > 0 && (
+        <div className="mt-3" data-testid="list-merge-junk">
+          <p className="text-xs font-semibold">No games, odd names</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{junk.map((person) => person.name).join(", ")}. Merge them into a real name, or leave them if they are bookkeeping rows.</p>
+        </div>
+      )}
       {roster.length < 2 ? (
           <p className="mt-3 text-sm text-muted-foreground" data-testid="text-merge-need-names">
             Add another name before merging.
           </p>
         ) : (
           <form onSubmit={runPreview} className="mt-4 space-y-3">
+            <input
+              type="search"
+              value={find}
+              onChange={(event) => setFind(event.target.value)}
+              placeholder="Find a name"
+              aria-label="Find a name to merge"
+              data-testid="input-merge-find"
+              className={field}
+            />
             <label className="block text-xs font-semibold">
               Keep this name
               <select
@@ -117,8 +166,8 @@ export function MergeNames({ names, mine, onMerged }: { names: string[]; mine: s
                 }}
               >
                 <option value="">Choose a name</option>
-                {roster.map((name) => (
-                  <option key={name} value={name}>{name}</option>
+                {names.filter((name) => name !== merge && visible(name)).map((name) => (
+                  <option key={name} value={name}>{label(name)}</option>
                 ))}
               </select>
             </label>
@@ -134,8 +183,8 @@ export function MergeNames({ names, mine, onMerged }: { names: string[]; mine: s
                 }}
               >
                 <option value="">Choose a name</option>
-                {roster.filter((name) => name !== keep).map((name) => (
-                  <option key={name} value={name}>{name}</option>
+                {names.filter((name) => name !== keep && visible(name)).map((name) => (
+                  <option key={name} value={name}>{label(name)}</option>
                 ))}
               </select>
             </label>
