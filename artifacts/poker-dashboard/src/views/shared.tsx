@@ -166,3 +166,25 @@ export function monthLabel(value: string) {
   if (match) return `${monthNames[Number(match[2]) - 1]?.slice(0, 3) ?? match[2]} ${match[1]}`;
   return monthNames[Number(value) - 1] ?? value;
 }
+
+/** "2026-11-15" -> { day: "15", month: "Nov", weekday: "Sunday" }. Falls back to the raw text for odd dates. */
+export function dateParts(value: string) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  if (Number.isNaN(date.getTime())) return { day: "", month: value, weekday: "" };
+  return {
+    day: String(date.getDate()),
+    month: new Intl.DateTimeFormat("en-AU", { month: "short" }).format(date),
+    weekday: new Intl.DateTimeFormat("en-AU", { weekday: "long" }).format(date),
+  };
+}
+
+/** The calendar tile at the left of a game card. */
+export function DateTile({ date }: { date: string }) {
+  const when = dateParts(date);
+  return (
+    <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
+      <span className="font-mono text-xl font-semibold leading-none">{when.day || "·"}</span>
+      <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em]">{when.month}</span>
+    </div>
+  );
+}

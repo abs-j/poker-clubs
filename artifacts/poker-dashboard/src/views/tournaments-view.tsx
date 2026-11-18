@@ -18,7 +18,7 @@ import {
   tournamentLeaderboard,
   tournamentTotals,
 } from "@/lib/tournaments";
-import { EmptyPanel, formatCurrency, formatDate, signedCurrency, slug } from "./shared";
+import { DateTile, EmptyPanel, dateParts, formatCurrency, formatDate, signedCurrency, slug } from "./shared";
 
 type TournamentsViewProps = {
   tournaments: TournamentEvent[];
@@ -217,24 +217,28 @@ export function TournamentCard({ event, viewer, onOpen, footer }: { event: Tourn
   return (
     <article
       data-testid={`card-tournament-${slug(event.id)}`}
-      className="group soft-shadow w-full overflow-hidden rounded-2xl border border-border bg-card text-left transition-all duration-200 hover:-translate-y-1 hover:border-primary/35 hover:shadow-xl"
+      className="group soft-shadow flex h-full w-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-left transition-colors duration-200 hover:border-primary/35"
     >
     <button
       type="button"
       onClick={onOpen}
-      className="w-full text-left"
+      className="flex w-full flex-1 flex-col text-left"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">{formatDate(event.date)}</p>
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{event.format || event.title}</p>
+      <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+        <DateTile date={event.date} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{dateParts(event.date).weekday ? `${dateParts(event.date).weekday}, ${formatDate(event.date)}` : formatDate(event.date)}</p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Tournament</span>
+            <span className="truncate">{event.format || event.title}</span>
+          </p>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="font-mono text-sm font-semibold">{formatCurrency(event.mainPrizePool)}</p>
+        <div className="shrink-0 text-right group-has-[[data-card-menu]]:pr-8">
+          <p className="font-mono text-base font-semibold">{formatCurrency(event.mainPrizePool)}</p>
           <p className="text-[11px] text-muted-foreground">{event.players} players · {event.entries} entries</p>
         </div>
       </div>
-      <ol className="space-y-1.5 px-4 py-3">
+      <ol className="space-y-2 border-t border-border/70 px-4 py-3.5">
         {[
           { place: 1, name: event.winner },
           { place: 2, name: event.runnerUp },
@@ -250,7 +254,7 @@ export function TournamentCard({ event, viewer, onOpen, footer }: { event: Tourn
             </li>
           ))}
       </ol>
-      <div className="flex items-center justify-between gap-3 border-t border-border/70 bg-secondary/20 px-4 py-2.5 text-xs">
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/70 bg-secondary/20 px-4 py-2.5 text-xs">
         <span className="text-muted-foreground">
           {event.knockouts} knockouts{event.topBountyHunter ? ` · top: ${event.topBountyHunter}` : ""}
         </span>

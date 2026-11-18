@@ -7,8 +7,9 @@ import { RecapButton } from "@/components/recap-button";
 import { buildCashRecap } from "@/lib/recaps";
 import { buildNightCardModel } from "@/lib/share-card";
 import { clubName } from "@/lib/club-format";
+import { Avatar } from "@/components/avatar";
 import { SettleBadge, SettleForSession } from "@/components/settle-up";
-import { EmptyPanel, PageIntro, formatCurrency, formatDate, monthLabel, signedCurrency, slug } from "./shared";
+import { DateTile, EmptyPanel, PageIntro, dateParts, formatCurrency, formatDate, monthLabel, signedCurrency, slug } from "./shared";
 
 type SessionsViewProps = {
   sessions: Session[];
@@ -77,7 +78,7 @@ export function SessionsView({ sessions, scope, selectedSession, onSelectSession
             <div
               key={`${session.eventType ?? "cash"}-${session.sessionNumber}`}
               id={`game-${session.sessionNumber}`}
-              className="stagger-item scroll-mt-24"
+              className="stagger-item h-full scroll-mt-24"
               style={{ "--i": Math.min(index, 14) } as React.CSSProperties}
             >
               <SessionCard
@@ -97,40 +98,65 @@ export function SessionsView({ sessions, scope, selectedSession, onSelectSession
   );
 }
 
+/** One person's line on a card: avatar, what they were, their name and their result. */
+function ResultLine({ label, name, amount, tone, testId }: { label: string; name: string | null; amount: number; tone: "win" | "low"; testId: string }) {
+  const up = amount >= 0;
+  return (
+    <div data-testid={testId} className="flex items-center gap-3">
+      {name ? <Avatar name={name} size={34} /> : <span className="h-[34px] w-[34px] rounded-full bg-secondary" aria-hidden="true" />}
+      <div className="min-w-0 flex-1">
+        <p className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${tone === "win" ? "text-chart-1" : "text-muted-foreground"}`}>
+          {tone === "win" ? <Trophy className="h-3 w-3" aria-hidden="true" /> : <ArrowDown className="h-3 w-3" aria-hidden="true" />}
+          {label}
+        </p>
+        <p className="truncate text-sm font-semibold leading-snug">{name ?? "—"}</p>
+      </div>
+      <p className={`shrink-0 font-mono text-sm font-semibold ${up ? "text-chart-1" : "text-destructive"}`}>{name ? signedCurrency(amount) : "—"}</p>
+    </div>
+  );
+}
+
 export function SessionCard({ session, expanded, onToggle, onOpenPlayer, footer }: { session: Session; expanded: boolean; onToggle: () => void; onOpenPlayer: (name: string) => void; footer?: ReactNode }) {
   const isTournament = session.eventType === "tournament";
-  return <article data-testid={`card-session-${session.sessionNumber}`} className={`group soft-shadow overflow-hidden rounded-2xl border bg-card transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${expanded ? "border-primary/60" : "border-border hover:border-primary/35"}`}>
+  const when = dateParts(session.date);
+  const up = session.players.filter((player) => player.net > 0).length;
+  const down = session.players.filter((player) => player.net < 0).length;
+  const decided = up + down;
+  return <article data-testid={`card-session-${session.sessionNumber}`} className={`group soft-shadow flex h-full flex-col overflow-hidden rounded-2xl border bg-card transition-colors duration-200 ${expanded ? "border-primary/60" : "border-border hover:border-primary/35"}`}>
     <button onClick={onToggle} aria-expanded={expanded} data-testid={`button-expand-session-${session.sessionNumber}`} className="w-full text-left">
-      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 rounded-md bg-accent/25 px-1.5 py-1 font-mono text-[11px] font-semibold text-accent-foreground">{monthLabel(session.month)}</span>
-          {isTournament && <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-1 text-[11px] font-semibold text-primary">Tournament</span>}
-          <span className="truncate text-sm font-semibold">{formatDate(session.date)}</span>
+      <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+        <DateTile date={session.date} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{when.weekday ? `${when.weekday}, ${formatDate(session.date)}` : formatDate(session.date)}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            {isTournament ? <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Tournament</span> : <><span>Game #{session.sessionNumber}</span><SettleBadge sessionNumber={session.sessionNumber} /></>}
+          </p>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="font-mono text-sm font-semibold">{formatCurrency(session.totalBuyIn)}</p>
+        <div className="shrink-0 text-right group-has-[[data-card-menu]]:pr-8">
+          <p className="font-mono text-base font-semibold">{formatCurrency(session.totalBuyIn)}</p>
           <p className="text-[11px] text-muted-foreground">{plural(session.playerCount, "player")} · {isTournament ? "invested" : "pot"}</p>
         </div>
       </div>
-      {isTournament && <div data-testid={`session-tournament-summary-${session.sessionNumber}`} className="flex items-center justify-between gap-3 border-b border-border/70 bg-secondary/15 px-4 py-2.5 text-xs">
+      {isTournament && <div data-testid={`session-tournament-summary-${session.sessionNumber}`} className="mx-4 mb-3 flex items-center justify-between gap-3 rounded-lg bg-secondary/30 px-3 py-2 text-xs">
         <span className="text-muted-foreground">Returned <strong className="ml-1 font-mono font-semibold text-foreground">{formatCurrency(session.totalCashOut)}</strong></span>
         <span className="text-muted-foreground">Field net <strong className={`ml-1 font-mono font-semibold ${session.totalNet >= 0 ? "text-chart-1" : "text-destructive"}`}>{signedCurrency(session.totalNet)}</strong></span>
       </div>}
-      <div className="grid grid-cols-2 divide-x divide-border/70 px-4 py-4">
-        <div className="min-w-0 pr-4" data-testid={`session-winner-${session.sessionNumber}`}>
-          <p className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${isTournament ? "text-primary" : "text-chart-1"}`}><Trophy className="h-3.5 w-3.5" />{isTournament ? "Top net" : "Winner"}</p>
-          <p className="mt-2 truncate text-sm font-semibold">{session.winner ?? "—"}</p>
-          <p className={`mt-1 font-mono text-sm font-semibold ${session.winnerProfit >= 0 ? "text-chart-1" : "text-destructive"}`}>{session.winner ? signedCurrency(session.winnerProfit) : "—"}</p>
-        </div>
-        <div className="min-w-0 pl-4" data-testid={`session-low-${session.sessionNumber}`}>
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary"><ArrowDown className="h-3.5 w-3.5" />{isTournament ? "Lowest net" : "Low"}</p>
-          <p className="mt-2 truncate text-sm font-semibold">{session.lowPlayer ?? "—"}</p>
-          <p className={`mt-1 font-mono text-sm font-semibold ${session.lowProfit >= 0 ? "text-chart-1" : "text-destructive"}`}>{session.lowPlayer ? signedCurrency(session.lowProfit) : "—"}</p>
-        </div>
+      <div className="space-y-3 border-t border-border/70 px-4 py-3.5">
+        <ResultLine testId={`session-winner-${session.sessionNumber}`} tone="win" label={isTournament ? "Top net" : "Winner"} name={session.winner} amount={session.winnerProfit} />
+        <ResultLine testId={`session-low-${session.sessionNumber}`} tone="low" label={isTournament ? "Lowest net" : "Low"} name={session.lowPlayer} amount={session.lowProfit} />
       </div>
-      <div className="flex items-center justify-between border-t border-border/70 bg-secondary/20 px-4 py-3 text-xs">
-        <span className="flex items-center gap-2 text-muted-foreground">{isTournament ? "Tournament" : `Game #${session.sessionNumber}`}{!isTournament && <SettleBadge sessionNumber={session.sessionNumber} />}</span>
-        <span className="inline-flex items-center gap-1 font-semibold text-muted-foreground">Player results<ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} /></span>
+      {decided > 0 && (
+        <div className="px-4 pb-3.5" data-testid={`session-spread-${session.sessionNumber}`}>
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-secondary" role="img" aria-label={`${up} up, ${down} down`}>
+            <span className="bg-chart-1" style={{ width: `${(up / decided) * 100}%` }} />
+            <span className="bg-destructive/70" style={{ width: `${(down / decided) * 100}%` }} />
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground"><span className="font-semibold text-chart-1">{up} up</span> · <span className="font-semibold text-destructive">{down} down</span></p>
+        </div>
+      )}
+      <div className="mt-auto flex items-center justify-between border-t border-border/70 bg-secondary/20 px-4 py-2.5 text-xs">
+        <span className="font-semibold text-muted-foreground">Player results</span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
       </div>
     </button>
     {expanded && (
