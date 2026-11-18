@@ -240,8 +240,9 @@ export type NightEditData = {
   players: Array<{ name: string; buyInCents: number; cashOutCents: number; adjustmentCents: number; adjustmentNote: string | null }>;
 };
 export type MineSettleEntry = { nightId: number; sessionNumber: number | null; date: string; cents: number; bank: string | null };
+export type WaitingPayer = { name: string; cents: number };
 export type SettleUpSummary = {
-  mine: { owe: MineSettleEntry[]; owed: MineSettleEntry[]; oweCents: number; owedCents: number };
+  mine: { owe: MineSettleEntry[]; owed: Array<MineSettleEntry & { waiting?: WaitingPayer[] }>; oweCents: number; owedCents: number };
   nights: Array<{ nightId: number; sessionNumber: number | null; date: string; state: SettleState; unsettled: number; canEdit: boolean; flagged: boolean }>;
 };
 

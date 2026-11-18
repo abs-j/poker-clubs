@@ -44,6 +44,16 @@ export function nightState(lines: SettleLine[]): NightSettlementState {
   return done === 0 ? "open" : "partial";
 }
 
+export type WaitingPayer = { name: string; cents: number };
+
+/** Players who lost on the night and are not ticked settled yet, biggest debt first. */
+export function waitingPayers(lines: SettleLine[]): WaitingPayer[] {
+  return lines
+    .filter((line) => line.netCents < 0 && !line.settled)
+    .map((line) => ({ name: line.name, cents: -line.netCents }))
+    .sort((a, b) => b.cents - a.cents || a.name.localeCompare(b.name));
+}
+
 export type MineEntry = { nightId: number; date: string; cents: number; bank: string | null };
 
 /** What one person still owes or is still owed across tracked nights, newest night first. */

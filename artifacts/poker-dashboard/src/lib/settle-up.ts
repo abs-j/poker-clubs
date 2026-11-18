@@ -23,3 +23,11 @@ export function settleBadge(state: "none" | "open" | "partial" | "settled", unse
 export function settleTotalText(cents: number): string {
   return dollars(cents);
 }
+
+/** "Waiting on Ann $20.00, Bo $5.00 +2 more": who has not paid yet, capped so a long list stays short. */
+export function waitingText(waiting: Array<{ name: string; cents: number }>, max = 3): string | null {
+  if (waiting.length === 0) return null;
+  const shown = waiting.slice(0, max).map((payer) => `${payer.name} ${dollars(payer.cents)}`);
+  const more = waiting.length - shown.length;
+  return `Waiting on ${shown.join(", ")}${more > 0 ? ` +${more} more` : ""}`;
+}

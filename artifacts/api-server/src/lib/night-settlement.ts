@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { clubSessions, db, liveSessions, nightEditLog, nightSettlements, normalizeNameKey, players, sessionResults } from "@workspace/db";
 import { canSettle, hostOf, LedgerPermissionError, type LedgerActor } from "./ledger-permissions";
 import { syncClosedLiveSessions } from "./club-sessions";
-import { mineUnsettled, nightState, settleLines, type NightSettlementState, type SettleLine, type SettledMark } from "./settle-up";
+import { mineUnsettled, nightState, settleLines, waitingPayers, type NightSettlementState, type SettleLine, type SettledMark } from "./settle-up";
 
 type TrackedNight = {
   nightId: number;
@@ -122,7 +122,13 @@ export async function loadSettleUp(clubId: number, actor: LedgerActor) {
   const [tracked, numbers] = await Promise.all([loadTrackedNights(clubId), recordedSessionNumbers(clubId)]);
   const owed = mineUnsettled(tracked.map((night) => ({ nightId: night.nightId, date: night.date, bank: night.bank, lines: night.lines })), viewerName);
   const withNumber = <T extends { nightId: number }>(entries: T[]) => entries.map((entry) => ({ ...entry, sessionNumber: numbers.get(entry.nightId) ?? null }));
-  const mine = { ...owed, owe: withNumber(owed.owe), owed: withNumber(owed.owed) };
+  const waiting = new Map(tracked.map((night) => [night.nightId, waitingPayers(night.lines)]));
+  // Who is still holding up the money, shown on the nights the viewer is owed.
+  const mine = {
+    ...owed,
+    owe: withNumber(owed.owe),
+    owed: withNumber(owed.owed).map((entry) => ({ ...entry, waiting: waiting.get(entry.nightId) ?? [] })),
+  };
   const nights = tracked
     .map((night) => {
       const state = nightState(night.lines);
