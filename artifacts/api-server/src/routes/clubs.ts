@@ -1,7 +1,7 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { cleanTimezone } from "../lib/club-settings-parse";
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { clubs, db, invites, jackpotPayouts, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
+import { adminAuditLog, clubs, db, invites, jackpotPayouts, memberships, players, sessionResults, tournamentResults, userAccounts, users } from "@workspace/db";
 import { deleteClubData } from "../lib/club-delete";
 import { recordAdminAction } from "../lib/admin-audit";
 import { adminClubId, memberClubId, requireAdminSession, requireMemberSession } from "../lib/auth";
@@ -311,7 +311,63 @@ router.post("/clubs/current/players", requireAdminSession, async (req, res): Pro
     res.status(409).json({ error: "That name is already on the roster." });
     return;
   }
+  await recordAdminAction("player_added", `Added "${created.displayName}" to the roster.`, req);
   res.status(201).json({ player: created });
+});
+
+async function playerLabel(playerId: number): Promise<string> {
+  const [row] = await db.select({ name: players.displayName }).from(players).where(eq(players.id, playerId)).limit(1);
+  return row ? `"${row.name}"` : `player #${playerId}`;
+}
+
+const IMPORT_ACTIONS = ["history_imported"];
+const EXPORT_ACTIONS = ["results_exported", "tournaments_exported"];
+
+/** What the admin page needs at a glance: how much each name has played, and what admins did lately. */
+router.get("/clubs/current/admin/overview", requireAdminSession, async (_req, res): Promise<void> => {
+  const clubId = adminClubId(res);
+  const [nightRows, tourneyRows, activity, lastOf] = await Promise.all([
+    db
+      .select({ playerId: sessionResults.playerId, n: count() })
+      .from(sessionResults)
+      .innerJoin(players, eq(players.id, sessionResults.playerId))
+      .where(eq(players.clubId, clubId))
+      .groupBy(sessionResults.playerId),
+    db
+      .select({ playerId: tournamentResults.playerId, n: count() })
+      .from(tournamentResults)
+      .innerJoin(players, eq(players.id, tournamentResults.playerId))
+      .where(eq(players.clubId, clubId))
+      .groupBy(tournamentResults.playerId),
+    db
+      .select({ id: adminAuditLog.id, action: adminAuditLog.action, detail: adminAuditLog.detail, at: adminAuditLog.createdAt })
+      .from(adminAuditLog)
+      .where(eq(adminAuditLog.clubId, clubId))
+      .orderBy(desc(adminAuditLog.createdAt))
+      .limit(15),
+    db
+      .select({ action: adminAuditLog.action, at: sql<Date>`max(${adminAuditLog.createdAt})` })
+      .from(adminAuditLog)
+      .where(and(eq(adminAuditLog.clubId, clubId), sql`${adminAuditLog.action} in (${sql.join([...IMPORT_ACTIONS, ...EXPORT_ACTIONS].map((a) => sql`${a}`), sql`, `)})`))
+      .groupBy(adminAuditLog.action),
+  ]);
+  const counts = new Map<number, { nights: number; tournaments: number }>();
+  for (const row of nightRows) counts.set(row.playerId, { nights: Number(row.n), tournaments: 0 });
+  for (const row of tourneyRows) {
+    const entry = counts.get(row.playerId) ?? { nights: 0, tournaments: 0 };
+    entry.tournaments = Number(row.n);
+    counts.set(row.playerId, entry);
+  }
+  const latest = (actions: string[]) => {
+    const times = lastOf.filter((row) => actions.includes(row.action)).map((row) => new Date(row.at).getTime());
+    return times.length > 0 ? new Date(Math.max(...times)).toISOString() : null;
+  };
+  res.json({
+    played: [...counts.entries()].map(([playerId, value]) => ({ playerId, ...value })),
+    activity: activity.map((row) => ({ id: row.id, action: row.action, detail: row.detail, at: row.at.toISOString() })),
+    lastImportAt: latest(IMPORT_ACTIONS),
+    lastExportAt: latest(EXPORT_ACTIONS),
+  });
 });
 
 function mergeNamesFrom(body: unknown): { keep: string; merge: string } | { error: string } {
@@ -521,10 +577,12 @@ router.patch("/clubs/current/members/:playerId", requireAdminSession, async (req
         .set({ role: "admin" })
         .where(and(eq(memberships.clubId, clubId), eq(memberships.userId, actor.userId!)));
     });
+    await recordAdminAction("owner_handed_over", `Handed the club over to ${await playerLabel(playerId)}.`, req);
     res.json({ playerId, role });
     return;
   }
   await db.update(memberships).set({ role }).where(eq(memberships.id, target.id));
+  await recordAdminAction("member_role_changed", `Changed ${await playerLabel(playerId)} from ${target.role} to ${role}.`, req);
   res.json({ playerId, role });
 });
 
@@ -578,6 +636,7 @@ router.delete("/clubs/current/members/:playerId", requireAdminSession, async (re
     return;
   }
   await removeMembership(clubId, target.id, playerId);
+  await recordAdminAction("member_removed", `Removed ${await playerLabel(playerId)} (${target.role}) from the club.`, req);
   res.status(204).end();
 });
 

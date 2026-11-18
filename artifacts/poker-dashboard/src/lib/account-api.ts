@@ -27,6 +27,12 @@ export type MemberRow = {
   email?: string | null;
   joinedAt: string | null;
 };
+export type AdminOverview = {
+  played: Array<{ playerId: number; nights: number; tournaments: number }>;
+  activity: Array<{ id: number; action: string; detail: string; at: string }>;
+  lastImportAt: string | null;
+  lastExportAt: string | null;
+};
 export type MergePreview = {
   keep: string;
   merge: string;
@@ -305,6 +311,7 @@ export const accountApi = {
   createInvite: (input: { maxUses?: number; expiresInDays?: number } = {}) =>
     request<{ invite: { id: number; code: string } }>("/api/clubs/current/invites", send("POST", input)),
   revokeInvite: (id: number) => request<void>(`/api/clubs/current/invites/${id}`, { method: "DELETE" }),
+  adminOverview: () => request<AdminOverview>("/api/clubs/current/admin/overview", { cache: "no-store" }),
   addPlayer: (name: string) => request<unknown>("/api/clubs/current/players", send("POST", { name })),
   previewMerge: (input: { keep: string; merge: string }) =>
     request<MergePreview>("/api/clubs/current/players/merge/preview", send("POST", input)),
