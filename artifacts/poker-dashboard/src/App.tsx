@@ -23,7 +23,7 @@ import { PointsProvider } from "@/components/points-context";
 import { Avatar, AvatarProvider } from "@/components/avatar";
 import { useMemberAvatars } from "@/lib/avatars";
 import { JoinPage, ResetPasswordPage, WelcomeFlow } from "./views/welcome";
-import { PrivacyPage, TermsPage } from "./views/legal";
+import { AccountDeletionPage, PrivacyPage, TermsPage } from "./views/legal";
 import { accountApi } from "@/lib/account-api";
 import { plural } from "@/lib/utils";
 import { ClubSettingsProvider, useClubSettings } from "@/components/club-settings-context";
@@ -825,7 +825,7 @@ function ViewSkeleton() {
 function DashboardSkeleton() { return <div data-testid="state-dashboard-loading" className="min-h-[100dvh] bg-background px-4 pt-4 text-foreground sm:px-7 lg:px-10 lg:pt-6"><div className="mx-auto max-w-[1450px] animate-pulse space-y-4"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-xl bg-secondary" /><div className="h-6 w-48 rounded-lg bg-secondary" /></div><div className="h-12 w-3/4 rounded-xl bg-secondary" /><div className="h-52 rounded-2xl bg-secondary" /><div className="h-28 rounded-2xl bg-secondary" /><div className="h-72 rounded-2xl bg-secondary" /></div></div>; }
 function formatSyncTime(value: string) { const date = new Date(value); if (Number.isNaN(date.getTime())) return "recently"; return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date); }
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter base={IS_DEMO ? "/demo" : ""}><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><PlatformUsagePage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><ErrorBoundary><WouterRouter base={IS_DEMO ? "/demo" : ""}><Switch><Route path="/admin"><Suspense fallback={<AuthLoadingState />}><PlatformUsagePage /></Suspense></Route><Route path="/dashboard" component={Home} /><Route path="/terms" component={TermsPage} /><Route path="/privacy" component={PrivacyPage} /><Route path="/delete-account" component={AccountDeletionPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/join/:code">{(params) => <JoinPage code={params.code} />}</Route><Route path="/" component={Home} /><Route component={NotFound} /></Switch></WouterRouter><Toaster /></ErrorBoundary></TooltipProvider></QueryClientProvider>;
 }
 
 export default App;
