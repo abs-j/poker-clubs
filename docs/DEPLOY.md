@@ -17,6 +17,8 @@ Set these in the Repl (Tools → Secrets) before the first publish.
 | `REQUIRE_EMAIL_VERIFICATION` | optional | `true` blocks sign-in until the email is confirmed. |
 | `TRUSTED_ORIGINS` | optional | Extra addresses the site is served from (e.g. a `www.` alias). |
 | `PLATFORM_ADMIN_EMAILS` | optional | Comma-separated account emails of the site owner. Those accounts can open the view-only usage page. Leave it unset and nobody can. |
+| `ANDROID_PACKAGE_NAME` | optional | Android app (Trusted Web Activity) package name. With `ANDROID_CERT_SHA256` it makes `/.well-known/assetlinks.json` answer; without either it returns 404. |
+| `ANDROID_CERT_SHA256` | optional | Comma-separated SHA-256 signing fingerprints (`AA:BB:..`). Set after Play App Signing shows the SHA-256, and include both the upload key and the Play signing key. |
 
 
 ## 2. Create the tables (once, and after any schema change)

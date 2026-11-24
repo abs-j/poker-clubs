@@ -6,9 +6,12 @@
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone"],
+  "lang": "en",
+  "categories": ["sports", "social", "lifestyle"],
   "orientation": "portrait",
-  "background_color": "#f8f6fc",
-  "theme_color": "#7735e9",
+  "background_color": "#100a19",
+  "theme_color": "#100a19",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -21,6 +24,12 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icons/icon-maskable.png",

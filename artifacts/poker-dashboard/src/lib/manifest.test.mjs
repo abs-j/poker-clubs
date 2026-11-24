@@ -12,8 +12,8 @@ test("every icon and screenshot in the manifest exists", () => {
 
 test("the maskable icon is its own padded file, not the plain icon", () => {
   const maskable = manifest.icons.filter((icon) => icon.purpose === "maskable");
-  assert.equal(maskable.length, 1);
-  assert.ok(!manifest.icons.some((icon) => icon.purpose === "any" && icon.src === maskable[0].src));
+  assert.ok(maskable.length >= 1);
+  for (const icon of maskable) assert.ok(!manifest.icons.some((other) => other.purpose === "any" && other.src === icon.src));
 });
 
 test("screenshots cover both form factors so Chrome shows the rich install dialog", () => {

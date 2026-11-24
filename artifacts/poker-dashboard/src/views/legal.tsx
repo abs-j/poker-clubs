@@ -23,7 +23,7 @@ function Page({ title, children }: { title: string; children: ReactNode }) {
         <p className="mt-1 text-xs text-muted-foreground">Last updated {UPDATED}</p>
         <div className="mt-6 space-y-6 text-sm leading-7">{children}</div>
         <p className="mt-10 border-t border-border pt-4 text-xs text-muted-foreground">
-          <a href="/terms" className="hover:text-primary hover:underline">Terms</a> · <a href="/privacy" className="hover:text-primary hover:underline">Privacy</a> · <a href="/" className="hover:text-primary hover:underline">Back to {APP_NAME}</a>
+          <a href="/terms" className="hover:text-primary hover:underline">Terms</a> · <a href="/privacy" className="hover:text-primary hover:underline">Privacy</a> · <a href="/delete-account" className="hover:text-primary hover:underline">Delete account</a> · <a href="/" className="hover:text-primary hover:underline">Back to {APP_NAME}</a>
         </p>
       </main>
     </div>
@@ -90,8 +90,44 @@ export function PrivacyPage() {
       <Section title="Keeping and deleting">
         <p>We keep your data until you or your club delete it. You can delete your account any time from the Account page: that removes your login and email. The results you and your club recorded stay in the club under the player name, no longer linked to you, so the club&apos;s history isn&apos;t rewritten. A club owner can delete the club, which permanently deletes everything in it. To have a name or entry changed or removed, ask a club admin or contact us.</p>
       </Section>
+      <Section title="Delete your account">
+        <p>Step-by-step instructions are on the <a className="text-primary underline" href="/delete-account">account deletion page</a>.</p>
+      </Section>
       <Section title="Your rights and contact">
         <p>You can ask to see, correct or delete the personal information we hold about you. Contact <Contact />.</p>
+      </Section>
+    </Page>
+  );
+}
+
+export function AccountDeletionPage() {
+  return (
+    <Page title="Delete your account">
+      <Section title="How to delete your account">
+        <p>You can delete your account yourself, any time, in the app or on the website:</p>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>Sign in to {APP_NAME}.</li>
+          <li>Open the Account page.</li>
+          <li>Choose <strong className="text-foreground">Delete my account</strong>.</li>
+          <li>Confirm: type your password, or your email address if you sign in with Google.</li>
+          <li>Choose <strong className="text-foreground">Delete for good</strong>. This can&apos;t be undone.</li>
+        </ol>
+      </Section>
+      <Section title="What is deleted">
+        <p>Your login, your email address, your password (hashed) and your sign-in sessions are deleted straight away, and you are signed out. Your membership of every club is removed.</p>
+        <p>If you are the owner of a club and the only member, that club is deleted with you, including every night, tournament and invite in it.</p>
+      </Section>
+      <Section title="What is kept">
+        <p>The results you recorded stay in your clubs under the player name you used, but are no longer linked to you or your email, so the club&apos;s history isn&apos;t rewritten. A club admin can edit or remove a player name; ask them, or contact us.</p>
+      </Section>
+      <Section title="If you own a club that has other members">
+        <p>Deletion is blocked until you either make another member the owner (in the club&apos;s member list, choose <strong className="text-foreground">Make owner</strong>), or delete the club. Only the owner can delete a club: open the club settings, choose <strong className="text-foreground">Delete club</strong> and type the club&apos;s exact name. Deleting a club permanently removes everything in it for all members, so download your results first if you want to keep them.</p>
+      </Section>
+      <Section title="Leaving one club without deleting your account">
+        <p>Members who aren&apos;t the owner can leave a club from the club settings. Your account stays, and the player name and its history stay in that club, unlinked from you.</p>
+      </Section>
+      <Section title="Can&apos;t sign in, or prefer to ask?">
+        <p>Email <Contact /> from the address on your account and ask for it to be deleted. We will confirm that it is yours and delete it, with the same effect as above.</p>
       </Section>
     </Page>
   );

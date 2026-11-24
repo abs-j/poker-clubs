@@ -50,3 +50,16 @@ Thumbs.db
 
 # Local development secrets
 .env.local
+
+# Android (Bubblewrap / Play signing)
+android/keystore/
+*.jks
+*.keystore
+android/*.aab
+android/*.apk
+android/*.idsig
+android/app/build/
+android/.gradle/
+android/local.properties
+android/twa-manifest.dev.json
+android/build/
